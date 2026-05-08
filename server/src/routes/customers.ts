@@ -1,0 +1,380 @@
+import { Router } from 'express';
+import { nanoid } from 'nanoid';
+import { store, persist } from '../store/mockStore.js';
+import { requireActiveRole } from '../middleware/auth.js';
+import { logChange, summarizeDiff, getLogsForEntity } from '../store/changeLog.js';
+import type {
+  MiceContact,
+  MiceCustomer,
+  MiceInquiry,
+  WeddingCustomer,
+  WeddingEventInquiry,
+  CustomerType,
+} from '../types.js';
+
+const router = Router();
+
+// 정책:
+// - READ: 모든 활성 사용자 (행사-고객 연결을 위해 양 팀에서 양쪽 고객 검색 필요)
+// - WRITE: admin 또는 매칭 팀만
+function canAccessType(role: string, type: CustomerType): { read: boolean; write: boolean } {
+  const isActive =
+    role === 'admin' ||
+    role === 'sales_mice' ||
+    role === 'sales_wedding' ||
+    role === 'banquet' ||
+    role === 'kitchen';
+  const write =
+    role === 'admin' ||
+    (role === 'sales_mice' && type === 'MICE') ||
+    (role === 'sales_wedding' && type === 'WEDDING');
+  return { read: isActive, write };
+}
+
+router.use(requireActiveRole);
+
+// ===== MICE =====
+
+const MICE_FIELD_LABELS: Record<string, string> = {
+  mice_category: '구분',
+  organization_name: '업체명',
+  official_phone: '공식연락처',
+  official_email: '공식이메일',
+  official_website: '공식홈페이지',
+  inquiries: '문의건수',
+  memo: '메모',
+};
+
+function normalizeContacts(input: unknown): MiceContact[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((raw) => {
+      const o = raw as Partial<MiceContact>;
+      return {
+        id: o.id || nanoid(10),
+        name: o.name || '',
+        email: o.email || '',
+        phone: o.phone || '',
+      };
+    })
+    // 모두 빈 담당자는 제외
+    .filter((c) => c.name || c.email || c.phone);
+}
+
+function normalizeMiceInquiries(
+  input: unknown,
+  fallbackUserId: string,
+  fallbackUserName: string
+): MiceInquiry[] {
+  if (!Array.isArray(input)) return [];
+  return input.map((raw) => {
+    const o = raw as Partial<MiceInquiry> & {
+      lost_reason?: string;
+      contact_name?: string;
+      email?: string;
+      phone?: string;
+    };
+    // 신규 스키마(contacts[]) 우선. 없으면 옛 단일 필드를 한 명의 담당자로 변환.
+    let contacts = normalizeContacts(o.contacts);
+    if (contacts.length === 0 && (o.contact_name || o.email || o.phone)) {
+      contacts = [
+        {
+          id: nanoid(10),
+          name: o.contact_name || '',
+          email: o.email || '',
+          phone: o.phone || '',
+        },
+      ];
+    }
+    return {
+      id: o.id || nanoid(10),
+      progress_status: (o.progress_status as MiceInquiry['progress_status']) || 'INQ',
+      contacts,
+      call_date: o.call_date ?? null,
+      inquiry_event_date_text: o.inquiry_event_date_text || '',
+      event_memo: o.event_memo || o.lost_reason || '',
+      created_by_id: o.created_by_id || fallbackUserId,
+      created_by_name: o.created_by_name || fallbackUserName,
+      created_at: o.created_at || new Date().toISOString(),
+    };
+  });
+}
+
+router.get('/mice', (req, res) => {
+  const { read } = canAccessType(req.user!.role, 'MICE');
+  if (!read) return res.status(403).json({ error: 'forbidden' });
+  res.json({ customers: store.mice_customers });
+});
+
+router.get('/mice/:id', (req, res) => {
+  const { read } = canAccessType(req.user!.role, 'MICE');
+  if (!read) return res.status(403).json({ error: 'forbidden' });
+  const item = store.mice_customers.find((c) => c.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'not_found' });
+  res.json({ customer: item });
+});
+
+router.get('/mice/:id/logs', (req, res) => {
+  const { read } = canAccessType(req.user!.role, 'MICE');
+  if (!read) return res.status(403).json({ error: 'forbidden' });
+  const logs = getLogsForEntity('mice_customer', req.params.id);
+  res.json({ logs });
+});
+
+router.post('/mice', (req, res) => {
+  const { write } = canAccessType(req.user!.role, 'MICE');
+  if (!write) return res.status(403).json({ error: 'forbidden' });
+  const now = new Date().toISOString();
+  const body = req.body as Partial<MiceCustomer>;
+  const item: MiceCustomer = {
+    id: nanoid(10),
+    customer_type: 'MICE',
+    mice_category: body.mice_category || '기업',
+    organization_name: body.organization_name || '',
+    official_phone: body.official_phone || '',
+    official_email: body.official_email || '',
+    official_website: body.official_website || '',
+    inquiries: normalizeMiceInquiries(body.inquiries, req.user!.id, req.user!.name),
+    memo: body.memo || '',
+    created_at: now,
+    updated_at: now,
+    last_modified_by_id: req.user!.id,
+    last_modified_by_name: req.user!.name,
+    last_modified_at: now,
+  };
+  store.mice_customers.push(item);
+  persist('mice_customers');
+  logChange({
+    entity_type: 'mice_customer',
+    entity_id: item.id,
+    action: 'create',
+    summary: `[${item.organization_name}] 신규 등록 (문의 ${item.inquiries.length}건)`,
+    user: req.user!,
+  });
+  res.status(201).json({ customer: item });
+});
+
+router.patch('/mice/:id', (req, res) => {
+  const { write } = canAccessType(req.user!.role, 'MICE');
+  if (!write) return res.status(403).json({ error: 'forbidden' });
+  const item = store.mice_customers.find((c) => c.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'not_found' });
+  const body = req.body as Partial<MiceCustomer>;
+
+  // 변경 전 스냅샷 (요약용)
+  const before = { ...item } as Record<string, unknown>;
+
+  if (body.mice_category !== undefined) item.mice_category = body.mice_category;
+  if (body.organization_name !== undefined) item.organization_name = body.organization_name;
+  if (body.official_phone !== undefined) item.official_phone = body.official_phone;
+  if (body.official_email !== undefined) item.official_email = body.official_email;
+  if (body.official_website !== undefined) item.official_website = body.official_website;
+  if (body.memo !== undefined) item.memo = body.memo;
+  if (body.inquiries !== undefined) {
+    item.inquiries = normalizeMiceInquiries(body.inquiries, req.user!.id, req.user!.name);
+  }
+  const now = new Date().toISOString();
+  item.updated_at = now;
+  item.last_modified_by_id = req.user!.id;
+  item.last_modified_by_name = req.user!.name;
+  item.last_modified_at = now;
+
+  persist('mice_customers');
+  const summary = summarizeDiff(before, item as unknown as Record<string, unknown>, MICE_FIELD_LABELS);
+  logChange({
+    entity_type: 'mice_customer',
+    entity_id: item.id,
+    action: 'update',
+    summary,
+    user: req.user!,
+  });
+  res.json({ customer: item });
+});
+
+router.delete('/mice/:id', (req, res) => {
+  if (req.user!.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const idx = store.mice_customers.findIndex((c) => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not_found' });
+  const removed = store.mice_customers[idx];
+  store.mice_customers.splice(idx, 1);
+  persist('mice_customers');
+  logChange({
+    entity_type: 'mice_customer',
+    entity_id: removed.id,
+    action: 'delete',
+    summary: `[${removed.organization_name}] 삭제`,
+    user: req.user!,
+  });
+  res.json({ ok: true });
+});
+
+// ===== WEDDING =====
+
+const WEDDING_FIELD_LABELS: Record<string, string> = {
+  wedding_event_name: '행사명',
+  progress_status: '진행단계',
+  inquiry_date: '신규문의일자',
+  desired_consultation_date: '희망상담일자',
+  source: '유입경로',
+  source_detail: '유입세부경로',
+  desired_budget: '희망예산',
+  competing_venues: '비교웨딩홀',
+  groom_name: '신랑이름',
+  bride_name: '신부이름',
+  event_inquiries: '예식후보',
+  memo: '메모',
+};
+
+function normalizeWeddingInquiries(input: unknown, fallbackUserId: string, fallbackUserName: string): WeddingEventInquiry[] {
+  if (!Array.isArray(input)) return [];
+  return input.map((raw) => {
+    const o = raw as Partial<WeddingEventInquiry>;
+    return {
+      id: o.id || nanoid(10),
+      wedding_datetime: o.wedding_datetime ?? null,
+      guaranteed_guest_count: o.guaranteed_guest_count ?? null,
+      estimate_amount: o.estimate_amount || '',
+      estimate_detail: o.estimate_detail || '',
+      visit_consultation_comment: o.visit_consultation_comment || '',
+      assigned_manager_id: o.assigned_manager_id || fallbackUserId,
+      assigned_manager_name: o.assigned_manager_name || fallbackUserName,
+      created_at: o.created_at || new Date().toISOString(),
+    };
+  });
+}
+
+router.get('/wedding', (req, res) => {
+  const { read } = canAccessType(req.user!.role, 'WEDDING');
+  if (!read) return res.status(403).json({ error: 'forbidden' });
+  res.json({ customers: store.wedding_customers });
+});
+
+router.get('/wedding/:id', (req, res) => {
+  const { read } = canAccessType(req.user!.role, 'WEDDING');
+  if (!read) return res.status(403).json({ error: 'forbidden' });
+  const item = store.wedding_customers.find((c) => c.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'not_found' });
+  res.json({ customer: item });
+});
+
+router.get('/wedding/:id/logs', (req, res) => {
+  const { read } = canAccessType(req.user!.role, 'WEDDING');
+  if (!read) return res.status(403).json({ error: 'forbidden' });
+  const logs = getLogsForEntity('wedding_customer', req.params.id);
+  res.json({ logs });
+});
+
+router.post('/wedding', (req, res) => {
+  const { write } = canAccessType(req.user!.role, 'WEDDING');
+  if (!write) return res.status(403).json({ error: 'forbidden' });
+  const now = new Date().toISOString();
+  const body = req.body as Partial<WeddingCustomer>;
+  const item: WeddingCustomer = {
+    id: nanoid(10),
+    customer_type: 'WEDDING',
+    wedding_event_name: body.wedding_event_name || '',
+    progress_status: body.progress_status || '신규문의',
+    inquiry_date: body.inquiry_date ?? null,
+    desired_consultation_date: body.desired_consultation_date ?? null,
+    first_inform_comment: body.first_inform_comment || '',
+    groom_name: body.groom_name || '',
+    groom_phone: body.groom_phone || '',
+    groom_email: body.groom_email || '',
+    bride_name: body.bride_name || '',
+    bride_phone: body.bride_phone || '',
+    bride_email: body.bride_email || '',
+    competing_venues: body.competing_venues || '',
+    desired_budget: body.desired_budget || '',
+    source: (body.source as WeddingCustomer['source']) || '',
+    source_detail: (body.source_detail as WeddingCustomer['source_detail']) || '',
+    event_inquiries: normalizeWeddingInquiries(body.event_inquiries, req.user!.id, req.user!.name),
+    memo: body.memo || '',
+    created_at: now,
+    updated_at: now,
+    last_modified_by_id: req.user!.id,
+    last_modified_by_name: req.user!.name,
+    last_modified_at: now,
+  };
+  store.wedding_customers.push(item);
+  persist('wedding_customers');
+  logChange({
+    entity_type: 'wedding_customer',
+    entity_id: item.id,
+    action: 'create',
+    summary: `[${item.wedding_event_name}] 신규 등록 (예식 후보 ${item.event_inquiries.length}건)`,
+    user: req.user!,
+  });
+  res.status(201).json({ customer: item });
+});
+
+router.patch('/wedding/:id', (req, res) => {
+  const { write } = canAccessType(req.user!.role, 'WEDDING');
+  if (!write) return res.status(403).json({ error: 'forbidden' });
+  const item = store.wedding_customers.find((c) => c.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'not_found' });
+  const body = req.body as Partial<WeddingCustomer>;
+  const before = { ...item } as Record<string, unknown>;
+
+  const SCALAR_KEYS: (keyof WeddingCustomer)[] = [
+    'wedding_event_name',
+    'progress_status',
+    'inquiry_date',
+    'desired_consultation_date',
+    'first_inform_comment',
+    'groom_name',
+    'groom_phone',
+    'groom_email',
+    'bride_name',
+    'bride_phone',
+    'bride_email',
+    'competing_venues',
+    'desired_budget',
+    'source',
+    'source_detail',
+    'memo',
+  ];
+  for (const k of SCALAR_KEYS) {
+    if (body[k] !== undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (item as any)[k] = body[k];
+    }
+  }
+  if (body.event_inquiries !== undefined) {
+    item.event_inquiries = normalizeWeddingInquiries(body.event_inquiries, req.user!.id, req.user!.name);
+  }
+  const now = new Date().toISOString();
+  item.updated_at = now;
+  item.last_modified_by_id = req.user!.id;
+  item.last_modified_by_name = req.user!.name;
+  item.last_modified_at = now;
+
+  persist('wedding_customers');
+  const summary = summarizeDiff(before, item as unknown as Record<string, unknown>, WEDDING_FIELD_LABELS);
+  logChange({
+    entity_type: 'wedding_customer',
+    entity_id: item.id,
+    action: 'update',
+    summary,
+    user: req.user!,
+  });
+  res.json({ customer: item });
+});
+
+router.delete('/wedding/:id', (req, res) => {
+  if (req.user!.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const idx = store.wedding_customers.findIndex((c) => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not_found' });
+  const removed = store.wedding_customers[idx];
+  store.wedding_customers.splice(idx, 1);
+  persist('wedding_customers');
+  logChange({
+    entity_type: 'wedding_customer',
+    entity_id: removed.id,
+    action: 'delete',
+    summary: `[${removed.wedding_event_name}] 삭제`,
+    user: req.user!,
+  });
+  res.json({ ok: true });
+});
+
+export default router;

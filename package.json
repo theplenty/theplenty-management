@@ -1,0 +1,16 @@
+{
+  "name": "hk-sales-integrated",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Plenty Convention 내부 운영 통합관리 (mock-first)",
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "build": "npm --prefix client run build && npm --prefix server run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}

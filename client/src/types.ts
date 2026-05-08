@@ -1,0 +1,448 @@
+// 클라이언트 측에서 사용하는 도메인 타입.
+// 서버 src/types.ts와 같은 형태를 유지하되, 별도 파일로 둔다 (모노레포 변환 시 공유 가능).
+
+export type Role =
+  | 'admin'
+  | 'sales_mice'
+  | 'sales_wedding'
+  | 'banquet'
+  | 'kitchen'
+  | 'pending'
+  | 'disabled';
+
+export type Team = 'sales_mice' | 'sales_wedding' | 'banquet' | 'kitchen' | 'admin' | null;
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  picture?: string | null;
+  role: Role;
+  team: Team;
+  created_at: string;
+  updated_at: string;
+}
+
+export type CustomerType = 'MICE' | 'WEDDING';
+export type EventStatus = 'INQ' | 'TEN' | 'DEF' | 'LOS';
+
+// ===== MICE 고객 (multi-inquiry) =====
+export type MiceCategory = '기업' | '학회' | '공공기관' | '학교' | '병원' | '대행사' | '기타';
+export type MiceInquiryStatus = 'INQ' | 'TEN' | 'DEF' | 'LOS' | '단순문의';
+
+export interface MiceContact {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+}
+
+export interface MiceInquiry {
+  id: string;
+  progress_status: MiceInquiryStatus;
+  contacts: MiceContact[];
+  call_date: string | null;
+  inquiry_event_date_text: string;
+  event_memo: string;
+  created_by_id: string;
+  created_by_name: string;
+  created_at: string;
+}
+
+export interface MiceCustomer {
+  id: string;
+  customer_type: 'MICE';
+  mice_category: MiceCategory;
+  organization_name: string;
+  official_phone: string;
+  official_email: string;
+  official_website: string;
+  inquiries: MiceInquiry[];
+  memo: string;
+  created_at: string;
+  updated_at: string;
+  last_modified_by_id?: string;
+  last_modified_by_name?: string;
+  last_modified_at?: string;
+}
+
+// ===== WEDDING 고객 =====
+export type WeddingProgressStatus =
+  | '신규문의'
+  | '상담'
+  | '상담취소'
+  | 'INQ'
+  | 'TEN'
+  | 'DEF'
+  | 'LOS';
+
+export type WeddingSource =
+  | '가톨릭동문(교직원, 관계자)'
+  | '성모병원(의사 및 간호사)'
+  | '컨설팅'
+  | '워크인';
+
+export type WeddingSourceDetail = '컨설팅' | 'CTalk' | '인스타그램' | '네이버' | '지인추천';
+
+export interface WeddingEventInquiry {
+  id: string;
+  wedding_datetime: string | null;
+  guaranteed_guest_count: number | null;
+  estimate_amount: string; // "70,000,000" 같은 쉼표 포함 형태로 저장
+  estimate_detail: string;
+  visit_consultation_comment: string;
+  assigned_manager_id: string;
+  assigned_manager_name: string;
+  created_at: string;
+}
+
+export interface WeddingCustomer {
+  id: string;
+  customer_type: 'WEDDING';
+  wedding_event_name: string;
+  progress_status: WeddingProgressStatus;
+  inquiry_date: string | null;
+  desired_consultation_date: string | null;
+  first_inform_comment: string;
+  groom_name: string;
+  groom_phone: string;
+  groom_email: string;
+  bride_name: string;
+  bride_phone: string;
+  bride_email: string;
+  competing_venues: string;
+  desired_budget: string;
+  source: WeddingSource | '';
+  source_detail: WeddingSourceDetail | '';
+  event_inquiries: WeddingEventInquiry[];
+  memo: string;
+  created_at: string;
+  updated_at: string;
+  last_modified_by_id?: string;
+  last_modified_by_name?: string;
+  last_modified_at?: string;
+}
+
+// ===== 변경 이력 =====
+export type ChangeLogEntityType = 'mice_customer' | 'wedding_customer' | 'event';
+export type ChangeLogAction = 'create' | 'update' | 'delete';
+
+export interface ChangeLog {
+  id: string;
+  entity_type: ChangeLogEntityType;
+  entity_id: string;
+  action: ChangeLogAction;
+  summary: string;
+  changed_by_id: string;
+  changed_by_name: string;
+  changed_at: string;
+}
+
+// 활성 사용자 목록 응답 (드롭다운용 — 최소 정보)
+export interface ActiveUserOption {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+}
+
+export const ROLE_LABEL: Record<Role, string> = {
+  admin: '관리자',
+  sales_mice: '기업세일즈(MICE)',
+  sales_wedding: '웨딩세일즈(WEDDING)',
+  banquet: '연회팀',
+  kitchen: '주방팀',
+  pending: '권한대기',
+  disabled: '비활성',
+};
+
+export const STATUS_DESC: Record<EventStatus, string> = {
+  INQ: 'INQ — 문의/견적',
+  TEN: 'TEN — 계약 발송',
+  DEF: 'DEF — 확정',
+  LOS: 'LOS — 취소',
+};
+
+// MICE 문의 진행상황 (단순문의 추가)
+export const MICE_INQUIRY_STATUS_OPTIONS: MiceInquiryStatus[] = [
+  'INQ',
+  'TEN',
+  'DEF',
+  'LOS',
+  '단순문의',
+];
+
+export const MICE_INQUIRY_STATUS_DESC: Record<MiceInquiryStatus, string> = {
+  INQ: 'INQ — 문의/견적',
+  TEN: 'TEN — 계약 발송',
+  DEF: 'DEF — 확정',
+  LOS: 'LOS — 취소',
+  단순문의: '단순문의 (행사화 안 됨)',
+};
+
+// WEDDING 진행단계
+export const WEDDING_PROGRESS_OPTIONS: WeddingProgressStatus[] = [
+  '신규문의',
+  '상담',
+  '상담취소',
+  'INQ',
+  'TEN',
+  'DEF',
+  'LOS',
+];
+
+export const WEDDING_SOURCE_OPTIONS: WeddingSource[] = [
+  '가톨릭동문(교직원, 관계자)',
+  '성모병원(의사 및 간호사)',
+  '컨설팅',
+  '워크인',
+];
+
+export const WEDDING_SOURCE_DETAIL_OPTIONS: WeddingSourceDetail[] = [
+  '컨설팅',
+  'CTalk',
+  '인스타그램',
+  '네이버',
+  '지인추천',
+];
+
+export const STATUS_BG: Record<EventStatus, string> = {
+  INQ: 'bg-status-inq text-white',
+  TEN: 'bg-status-ten text-gray-900',
+  DEF: 'bg-status-def text-white',
+  LOS: 'bg-status-los text-white',
+};
+
+export const MICE_CATEGORIES: MiceCategory[] = [
+  '기업',
+  '학회',
+  '공공기관',
+  '학교',
+  '병원',
+  '대행사',
+  '기타',
+];
+
+export const EVENT_STATUS_OPTIONS: EventStatus[] = ['INQ', 'TEN', 'DEF', 'LOS'];
+
+// ===== 행사 도메인 =====
+
+export type UsageType = 'AD' | 'AH' | 'HA' | 'HH';
+
+export const USAGE_TYPE_DESC: Record<UsageType, string> = {
+  AD: 'AD — 전칸 종일',
+  AH: 'AH — 전칸 반일',
+  HA: 'HA — 반칸 종일',
+  HH: 'HH — 반칸 반일',
+};
+
+export const USAGE_TYPE_OPTIONS: UsageType[] = ['AD', 'AH', 'HA', 'HH'];
+
+export type Hall =
+  | 'Hall A+B'
+  | 'Hall A'
+  | 'Hall B'
+  | 'Leaf Room'
+  | 'Ivy Room'
+  | 'Petal Room'
+  | '로비';
+
+export const HALL_OPTIONS: Hall[] = [
+  'Hall A+B',
+  'Hall A',
+  'Hall B',
+  'Leaf Room',
+  'Ivy Room',
+  'Petal Room',
+  '로비',
+];
+
+export type MenuName =
+  | 'A set'
+  | 'B set'
+  | 'C set'
+  | 'D set'
+  | 'Korean Lunch Box'
+  | 'Chinese Lunch Box'
+  | 'Coffee Break'
+  | 'Dessert Plate(M)'
+  | 'Dessert Plate(L)'
+  | 'Rice Cake Plate';
+
+export const MENU_OPTIONS: MenuName[] = [
+  'A set',
+  'B set',
+  'C set',
+  'D set',
+  'Korean Lunch Box',
+  'Chinese Lunch Box',
+  'Coffee Break',
+  'Dessert Plate(M)',
+  'Dessert Plate(L)',
+  'Rice Cake Plate',
+];
+
+// 메뉴 입력 모드 — 스펙에 따라 3종류
+export type MenuMode = 'set' | 'coffee' | 'qty';
+export function menuModeOf(name: MenuName): MenuMode {
+  if (name === 'Coffee Break') return 'coffee';
+  if (name === 'Dessert Plate(M)' || name === 'Dessert Plate(L)' || name === 'Rice Cake Plate')
+    return 'qty';
+  return 'set';
+}
+
+export interface FoodItem {
+  id: string;
+  event_id: string;
+  menu_name: MenuName;
+  gtd: number | null;
+  exp: number | null;
+  time_label: string;
+  service_time: string;
+  quantity: number | null;
+  memo: string;
+}
+
+export interface Event {
+  id: string;
+  event_type: CustomerType;
+  created_by: string;
+  created_by_name: string;
+  status: EventStatus;
+  usage_type: UsageType | null;
+  halls: Hall[];
+  start_datetime: string;
+  end_datetime: string;
+  event_name: string;
+  seats: number | null;
+  food_gtd_contract: number | null;
+  food_exp_contract: number | null;
+  food_gtd_final: number | null;
+  food_exp_final: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// 캘린더 목록 응답에 포함되는 확장 타입 (invoice는 대시보드 매출 집계용)
+export interface EventWithFood extends Event {
+  food_items: FoodItem[];
+  invoice?: Invoice | null;
+}
+
+// ===== 행사-고객 연결 =====
+export type CustomerRole = '주최사' | '대행사' | '협력사' | '회계 담당' | '기타';
+export const CUSTOMER_ROLE_OPTIONS: CustomerRole[] = [
+  '주최사',
+  '대행사',
+  '협력사',
+  '회계 담당',
+  '기타',
+];
+
+export interface EventCustomerLink {
+  id: string;
+  event_id: string;
+  customer_id: string;
+  customer_role: CustomerRole;
+  is_contact_point: boolean;
+  contact_point_contact_id: string;
+}
+
+// ===== INVOICE / 행사취소 =====
+export type PaymentStatus = '고객요청' | '입금완료' | '총무팀협의-면제대상' | '';
+export type InvoiceType = '세금계산서' | '현금영수증' | '';
+export type InvoiceIssueStatus = '가톨릭요청' | '발행완료' | '';
+export type CatholicRefundStatus = '가톨릭요청' | '환불완료' | '';
+
+export const PAYMENT_STATUS_OPTIONS: PaymentStatus[] = [
+  '',
+  '고객요청',
+  '입금완료',
+  '총무팀협의-면제대상',
+];
+export const INVOICE_TYPE_OPTIONS: InvoiceType[] = ['', '세금계산서', '현금영수증'];
+export const INVOICE_ISSUE_STATUS_OPTIONS: InvoiceIssueStatus[] = ['', '가톨릭요청', '발행완료'];
+export const CATHOLIC_REFUND_STATUS_OPTIONS: CatholicRefundStatus[] = [
+  '',
+  '가톨릭요청',
+  '환불완료',
+];
+
+export interface Invoice {
+  id: string;
+  event_id: string;
+  payment_status: PaymentStatus;
+  invoice_type: InvoiceType;
+  invoice_issue_status: InvoiceIssueStatus;
+  payment_amount: number | null;
+  payment_date: string | null;
+  tax_invoice_issue_date: string | null;
+  depositor_name: string;
+}
+
+export interface Cancellation {
+  id: string;
+  event_id: string;
+  cancel_requested_at: string | null;
+  cancel_reason: string;
+  plenty_cancel_fee: number | null;
+  plenty_cancel_fee_paid_at: string | null;
+  catholic_rental_refund_status: CatholicRefundStatus;
+}
+
+export const STATUS_HEX: Record<EventStatus, string> = {
+  INQ: '#9ca3af', // gray
+  TEN: '#facc15', // yellow
+  DEF: '#22c55e', // green
+  LOS: '#ef4444', // red
+};
+
+// ===== 첨부파일 =====
+// final_invoice: 행사 종료 후 최종 INVOICE — 행사리뷰에서 업로드 대상
+export type EventFileType = 'estimate' | 'contract' | 'beo' | 'final_invoice' | 'other';
+
+export const EVENT_FILE_TYPE_LABEL: Record<EventFileType, string> = {
+  estimate: '견적서',
+  contract: '계약서',
+  beo: 'BEO',
+  final_invoice: '최종 INVOICE',
+  other: '기타',
+};
+
+export interface EventFile {
+  id: string;
+  event_id: string;
+  file_type: EventFileType;
+  file_name: string;
+  file_url: string;
+  uploaded_by: string;
+  uploaded_at: string;
+}
+
+// ===== 영업 목표 (Forecasting) =====
+export interface SalesTarget {
+  id: string;
+  year: number;
+  month: number;
+  wedding_event_count_forecast: number | null;
+  mice_event_count_forecast: number | null;
+  total_event_count_forecast: number | null;
+  wedding_revenue_forecast: number | null;
+  mice_revenue_forecast: number | null;
+  total_revenue_forecast: number | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ===== 캘린더 공유 =====
+export interface CalendarShare {
+  id: string;
+  token: string;
+  year: number;
+  month: number;
+  label: string;
+  created_by: string;
+  created_at: string;
+  event_type_filter: 'ALL' | 'MICE' | 'WEDDING';
+}

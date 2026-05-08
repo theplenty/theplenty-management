@@ -1,0 +1,105 @@
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { AuthProvider } from './auth/AuthContext';
+import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
+import Login from './pages/Login';
+import Pending from './pages/Pending';
+import MiceCustomers from './pages/MiceCustomers';
+import WeddingCustomers from './pages/WeddingCustomers';
+import Calendar from './pages/Calendar';
+import Events from './pages/Events';
+import Reviews from './pages/Reviews';
+import Files from './pages/Files';
+import AdminUsers from './pages/AdminUsers';
+import Dashboard from './pages/Dashboard';
+import PublicCalendar from './pages/PublicCalendar';
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* 공개 — 인증 없이 접근, 토큰 기반 외부 공유 */}
+        <Route path="/public/calendar/:token" element={<PublicCalendar />} />
+
+        {/* 그 외에는 AuthProvider로 감싼 보호된 영역 */}
+        <Route
+          path="*"
+          element={
+            <AuthProvider>
+              <ProtectedRoutes />
+            </AuthProvider>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+function ProtectedRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/pending" element={<Pending />} />
+
+      <Route
+        element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Navigate to="/calendar" replace />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute allow={['admin', 'sales_mice', 'sales_wedding', 'banquet']}>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route path="/customers" element={<Navigate to="/customers/mice" replace />} />
+        <Route
+          path="/customers/mice"
+          element={
+            <ProtectedRoute allow={['admin', 'sales_mice']}>
+              <MiceCustomers />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/customers/wedding"
+          element={
+            <ProtectedRoute allow={['admin', 'sales_wedding']}>
+              <WeddingCustomers />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route path="/calendar" element={<Calendar />} />
+        <Route path="/events" element={<Events />} />
+
+        <Route
+          path="/reviews"
+          element={
+            <ProtectedRoute allow={['admin', 'banquet', 'sales_mice', 'sales_wedding']}>
+              <Reviews />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route path="/files" element={<Files />} />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute allow={['admin']}>
+              <AdminUsers />
+            </ProtectedRoute>
+          }
+        />
+      </Route>
+
+      <Route path="*" element={<Navigate to="/calendar" replace />} />
+    </Routes>
+  );
+}
