@@ -2,7 +2,7 @@
 // 모킹 단계에서는 사용자에게 의미 있는 한 줄 요약만 만들면 충분하다.
 
 import { nanoid } from 'nanoid';
-import { store, persist } from './mockStore.js';
+import { store, persistDoc } from './mockStore.js';
 import type {
   ChangeLog,
   ChangeLogAction,
@@ -28,7 +28,7 @@ export function logChange(opts: {
     changed_at: new Date().toISOString(),
   };
   store.change_logs.push(log);
-  persist('change_logs');
+  persistDoc('change_logs', log.id);
   return log;
 }
 

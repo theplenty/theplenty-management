@@ -1,4 +1,9 @@
 // 공통 fetch 래퍼. Vite proxy 설정 때문에 baseUrl 없이 /api로 호출.
+// Firebase Auth 활성화 시 매 요청에 Bearer ID 토큰을 첨부 (백엔드 attachUser가 검증).
+
+import { getCurrentIdToken } from './firebase';
+
+const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 export interface ApiError extends Error {
   status: number;
@@ -6,10 +11,12 @@ export interface ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const idToken = await getCurrentIdToken().catch(() => null);
+  const res = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
       ...(init?.headers || {}),
     },
     ...init,

@@ -23,21 +23,41 @@ export default function Login() {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { login } = useAuth();
+  const { loginMock, loginWithGoogle, firebaseConfigured } = useAuth();
   const navigate = useNavigate();
 
-  async function doLogin(targetEmail: string, targetName?: string) {
+  function postLoginNavigate(role: string) {
+    if (role === 'pending' || role === 'disabled') navigate('/pending');
+    else navigate('/calendar');
+  }
+
+  async function doMockLogin(targetEmail: string, targetName?: string) {
     setError(null);
     setBusy(true);
     try {
-      const u = await login(targetEmail, targetName);
-      if (u.role === 'pending' || u.role === 'disabled') {
-        navigate('/pending');
-      } else {
-        navigate('/calendar');
-      }
+      const u = await loginMock(targetEmail, targetName);
+      postLoginNavigate(u.role);
     } catch (e) {
       setError('로그인 실패. 서버가 켜져있는지 확인해주세요.');
+      console.error(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doGoogleLogin() {
+    setError(null);
+    setBusy(true);
+    try {
+      const u = await loginWithGoogle();
+      postLoginNavigate(u.role);
+    } catch (e) {
+      const msg = (e as Error).message || 'Google 로그인 실패';
+      if (msg.includes('popup-closed') || msg.includes('cancelled')) {
+        setError('로그인 창이 닫혔습니다. 다시 시도해주세요.');
+      } else {
+        setError(`Google 로그인 실패: ${msg}`);
+      }
       console.error(e);
     } finally {
       setBusy(false);
@@ -52,11 +72,21 @@ export default function Login() {
           <p className="text-sm text-gray-500 mt-1">운영 통합관리 시스템</p>
         </div>
 
-        {/* Google 로그인 자리 (Firebase 연결 후 활성화) */}
+        {/* Google 로그인 — Firebase config 있을 때만 활성 */}
         <button
-          disabled
-          className="w-full flex items-center justify-center gap-2 border border-gray-300 rounded-md py-2.5 text-sm text-gray-500 bg-gray-50"
-          title="Firebase 연결 후 활성화됩니다"
+          onClick={doGoogleLogin}
+          disabled={busy || !firebaseConfigured}
+          className={
+            'w-full flex items-center justify-center gap-2 border rounded-md py-2.5 text-sm transition ' +
+            (firebaseConfigured
+              ? 'border-gray-300 hover:bg-gray-50 text-gray-700'
+              : 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed')
+          }
+          title={
+            firebaseConfigured
+              ? 'Google 계정으로 로그인'
+              : 'Firebase config 미설정 (.env의 VITE_FIREBASE_* 확인)'
+          }
         >
           <svg width="18" height="18" viewBox="0 0 18 18">
             <path
@@ -76,7 +106,7 @@ export default function Login() {
               d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 9 0 9 9 0 0 0 .96 4.97l3.01 2.32C4.68 5.16 6.66 3.58 9 3.58z"
             />
           </svg>
-          Google로 로그인 (준비중)
+          {firebaseConfigured ? 'Google로 로그인' : 'Google 로그인 (Firebase 미설정)'}
         </button>
 
         <div className="my-6 flex items-center gap-3 text-xs text-gray-400">
@@ -88,7 +118,7 @@ export default function Login() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (email.trim()) doLogin(email.trim(), name.trim() || undefined);
+            if (email.trim()) doMockLogin(email.trim(), name.trim() || undefined);
           }}
           className="space-y-3"
         >
@@ -130,7 +160,7 @@ export default function Login() {
             {DEMO_ACCOUNTS.map((acc) => (
               <button
                 key={acc.email}
-                onClick={() => doLogin(acc.email, acc.name)}
+                onClick={() => doMockLogin(acc.email, acc.name)}
                 disabled={busy}
                 className="text-left px-3 py-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sm disabled:opacity-50"
               >

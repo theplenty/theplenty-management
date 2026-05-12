@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { store, persist } from '../store/mockStore.js';
+import { store, persistDoc, persistDelete } from '../store/mockStore.js';
 import { requireActiveRole } from '../middleware/auth.js';
 import type { EventReview } from '../types.js';
 
@@ -76,7 +76,7 @@ router.put('/:eventId', (req, res) => {
   if (body.general_comment !== undefined) review.general_comment = body.general_comment;
   if (body.final_revenue !== undefined) review.final_revenue = body.final_revenue;
   review.updated_at = now;
-  persist('event_reviews');
+  persistDoc('event_reviews', review.id);
   res.json({ review });
 });
 
@@ -85,8 +85,9 @@ router.delete('/:eventId', (req, res) => {
   if (req.user!.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   const idx = store.event_reviews.findIndex((r) => r.event_id === req.params.eventId);
   if (idx === -1) return res.status(404).json({ error: 'not_found' });
+  const removedId = store.event_reviews[idx].id;
   store.event_reviews.splice(idx, 1);
-  persist('event_reviews');
+  persistDelete('event_reviews', removedId);
   res.json({ ok: true });
 });
 

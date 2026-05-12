@@ -1,0 +1,10 @@
+rules_version = '2';
+
+// Storage 보안 규칙 — 백엔드 Admin SDK만 접근.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

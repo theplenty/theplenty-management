@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { store, persist } from '../store/mockStore.js';
+import { store, persistDoc, persistDelete } from '../store/mockStore.js';
 import { requireActiveRole } from '../middleware/auth.js';
 import type { CalendarShare } from '../types.js';
 
@@ -32,15 +32,16 @@ router.post('/', (req, res) => {
     event_type_filter: (body.event_type_filter || 'ALL') as 'ALL' | 'MICE' | 'WEDDING',
   };
   store.calendar_shares.push(share);
-  persist('calendar_shares');
+  persistDoc('calendar_shares', share.id);
   res.status(201).json({ share });
 });
 
 router.delete('/:id', (req, res) => {
   const idx = store.calendar_shares.findIndex((s) => s.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not_found' });
+  const removedId = store.calendar_shares[idx].id;
   store.calendar_shares.splice(idx, 1);
-  persist('calendar_shares');
+  persistDelete('calendar_shares', removedId);
   res.json({ ok: true });
 });
 

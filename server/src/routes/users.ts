@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { store, persist } from '../store/mockStore.js';
+import { store, persistDoc, persistDelete } from '../store/mockStore.js';
 import { requireRoles, requireActiveRole } from '../middleware/auth.js';
 import type { Role, Team } from '../types.js';
 
@@ -31,7 +31,7 @@ router.patch('/:id', requireRoles('admin'), (req, res) => {
   if (team !== undefined) user.team = team;
   if (typeof name === 'string') user.name = name;
   user.updated_at = new Date().toISOString();
-  persist('users');
+  persistDoc('users', user.id);
   res.json({ user });
 });
 
@@ -45,8 +45,9 @@ router.delete('/:id', requireRoles('admin'), (req, res) => {
   if (store.users[idx].role === 'admin' && admins.length <= 1) {
     return res.status(400).json({ error: 'cannot_remove_last_admin' });
   }
+  const removedId = store.users[idx].id;
   store.users.splice(idx, 1);
-  persist('users');
+  persistDelete('users', removedId);
   res.json({ ok: true });
 });
 
@@ -57,7 +58,7 @@ router.patch('/me/profile', requireActiveRole, (req, res) => {
   if (typeof name === 'string' && name.trim()) {
     req.user.name = name.trim();
     req.user.updated_at = new Date().toISOString();
-    persist('users');
+    persistDoc('users', req.user.id);
   }
   res.json({ user: req.user });
 });

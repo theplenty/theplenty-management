@@ -1,4 +1,15 @@
-import 'dotenv/config';
+// .env는 두 곳 모두 시도:
+//   1) 프로젝트 루트 ../../.env  (로컬 dev 환경)
+//   2) server/.env               (Cloud Functions 배포 환경)
+// dotenv는 이미 채워진 env를 덮어쓰지 않으므로, 같은 키가 양쪽에 있으면 1)이 우선.
+import { config } from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+config({ path: path.resolve(__dirname, '../../.env') });
+config({ path: path.resolve(__dirname, '../.env') });
+
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -17,8 +28,7 @@ import { attachUser } from './middleware/auth.js';
 import { runSeed } from './store/seed.js';
 import { runMigrations } from './store/migrate.js';
 
-const app = express();
-const PORT = Number(process.env.PORT || 3001);
+export const app = express();
 
 app.use(
   cors({
@@ -55,6 +65,18 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 runMigrations();
 runSeed();
 
-app.listen(PORT, () => {
-  console.log(`[server] listening on http://localhost:${PORT}`);
-});
+// Cloud Functions v2 export — Firebase Hosting의 /api/** rewrite가 이 함수로 라우팅됨.
+// 로컬 dev에서는 src/server.ts가 app.listen()을 호출.
+// firebase-functions는 deploy 시점에만 의존성으로 필요하므로 안전한 동기 import.
+import { onRequest } from 'firebase-functions/v2/https';
+
+export const api = onRequest(
+  {
+    region: 'asia-northeast3',
+    memory: '512MiB',
+    timeoutSeconds: 60,
+    maxInstances: 10,
+    cors: true,
+  },
+  app
+);

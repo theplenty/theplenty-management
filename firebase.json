@@ -1,0 +1,50 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "hosting": {
+    "public": "client/dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "function": "api"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "predeploy": [
+      "npm --prefix \"$PROJECT_DIR/client\" run build"
+    ]
+  },
+  "functions": [
+    {
+      "source": "server",
+      "codebase": "default",
+      "runtime": "nodejs20",
+      "region": "asia-northeast3",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "data",
+        "scripts",
+        "src/**/*.ts",
+        "tsconfig.json",
+        "*.log"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { store, persist } from '../store/mockStore.js';
+import { store, persistDoc, persistDelete } from '../store/mockStore.js';
 import { requireActiveRole } from '../middleware/auth.js';
 import type { SalesTarget } from '../types.js';
 
@@ -72,7 +72,7 @@ router.put('/:year/:month', (req, res) => {
   if (body.total_revenue_forecast !== undefined)
     target.total_revenue_forecast = body.total_revenue_forecast;
   target.updated_at = now;
-  persist('sales_targets');
+  persistDoc('sales_targets', target.id);
   res.json({ target });
 });
 
@@ -83,8 +83,9 @@ router.delete('/:year/:month', (req, res) => {
   const month = Number(req.params.month);
   const idx = store.sales_targets.findIndex((t) => t.year === year && t.month === month);
   if (idx === -1) return res.status(404).json({ error: 'not_found' });
+  const removedId = store.sales_targets[idx].id;
   store.sales_targets.splice(idx, 1);
-  persist('sales_targets');
+  persistDelete('sales_targets', removedId);
   res.json({ ok: true });
 });
 

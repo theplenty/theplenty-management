@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { store, persist } from '../store/mockStore.js';
+import { store, persistDoc, persistDelete } from '../store/mockStore.js';
 import { requireActiveRole } from '../middleware/auth.js';
 import { logChange, summarizeDiff, getLogsForEntity } from '../store/changeLog.js';
 import type {
@@ -143,7 +143,7 @@ router.post('/mice', (req, res) => {
     last_modified_at: now,
   };
   store.mice_customers.push(item);
-  persist('mice_customers');
+  persistDoc('mice_customers', item.id);
   logChange({
     entity_type: 'mice_customer',
     entity_id: item.id,
@@ -179,7 +179,7 @@ router.patch('/mice/:id', (req, res) => {
   item.last_modified_by_name = req.user!.name;
   item.last_modified_at = now;
 
-  persist('mice_customers');
+  persistDoc('mice_customers', item.id);
   const summary = summarizeDiff(before, item as unknown as Record<string, unknown>, MICE_FIELD_LABELS);
   logChange({
     entity_type: 'mice_customer',
@@ -197,7 +197,7 @@ router.delete('/mice/:id', (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'not_found' });
   const removed = store.mice_customers[idx];
   store.mice_customers.splice(idx, 1);
-  persist('mice_customers');
+  persistDelete('mice_customers', removed.id);
   logChange({
     entity_type: 'mice_customer',
     entity_id: removed.id,
@@ -296,7 +296,7 @@ router.post('/wedding', (req, res) => {
     last_modified_at: now,
   };
   store.wedding_customers.push(item);
-  persist('wedding_customers');
+  persistDoc('wedding_customers', item.id);
   logChange({
     entity_type: 'wedding_customer',
     entity_id: item.id,
@@ -348,7 +348,7 @@ router.patch('/wedding/:id', (req, res) => {
   item.last_modified_by_name = req.user!.name;
   item.last_modified_at = now;
 
-  persist('wedding_customers');
+  persistDoc('wedding_customers', item.id);
   const summary = summarizeDiff(before, item as unknown as Record<string, unknown>, WEDDING_FIELD_LABELS);
   logChange({
     entity_type: 'wedding_customer',
@@ -366,7 +366,7 @@ router.delete('/wedding/:id', (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'not_found' });
   const removed = store.wedding_customers[idx];
   store.wedding_customers.splice(idx, 1);
-  persist('wedding_customers');
+  persistDelete('wedding_customers', removed.id);
   logChange({
     entity_type: 'wedding_customer',
     entity_id: removed.id,

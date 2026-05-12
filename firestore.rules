@@ -1,0 +1,15 @@
+rules_version = '2';
+
+// Plenty Convention 운영관리 — Firestore 보안 규칙
+// 핵심: 백엔드(Express + Admin SDK)만 데이터를 읽고 씁니다.
+// 클라이언트는 Firestore에 직접 접근하지 않으며, 모든 요청은 서버 API를 거칩니다.
+// Admin SDK는 보안 규칙을 우회하므로, 클라이언트용 규칙은 모두 deny로 닫아둡니다.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 모든 클라이언트 직접 접근 차단
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

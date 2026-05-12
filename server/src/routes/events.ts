@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { store, persist } from '../store/mockStore.js';
+import { store, persistDoc, persistDelete, replaceMatching, deleteMatching } from '../store/mockStore.js';
 import { requireActiveRole } from '../middleware/auth.js';
 import type {
   Event,
@@ -38,41 +38,36 @@ function canWriteType(role: string, _type: CustomerType): boolean {
 // 한 행사에 연결된 식음 메뉴 항목들을 통째로 교체.
 function replaceFoodItems(eventId: string, items: Partial<FoodItem>[] | undefined) {
   if (!items) return;
-  store.event_food_items = store.event_food_items.filter((f) => f.event_id !== eventId);
-  for (const it of items) {
-    const row: FoodItem = {
-      id: it.id || nanoid(10),
-      event_id: eventId,
-      menu_name: it.menu_name as FoodItem['menu_name'],
-      gtd: it.gtd ?? null,
-      exp: it.exp ?? null,
-      time_label: it.time_label || '',
-      service_time: it.service_time || '',
-      quantity: it.quantity ?? null,
-      memo: it.memo || '',
-    };
-    store.event_food_items.push(row);
-  }
-  persist('event_food_items');
+  const newItems: FoodItem[] = items.map((it) => ({
+    id: it.id || nanoid(10),
+    event_id: eventId,
+    menu_name: it.menu_name as FoodItem['menu_name'],
+    gtd: it.gtd ?? null,
+    exp: it.exp ?? null,
+    time_label: it.time_label || '',
+    service_time: it.service_time || '',
+    quantity: it.quantity ?? null,
+    memo: it.memo || '',
+  }));
+  replaceMatching('event_food_items', (f) => f.event_id === eventId, newItems);
 }
 
 // 행사-고객 연결도 통째로 교체. CONTACT POINT용 담당자 식별자(contact_point_contact_id)도 보존.
 function replaceCustomerLinks(eventId: string, links: Partial<EventCustomerLink>[] | undefined) {
   if (!links) return;
-  store.event_customers = store.event_customers.filter((l) => l.event_id !== eventId);
+  const newItems: EventCustomerLink[] = [];
   for (const it of links) {
     if (!it.customer_id) continue;
-    const row: EventCustomerLink = {
+    newItems.push({
       id: it.id || nanoid(10),
       event_id: eventId,
       customer_id: it.customer_id,
       customer_role: (it.customer_role as CustomerRole) || '주최사',
       is_contact_point: !!it.is_contact_point,
       contact_point_contact_id: it.contact_point_contact_id || '',
-    };
-    store.event_customers.push(row);
+    });
   }
-  persist('event_customers');
+  replaceMatching('event_customers', (l) => l.event_id === eventId, newItems);
 }
 
 // INVOICE upsert.
@@ -82,8 +77,7 @@ function replaceCustomerLinks(eventId: string, links: Partial<EventCustomerLink>
 function upsertInvoice(eventId: string, data: Partial<Invoice> | null | undefined) {
   if (data === undefined) return;
   if (data === null) {
-    store.invoices = store.invoices.filter((i) => i.event_id !== eventId);
-    persist('invoices');
+    deleteMatching('invoices', (i) => i.event_id === eventId);
     return;
   }
   let row = store.invoices.find((i) => i.event_id === eventId);
@@ -108,15 +102,14 @@ function upsertInvoice(eventId: string, data: Partial<Invoice> | null | undefine
   if (data.payment_date !== undefined) row.payment_date = data.payment_date;
   if (data.tax_invoice_issue_date !== undefined) row.tax_invoice_issue_date = data.tax_invoice_issue_date;
   if (data.depositor_name !== undefined) row.depositor_name = data.depositor_name;
-  persist('invoices');
+  persistDoc('invoices', row.id);
 }
 
 // 행사취소(cancellation) upsert. invoice와 동일한 패턴.
 function upsertCancellation(eventId: string, data: Partial<Cancellation> | null | undefined) {
   if (data === undefined) return;
   if (data === null) {
-    store.cancellations = store.cancellations.filter((c) => c.event_id !== eventId);
-    persist('cancellations');
+    deleteMatching('cancellations', (c) => c.event_id === eventId);
     return;
   }
   let row = store.cancellations.find((c) => c.event_id === eventId);
@@ -138,7 +131,7 @@ function upsertCancellation(eventId: string, data: Partial<Cancellation> | null 
   if (data.plenty_cancel_fee_paid_at !== undefined) row.plenty_cancel_fee_paid_at = data.plenty_cancel_fee_paid_at;
   if (data.catholic_rental_refund_status !== undefined)
     row.catholic_rental_refund_status = data.catholic_rental_refund_status;
-  persist('cancellations');
+  persistDoc('cancellations', row.id);
 }
 
 router.get('/', (req, res) => {
@@ -209,7 +202,7 @@ router.post('/', (req, res) => {
     updated_at: now,
   };
   store.events.push(ev);
-  persist('events');
+  persistDoc('events', ev.id);
   replaceFoodItems(ev.id, body.food_items);
   replaceCustomerLinks(ev.id, body.customer_links);
   upsertInvoice(ev.id, body.invoice);
@@ -242,7 +235,7 @@ router.patch('/:id', (req, res) => {
   if (body.cancellation !== undefined) upsertCancellation(ev.id, body.cancellation);
   // 상태가 LOS가 아닌데 cancellation이 남아있으면 정리
   if (ev.status !== 'LOS') upsertCancellation(ev.id, null);
-  persist('events');
+  persistDoc('events', ev.id);
   const food_items = store.event_food_items.filter((f) => f.event_id === ev.id);
   const customer_links = store.event_customers.filter((l) => l.event_id === ev.id);
   const invoice = store.invoices.find((i) => i.event_id === ev.id) || null;
@@ -256,19 +249,14 @@ router.delete('/:id', (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'not_found' });
   const eid = store.events[idx].id;
   store.events.splice(idx, 1);
-  store.event_food_items = store.event_food_items.filter((f) => f.event_id !== eid);
-  store.event_customers = store.event_customers.filter((l) => l.event_id !== eid);
-  store.invoices = store.invoices.filter((i) => i.event_id !== eid);
-  store.event_files = store.event_files.filter((f) => f.event_id !== eid);
-  store.cancellations = store.cancellations.filter((c) => c.event_id !== eid);
-  store.event_reviews = store.event_reviews.filter((r) => r.event_id !== eid);
-  persist('events');
-  persist('event_food_items');
-  persist('event_customers');
-  persist('invoices');
-  persist('event_files');
-  persist('cancellations');
-  persist('event_reviews');
+  persistDelete('events', eid);
+  // cascade — 자식 컬렉션은 deleteMatching이 in-memory + Firestore 둘 다 정리
+  deleteMatching('event_food_items', (f) => f.event_id === eid);
+  deleteMatching('event_customers', (l) => l.event_id === eid);
+  deleteMatching('invoices', (i) => i.event_id === eid);
+  deleteMatching('event_files', (f) => f.event_id === eid);
+  deleteMatching('cancellations', (c) => c.event_id === eid);
+  deleteMatching('event_reviews', (r) => r.event_id === eid);
   res.json({ ok: true });
 });
 
