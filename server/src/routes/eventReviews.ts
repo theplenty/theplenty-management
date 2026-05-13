@@ -31,28 +31,35 @@ router.get('/_all', (_req, res) => {
 });
 
 // 일괄 upsert — 엑셀 import 용. event_id로 매칭, 있으면 update / 없으면 create.
+// dryRun=true면 변경 없이 카운트만 반환.
 router.post('/_bulk-upsert', (req, res) => {
   if (!canWriteReview(req.user!.role)) return res.status(403).json({ error: 'forbidden' });
-  const body = req.body as { rows?: Array<Partial<EventReview>> };
+  const body = req.body as { rows?: Array<Partial<EventReview>>; dryRun?: boolean };
   const rows = Array.isArray(body.rows) ? body.rows : [];
-  let ok = 0;
-  let failed = 0;
-  const errors: Array<{ event_id: string; reason: string }> = [];
+  const dryRun = !!body.dryRun;
+  let added = 0;
+  let updated = 0;
+  const errors: Array<{ row?: number; key?: string; reason: string }> = [];
   const now = new Date().toISOString();
-  for (const r of rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
     const eventId = r.event_id;
     if (!eventId) {
-      failed++;
-      errors.push({ event_id: '(없음)', reason: 'event_id가 비어있습니다' });
+      errors.push({ row: i + 1, reason: 'event_id가 비어있습니다' });
       continue;
     }
     const ev = store.events.find((e) => e.id === eventId);
     if (!ev) {
-      failed++;
-      errors.push({ event_id: eventId, reason: '해당 행사를 찾을 수 없음' });
+      errors.push({ row: i + 1, key: eventId, reason: '해당 행사를 찾을 수 없음' });
       continue;
     }
-    let review = store.event_reviews.find((rv) => rv.event_id === eventId);
+    const existing = store.event_reviews.find((rv) => rv.event_id === eventId);
+    if (dryRun) {
+      if (existing) updated++;
+      else added++;
+      continue;
+    }
+    let review = existing;
     if (!review) {
       review = {
         id: nanoid(10),
@@ -72,6 +79,9 @@ router.post('/_bulk-upsert', (req, res) => {
         updated_at: now,
       };
       store.event_reviews.push(review);
+      added++;
+    } else {
+      updated++;
     }
     if (r.banquet_manager !== undefined) review.banquet_manager = r.banquet_manager;
     if (r.actual_meal_count !== undefined) review.actual_meal_count = r.actual_meal_count;
@@ -85,9 +95,15 @@ router.post('/_bulk-upsert', (req, res) => {
     if (r.final_revenue !== undefined) review.final_revenue = r.final_revenue;
     review.updated_at = now;
     persistDoc('event_reviews', review.id);
-    ok++;
   }
-  res.json({ ok, failed, errors });
+  res.json({
+    ok: added + updated,
+    failed: errors.length,
+    added,
+    updated,
+    errors,
+    dryRun,
+  });
 });
 
 // 단건 조회

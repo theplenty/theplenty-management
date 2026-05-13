@@ -187,10 +187,10 @@ export default function Reviews() {
           <ExcelButtons
             filename={`행사리뷰_${new Date().toISOString().slice(0, 10)}.xlsx`}
             sheetName="행사 리뷰"
+            importLabel="행사 리뷰"
             columns={REVIEW_COLUMNS}
             rows={flatRows}
-            onImportRows={async (rows) => {
-              // event_id를 키로 일괄 upsert
+            onImportRows={async (rows, dryRun) => {
               const payload = rows.map((r) => {
                 const x = r as Partial<ReviewFlatRow>;
                 return {
@@ -207,21 +207,15 @@ export default function Reviews() {
                   final_revenue: x.final_revenue,
                 };
               });
-              try {
-                const res = await api.post<{
-                  ok: number;
-                  failed: number;
-                  errors: Array<{ event_id: string; reason: string }>;
-                }>('/api/event-reviews/_bulk-upsert', { rows: payload });
-                if (res.errors?.length) {
-                  console.warn('[bulk-upsert] 실패 행:', res.errors);
-                }
-                await load();
-                return { ok: res.ok, failed: res.failed };
-              } catch (e) {
-                console.error(e);
-                return { ok: 0, failed: rows.length };
-              }
+              const res = await api.post<{
+                ok: number;
+                failed: number;
+                added: number;
+                updated: number;
+                errors: Array<{ row?: number; key?: string; reason: string }>;
+              }>('/api/event-reviews/_bulk-upsert', { rows: payload, dryRun });
+              if (!dryRun) await load();
+              return res;
             }}
           />
         )}

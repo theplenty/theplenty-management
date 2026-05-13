@@ -215,6 +215,8 @@ function normalizeDateTime(raw: string): string {
 
 // 행사 목록 엑셀 컬럼 — food_items는 요약 텍스트로
 const EVENT_COLUMNS: ColumnDef<EventWithFood>[] = [
+  // upsert 매칭 키 — 빈 값으로 import 시 신규 추가, 값이 있으면 그 행사 갱신.
+  { header: '행사 ID', key: 'id', width: 14 },
   {
     header: '구분',
     key: 'event_type',
@@ -524,58 +526,53 @@ export default function Events() {
             sheetName="행사 목록"
             columns={EVENT_COLUMNS}
             rows={events}
-            onImportRows={async (rows) => {
-              let ok = 0;
-              let failed = 0;
-              for (const r of rows) {
-                try {
-                  const foodItems: Partial<FoodItem>[] = Array.isArray(
-                    (r as { food_items?: unknown }).food_items
-                  )
-                    ? [...((r as { food_items: Partial<FoodItem>[] }).food_items)]
-                    : [];
-                  // 이벤트 단위 GTD/EXP가 들어있고 메뉴 행이 있으면 → 첫 메뉴 행에 분배.
-                  // (단일 소스: 메뉴 행. 이벤트 단위 필드는 null로 비움.)
-                  const rr = r as Record<string, unknown>;
-                  if (foodItems.length > 0) {
-                    const first = { ...foodItems[0] };
-                    if (rr.food_gtd_contract != null && first.gtd_contract == null) {
-                      first.gtd_contract = rr.food_gtd_contract as number;
-                    }
-                    if (rr.food_exp_contract != null && first.exp_contract == null) {
-                      first.exp_contract = rr.food_exp_contract as number;
-                    }
-                    if (rr.food_gtd_final != null && first.gtd_final == null) {
-                      first.gtd_final = rr.food_gtd_final as number;
-                    }
-                    if (rr.food_exp_final != null && first.exp_final == null) {
-                      first.exp_final = rr.food_exp_final as number;
-                    }
-                    foodItems[0] = first;
+            onImportRows={async (rows, dryRun) => {
+              // 각 행에서 이벤트 단위 GTD/EXP가 들어있고 메뉴 행이 있으면 → 첫 메뉴 행에 분배
+              // (단일 소스: 메뉴 행. 이벤트 단위 필드는 null로 비움.)
+              const prepared = rows.map((r) => {
+                const foodItems: Partial<FoodItem>[] = Array.isArray(
+                  (r as { food_items?: unknown }).food_items
+                )
+                  ? [...((r as { food_items: Partial<FoodItem>[] }).food_items)]
+                  : [];
+                const rr = r as Record<string, unknown>;
+                if (foodItems.length > 0) {
+                  const first = { ...foodItems[0] };
+                  if (rr.food_gtd_contract != null && first.gtd_contract == null) {
+                    first.gtd_contract = rr.food_gtd_contract as number;
                   }
-                  const payload = {
-                    ...r,
-                    food_items: foodItems,
-                    food_gtd_contract: null,
-                    food_exp_contract: null,
-                    food_gtd_final: null,
-                    food_exp_final: null,
-                  };
-                  const res = await api.post<{
-                    event: Event;
-                    food_items: FoodItem[];
-                  }>('/api/events', payload);
-                  setEvents((prev) => [
-                    { ...res.event, food_items: res.food_items || [] },
-                    ...prev,
-                  ]);
-                  ok++;
-                } catch (e) {
-                  console.error('import row failed', r, e);
-                  failed++;
+                  if (rr.food_exp_contract != null && first.exp_contract == null) {
+                    first.exp_contract = rr.food_exp_contract as number;
+                  }
+                  if (rr.food_gtd_final != null && first.gtd_final == null) {
+                    first.gtd_final = rr.food_gtd_final as number;
+                  }
+                  if (rr.food_exp_final != null && first.exp_final == null) {
+                    first.exp_final = rr.food_exp_final as number;
+                  }
+                  foodItems[0] = first;
                 }
+                return {
+                  ...r,
+                  food_items: foodItems,
+                  food_gtd_contract: null,
+                  food_exp_contract: null,
+                  food_gtd_final: null,
+                  food_exp_final: null,
+                };
+              });
+              const res = await api.post<{
+                ok: number;
+                failed: number;
+                added: number;
+                updated: number;
+                errors: Array<{ row?: number; key?: string; reason: string }>;
+              }>('/api/events/_bulk-upsert', { rows: prepared, dryRun });
+              if (!dryRun) {
+                const refreshed = await api.get<{ events: EventWithFood[] }>('/api/events');
+                setEvents(refreshed.events);
               }
-              return { ok, failed };
+              return res;
             }}
           />
           {canCreateEvent(user?.role) && (

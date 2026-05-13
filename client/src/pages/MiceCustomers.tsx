@@ -413,26 +413,26 @@ export default function MiceCustomers() {
           <ExcelButtons
             filename={`MICE_고객정보_${new Date().toISOString().slice(0, 10)}.xlsx`}
             sheetName="MICE 고객정보"
+            importLabel="MICE 고객"
             columns={MICE_FLAT_COLUMNS}
             rows={flatRows}
-            onImportRows={async (rows) => {
+            onImportRows={async (rows, dryRun) => {
               const grouped = groupMiceFlatRows(rows as MiceFlatRow[], authorId, authorName);
-              let ok = 0;
-              let failed = 0;
-              for (const c of grouped) {
-                try {
-                  const res = await api.post<{ customer: MiceCustomer }>(
-                    '/api/customers/mice',
-                    c
-                  );
-                  setItems((prev) => [res.customer, ...prev]);
-                  ok++;
-                } catch (e) {
-                  console.error('import failed', c, e);
-                  failed++;
-                }
+              const res = await api.post<{
+                ok: number;
+                failed: number;
+                added: number;
+                updated: number;
+                errors: Array<{ row?: number; key?: string; reason: string }>;
+              }>('/api/customers/mice/_bulk-upsert', { rows: grouped, dryRun });
+              if (!dryRun) {
+                // 실제 반영 후 목록 새로고침 (서버 상태가 truth)
+                const refreshed = await api.get<{ customers: MiceCustomer[] }>(
+                  '/api/customers/mice'
+                );
+                setItems(refreshed.customers);
               }
-              return { ok, failed };
+              return res;
             }}
           />
           <button onClick={openNew} className="btn-primary">

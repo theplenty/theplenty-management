@@ -10,6 +10,16 @@ export interface ColumnDef<T> {
   parse?: (value: unknown) => unknown;
 }
 
+// Excel import 결과 — upsert 의미체계에서 added(신규)/updated(매칭→갱신)/failed로 세분화.
+// 기존 호출부 호환을 위해 ok 필드 유지 (= added + updated).
+export interface ImportResult {
+  ok: number;
+  failed: number;
+  added?: number;
+  updated?: number;
+  errors?: Array<{ row?: number; key?: string; reason: string }>;
+}
+
 /** 데이터 배열을 시트로 만들어 사용자 PC로 다운로드 */
 export async function exportToXlsx<T>(opts: {
   filename: string;

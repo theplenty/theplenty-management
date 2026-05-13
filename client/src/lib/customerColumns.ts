@@ -22,9 +22,12 @@ import type {
 // 모든 행에 동일한 값을 채워도 group 시 이상 없도록 처리한다.
 
 // 한 행 = (업체, 문의, 담당자) 한 묶음.
+// "고객 ID"는 upsert 매칭 키 — 빈 값으로 import 시 신규 추가, 값이 있으면 기존 갱신.
 // "문의 #" 컬럼으로 같은 문의 내 여러 담당자를 묶고,
 // 같은 업체명을 가진 행들은 import 시 한 고객으로 그룹화한다.
 export interface MiceFlatRow {
+  // upsert 매칭 키 (시스템 ID, 첫 번째 컬럼 — 사용자가 수정하지 않음)
+  customer_id: string;
   // (1) 업체정보 — 회사 단위, 매 행에 반복
   mice_category: string;
   organization_name: string;
@@ -47,6 +50,7 @@ export interface MiceFlatRow {
 }
 
 export const MICE_FLAT_COLUMNS: ColumnDef<MiceFlatRow>[] = [
+  { header: '고객 ID', key: 'customer_id', width: 14 }, // upsert 매칭 키
   // (1) 업체정보
   { header: '구분', key: 'mice_category', width: 12 },
   { header: '업체명', key: 'organization_name', width: 28 },
@@ -72,6 +76,7 @@ export function buildMiceFlatRows(customers: MiceCustomer[]): MiceFlatRow[] {
   const rows: MiceFlatRow[] = [];
   for (const c of customers) {
     const companyFields = {
+      customer_id: c.id, // upsert 매칭 키 — 첫 행에만 채우고 나머지는 비워두면 import 시 같은 그룹으로 인식됨
       mice_category: c.mice_category,
       organization_name: c.organization_name,
       official_phone: c.official_phone,
@@ -121,13 +126,16 @@ export function buildMiceFlatRows(customers: MiceCustomer[]): MiceFlatRow[] {
   return rows;
 }
 
-type MicePostShape = Omit<MiceCustomer, 'id' | 'created_at' | 'updated_at' | 'customer_type'>;
+// upsert를 위해 id를 옵션으로 포함. id가 있으면 서버에서 매칭 키로 사용.
+type MicePostShape = Omit<MiceCustomer, 'id' | 'created_at' | 'updated_at' | 'customer_type'> & {
+  id?: string;
+};
 
 /**
  * Excel 행 → 고객 그룹 (import).
  * 그룹화 규칙:
- *   - 같은 업체명 = 한 고객
- *   - 같은 업체명 + 같은 문의# = 한 문의 (여러 행 = 여러 담당자)
+ *   - 같은 customer_id(있으면) 또는 같은 업체명 = 한 고객
+ *   - 같은 customer_id + 같은 문의# = 한 문의 (여러 행 = 여러 담당자)
  *   - 문의# 누락 시: 행마다 새 문의 (구버전 엑셀 호환성)
  */
 export function groupMiceFlatRows(
@@ -141,13 +149,30 @@ export function groupMiceFlatRows(
   // 문의# 누락 시 임의 자동증가 카운터 (고객별)
   const autoCounter = new Map<string, number>();
 
+  // 같은 고객의 여러 행 사이에서 customer_id가 첫 행에만 채워진 경우 처리.
+  // → key는 customer_id(있으면) 또는 업체명. 같은 업체명 내에서는 id가 한 번이라도 있으면 그걸 채택.
+  const idByOrg = new Map<string, string>();
   for (const r of rows) {
     const orgName = (r.organization_name || '').trim();
     if (!orgName) continue;
+    const cid = (r.customer_id || '').trim();
+    if (cid && !idByOrg.has(orgName.toLowerCase())) {
+      idByOrg.set(orgName.toLowerCase(), cid);
+    }
+  }
 
-    let cust = map.get(orgName);
+  for (const r of rows) {
+    const orgName = (r.organization_name || '').trim();
+    if (!orgName) continue;
+    const orgKey = orgName.toLowerCase();
+    const customerId = (r.customer_id || '').trim() || idByOrg.get(orgKey) || '';
+    // 그룹 키 — id 우선, 없으면 정규화 업체명
+    const groupKey = customerId || orgKey;
+
+    let cust = map.get(groupKey);
     if (!cust) {
       cust = {
+        id: customerId || undefined,
         mice_category: (r.mice_category as MiceCustomer['mice_category']) || '기업',
         organization_name: orgName,
         official_phone: r.official_phone || '',
@@ -156,9 +181,9 @@ export function groupMiceFlatRows(
         inquiries: [],
         memo: r.memo || '',
       };
-      map.set(orgName, cust);
-      inquiryMap.set(orgName, new Map());
-      autoCounter.set(orgName, 0);
+      map.set(groupKey, cust);
+      inquiryMap.set(groupKey, new Map());
+      autoCounter.set(groupKey, 0);
     } else {
       if (!cust.official_phone && r.official_phone) cust.official_phone = r.official_phone;
       if (!cust.official_email && r.official_email) cust.official_email = r.official_email;
@@ -183,12 +208,12 @@ export function groupMiceFlatRows(
     if (inqNo !== null && inqNo !== undefined && String(inqNo).trim() !== '') {
       inquiryKey = String(inqNo);
     } else {
-      const next = (autoCounter.get(orgName) || 0) + 1;
-      autoCounter.set(orgName, next);
+      const next = (autoCounter.get(groupKey) || 0) + 1;
+      autoCounter.set(groupKey, next);
       inquiryKey = `auto_${next}`;
     }
 
-    const customerInquiries = inquiryMap.get(orgName)!;
+    const customerInquiries = inquiryMap.get(groupKey)!;
     let inq = customerInquiries.get(inquiryKey);
     if (!inq) {
       inq = {
@@ -228,6 +253,8 @@ export function groupMiceFlatRows(
 // ============================================================
 
 export interface WeddingFlatRow {
+  // upsert 매칭 키
+  customer_id: string;
   // (1) 고객기본정보
   wedding_event_name: string;
   progress_status: string;
@@ -256,6 +283,7 @@ export interface WeddingFlatRow {
 }
 
 export const WEDDING_FLAT_COLUMNS: ColumnDef<WeddingFlatRow>[] = [
+  { header: '고객 ID', key: 'customer_id', width: 14 }, // upsert 매칭 키
   // (1) 고객기본정보
   { header: '행사명', key: 'wedding_event_name', width: 28 },
   { header: '진행단계', key: 'progress_status', width: 12 },
@@ -287,6 +315,7 @@ export function buildWeddingFlatRows(customers: WeddingCustomer[]): WeddingFlatR
   const rows: WeddingFlatRow[] = [];
   for (const c of customers) {
     const baseLeft = {
+      customer_id: c.id,
       wedding_event_name: c.wedding_event_name,
       progress_status: c.progress_status,
       inquiry_date: c.inquiry_date,
@@ -332,7 +361,9 @@ export function buildWeddingFlatRows(customers: WeddingCustomer[]): WeddingFlatR
   return rows;
 }
 
-type WeddingPostShape = Omit<WeddingCustomer, 'id' | 'created_at' | 'updated_at' | 'customer_type'>;
+type WeddingPostShape = Omit<WeddingCustomer, 'id' | 'created_at' | 'updated_at' | 'customer_type'> & {
+  id?: string;
+};
 
 export function groupWeddingFlatRows(
   rows: Partial<WeddingFlatRow>[],
@@ -340,12 +371,26 @@ export function groupWeddingFlatRows(
   fallbackManagerName: string
 ): WeddingPostShape[] {
   const map = new Map<string, WeddingPostShape>();
+  // 같은 행사명 그룹의 id가 첫 행에만 있어도 묶일 수 있도록
+  const idByName = new Map<string, string>();
   for (const r of rows) {
     const name = (r.wedding_event_name || '').trim();
     if (!name) continue;
-    let cust = map.get(name);
+    const cid = (r.customer_id || '').trim();
+    if (cid && !idByName.has(name.toLowerCase())) {
+      idByName.set(name.toLowerCase(), cid);
+    }
+  }
+  for (const r of rows) {
+    const name = (r.wedding_event_name || '').trim();
+    if (!name) continue;
+    const nameKey = name.toLowerCase();
+    const customerId = (r.customer_id || '').trim() || idByName.get(nameKey) || '';
+    const groupKey = customerId || nameKey;
+    let cust = map.get(groupKey);
     if (!cust) {
       cust = {
+        id: customerId || undefined,
         wedding_event_name: name,
         progress_status: ((r.progress_status as WeddingProgressStatus) || '신규문의') as WeddingProgressStatus,
         inquiry_date: r.inquiry_date || null,
@@ -365,7 +410,7 @@ export function groupWeddingFlatRows(
         event_inquiries: [],
         memo: r.memo || '',
       };
-      map.set(name, cust);
+      map.set(groupKey, cust);
     } else {
       if (!cust.first_inform_comment && r.first_inform_comment)
         cust.first_inform_comment = r.first_inform_comment;

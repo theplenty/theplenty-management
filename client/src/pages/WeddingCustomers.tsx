@@ -423,26 +423,25 @@ export default function WeddingCustomers() {
           <ExcelButtons
             filename={`WEDDING_고객정보_${new Date().toISOString().slice(0, 10)}.xlsx`}
             sheetName="WEDDING 고객정보"
+            importLabel="WEDDING 고객"
             columns={WEDDING_FLAT_COLUMNS}
             rows={flatRows}
-            onImportRows={async (rows) => {
+            onImportRows={async (rows, dryRun) => {
               const grouped = groupWeddingFlatRows(rows as WeddingFlatRow[], authorId, authorName);
-              let ok = 0;
-              let failed = 0;
-              for (const c of grouped) {
-                try {
-                  const res = await api.post<{ customer: WeddingCustomer }>(
-                    '/api/customers/wedding',
-                    c
-                  );
-                  setItems((prev) => [res.customer, ...prev]);
-                  ok++;
-                } catch (e) {
-                  console.error('import failed', c, e);
-                  failed++;
-                }
+              const res = await api.post<{
+                ok: number;
+                failed: number;
+                added: number;
+                updated: number;
+                errors: Array<{ row?: number; key?: string; reason: string }>;
+              }>('/api/customers/wedding/_bulk-upsert', { rows: grouped, dryRun });
+              if (!dryRun) {
+                const refreshed = await api.get<{ customers: WeddingCustomer[] }>(
+                  '/api/customers/wedding'
+                );
+                setItems(refreshed.customers);
               }
-              return { ok, failed };
+              return res;
             }}
           />
           <button onClick={openNew} className="btn-primary">

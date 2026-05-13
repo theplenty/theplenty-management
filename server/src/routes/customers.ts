@@ -377,4 +377,265 @@ router.delete('/wedding/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ===== 일괄 upsert (엑셀 import) =====
+// 정책:
+//   1) 매칭 키 — id가 있으면 id로, 없으면 정규화 이름(소문자·trim)으로
+//   2) 매칭되면 update / 안 되면 insert (중복 생성 방지)
+//   3) inquiries / event_inquiries — Excel에 있는 경우만 교체, 없으면 보존 (partial import 안전)
+//   4) dryRun=true — 변경 없이 카운트만 반환 (미리보기용)
+
+interface BulkBody<T> {
+  rows: Partial<T>[];
+  dryRun?: boolean;
+}
+
+router.post('/mice/_bulk-upsert', (req, res) => {
+  const { write } = canAccessType(req.user!.role, 'MICE');
+  if (!write) return res.status(403).json({ error: 'forbidden' });
+  const body = req.body as BulkBody<MiceCustomer>;
+  const rows = Array.isArray(body.rows) ? body.rows : [];
+  const dryRun = !!body.dryRun;
+  let added = 0;
+  let updated = 0;
+  const errors: Array<{ row?: number; key?: string; reason: string }> = [];
+  const now = new Date().toISOString();
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const orgName = (r.organization_name || '').trim();
+    if (!orgName) {
+      errors.push({ row: i + 1, reason: '업체명이 비어있습니다' });
+      continue;
+    }
+    // 1차: id로 매칭. 2차: 정규화된 organization_name으로.
+    let existing: MiceCustomer | undefined;
+    if (r.id) existing = store.mice_customers.find((c) => c.id === r.id);
+    if (!existing) {
+      const norm = orgName.toLowerCase();
+      existing = store.mice_customers.find(
+        (c) => c.organization_name.trim().toLowerCase() === norm
+      );
+    }
+
+    if (existing) {
+      if (dryRun) {
+        updated++;
+        continue;
+      }
+      const before = { ...existing } as Record<string, unknown>;
+      if (r.mice_category !== undefined) existing.mice_category = r.mice_category;
+      if (r.organization_name !== undefined) existing.organization_name = r.organization_name;
+      if (r.official_phone !== undefined) existing.official_phone = r.official_phone;
+      if (r.official_email !== undefined) existing.official_email = r.official_email;
+      if (r.official_website !== undefined) existing.official_website = r.official_website;
+      if (r.memo !== undefined) existing.memo = r.memo;
+      // Excel에 inquiries 정보가 있으면 교체. 빈 배열이면 기존 보존.
+      if (Array.isArray(r.inquiries) && r.inquiries.length > 0) {
+        existing.inquiries = normalizeMiceInquiries(
+          r.inquiries,
+          req.user!.id,
+          req.user!.name
+        );
+      }
+      existing.updated_at = now;
+      existing.last_modified_by_id = req.user!.id;
+      existing.last_modified_by_name = req.user!.name;
+      existing.last_modified_at = now;
+      persistDoc('mice_customers', existing.id);
+      const summary = summarizeDiff(
+        before,
+        existing as unknown as Record<string, unknown>,
+        MICE_FIELD_LABELS
+      );
+      logChange({
+        entity_type: 'mice_customer',
+        entity_id: existing.id,
+        action: 'update',
+        summary: `[엑셀 업데이트] ${summary}`,
+        user: req.user!,
+      });
+      updated++;
+    } else {
+      if (dryRun) {
+        added++;
+        continue;
+      }
+      const newItem: MiceCustomer = {
+        id: nanoid(10),
+        customer_type: 'MICE',
+        mice_category: r.mice_category || '기업',
+        organization_name: orgName,
+        official_phone: r.official_phone || '',
+        official_email: r.official_email || '',
+        official_website: r.official_website || '',
+        inquiries: normalizeMiceInquiries(r.inquiries, req.user!.id, req.user!.name),
+        memo: r.memo || '',
+        created_at: now,
+        updated_at: now,
+        last_modified_by_id: req.user!.id,
+        last_modified_by_name: req.user!.name,
+        last_modified_at: now,
+      };
+      store.mice_customers.push(newItem);
+      persistDoc('mice_customers', newItem.id);
+      logChange({
+        entity_type: 'mice_customer',
+        entity_id: newItem.id,
+        action: 'create',
+        summary: `[엑셀 신규] ${newItem.organization_name}`,
+        user: req.user!,
+      });
+      added++;
+    }
+  }
+  res.json({
+    ok: added + updated,
+    failed: errors.length,
+    added,
+    updated,
+    errors,
+    dryRun,
+  });
+});
+
+router.post('/wedding/_bulk-upsert', (req, res) => {
+  const { write } = canAccessType(req.user!.role, 'WEDDING');
+  if (!write) return res.status(403).json({ error: 'forbidden' });
+  const body = req.body as BulkBody<WeddingCustomer>;
+  const rows = Array.isArray(body.rows) ? body.rows : [];
+  const dryRun = !!body.dryRun;
+  let added = 0;
+  let updated = 0;
+  const errors: Array<{ row?: number; key?: string; reason: string }> = [];
+  const now = new Date().toISOString();
+
+  const SCALAR_KEYS: (keyof WeddingCustomer)[] = [
+    'wedding_event_name',
+    'progress_status',
+    'inquiry_date',
+    'desired_consultation_date',
+    'first_inform_comment',
+    'groom_name',
+    'groom_phone',
+    'groom_email',
+    'bride_name',
+    'bride_phone',
+    'bride_email',
+    'competing_venues',
+    'desired_budget',
+    'source',
+    'source_detail',
+    'memo',
+  ];
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const name = (r.wedding_event_name || '').trim();
+    if (!name) {
+      errors.push({ row: i + 1, reason: '행사명이 비어있습니다' });
+      continue;
+    }
+    let existing: WeddingCustomer | undefined;
+    if (r.id) existing = store.wedding_customers.find((c) => c.id === r.id);
+    if (!existing) {
+      const norm = name.toLowerCase();
+      existing = store.wedding_customers.find(
+        (c) => c.wedding_event_name.trim().toLowerCase() === norm
+      );
+    }
+
+    if (existing) {
+      if (dryRun) {
+        updated++;
+        continue;
+      }
+      const before = { ...existing } as Record<string, unknown>;
+      for (const k of SCALAR_KEYS) {
+        if (r[k] !== undefined) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (existing as any)[k] = r[k];
+        }
+      }
+      if (Array.isArray(r.event_inquiries) && r.event_inquiries.length > 0) {
+        existing.event_inquiries = normalizeWeddingInquiries(
+          r.event_inquiries,
+          req.user!.id,
+          req.user!.name
+        );
+      }
+      existing.updated_at = now;
+      existing.last_modified_by_id = req.user!.id;
+      existing.last_modified_by_name = req.user!.name;
+      existing.last_modified_at = now;
+      persistDoc('wedding_customers', existing.id);
+      const summary = summarizeDiff(
+        before,
+        existing as unknown as Record<string, unknown>,
+        WEDDING_FIELD_LABELS
+      );
+      logChange({
+        entity_type: 'wedding_customer',
+        entity_id: existing.id,
+        action: 'update',
+        summary: `[엑셀 업데이트] ${summary}`,
+        user: req.user!,
+      });
+      updated++;
+    } else {
+      if (dryRun) {
+        added++;
+        continue;
+      }
+      const newItem: WeddingCustomer = {
+        id: nanoid(10),
+        customer_type: 'WEDDING',
+        wedding_event_name: name,
+        progress_status: r.progress_status || '신규문의',
+        inquiry_date: r.inquiry_date ?? null,
+        desired_consultation_date: r.desired_consultation_date ?? null,
+        first_inform_comment: r.first_inform_comment || '',
+        groom_name: r.groom_name || '',
+        groom_phone: r.groom_phone || '',
+        groom_email: r.groom_email || '',
+        bride_name: r.bride_name || '',
+        bride_phone: r.bride_phone || '',
+        bride_email: r.bride_email || '',
+        competing_venues: r.competing_venues || '',
+        desired_budget: r.desired_budget || '',
+        source: (r.source as WeddingCustomer['source']) || '',
+        source_detail: (r.source_detail as WeddingCustomer['source_detail']) || '',
+        event_inquiries: normalizeWeddingInquiries(
+          r.event_inquiries,
+          req.user!.id,
+          req.user!.name
+        ),
+        memo: r.memo || '',
+        created_at: now,
+        updated_at: now,
+        last_modified_by_id: req.user!.id,
+        last_modified_by_name: req.user!.name,
+        last_modified_at: now,
+      };
+      store.wedding_customers.push(newItem);
+      persistDoc('wedding_customers', newItem.id);
+      logChange({
+        entity_type: 'wedding_customer',
+        entity_id: newItem.id,
+        action: 'create',
+        summary: `[엑셀 신규] ${newItem.wedding_event_name}`,
+        user: req.user!,
+      });
+      added++;
+    }
+  }
+  res.json({
+    ok: added + updated,
+    failed: errors.length,
+    added,
+    updated,
+    errors,
+    dryRun,
+  });
+});
+
 export default router;

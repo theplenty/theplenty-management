@@ -148,6 +148,120 @@ router.get('/', (req, res) => {
   res.json({ events: enriched });
 });
 
+// 일괄 upsert (엑셀 import) — 관리자 또는 sales.
+// 매칭: id → event_name + start_datetime + event_type 복합키.
+// food_items는 Excel에 있는 경우만 교체.
+router.post('/_bulk-upsert', (req, res) => {
+  const role = req.user!.role;
+  // 권한: 한 행이라도 자기가 쓸 수 없는 타입이면 에러로 처리. 일단 sales/admin만 진입.
+  if (role !== 'admin' && role !== 'sales_mice' && role !== 'sales_wedding') {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const body = req.body as {
+    rows: Array<Partial<Event> & { food_items?: Partial<FoodItem>[] }>;
+    dryRun?: boolean;
+  };
+  const rows = Array.isArray(body.rows) ? body.rows : [];
+  const dryRun = !!body.dryRun;
+  let added = 0;
+  let updated = 0;
+  const errors: Array<{ row?: number; key?: string; reason: string }> = [];
+  const now = new Date().toISOString();
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const eventName = (r.event_name || '').trim();
+    if (!eventName) {
+      errors.push({ row: i + 1, reason: '행사명이 비어있습니다' });
+      continue;
+    }
+    const evType: CustomerType = r.event_type === 'WEDDING' ? 'WEDDING' : 'MICE';
+    if (!canWriteType(role, evType)) {
+      errors.push({ row: i + 1, key: eventName, reason: `${evType} 행사 쓰기 권한 없음` });
+      continue;
+    }
+
+    let existing: Event | undefined;
+    if (r.id) existing = store.events.find((e) => e.id === r.id);
+    if (!existing) {
+      // 복합키: event_name + start_datetime + event_type
+      existing = store.events.find(
+        (e) =>
+          e.event_type === evType &&
+          e.event_name.trim() === eventName &&
+          e.start_datetime === r.start_datetime
+      );
+    }
+
+    if (existing) {
+      if (dryRun) {
+        updated++;
+        continue;
+      }
+      // 스칼라 필드 갱신
+      if (r.status !== undefined) existing.status = r.status as EventStatus;
+      if (r.usage_type !== undefined) existing.usage_type = r.usage_type;
+      if (r.halls !== undefined) existing.halls = r.halls;
+      if (r.start_datetime !== undefined) existing.start_datetime = r.start_datetime;
+      if (r.end_datetime !== undefined) existing.end_datetime = r.end_datetime;
+      if (r.event_name !== undefined) existing.event_name = r.event_name;
+      if (r.seats !== undefined) existing.seats = r.seats;
+      if (r.food_gtd_contract !== undefined) existing.food_gtd_contract = r.food_gtd_contract;
+      if (r.food_exp_contract !== undefined) existing.food_exp_contract = r.food_exp_contract;
+      if (r.food_gtd_final !== undefined) existing.food_gtd_final = r.food_gtd_final;
+      if (r.food_exp_final !== undefined) existing.food_exp_final = r.food_exp_final;
+      existing.updated_at = now;
+      persistDoc('events', existing.id);
+      // food_items은 Excel에 있는 경우만 교체
+      if (Array.isArray(r.food_items) && r.food_items.length > 0) {
+        replaceFoodItems(existing.id, r.food_items);
+      }
+      updated++;
+    } else {
+      if (dryRun) {
+        added++;
+        continue;
+      }
+      const newEv: Event = {
+        id: nanoid(10),
+        event_type: evType,
+        created_by: req.user!.id,
+        created_by_name:
+          (typeof r.created_by_name === 'string' && r.created_by_name.trim()) ||
+          req.user!.name,
+        status: (r.status as EventStatus) || 'INQ',
+        usage_type: r.usage_type ?? null,
+        halls: r.halls || [],
+        start_datetime: r.start_datetime || now,
+        end_datetime: r.end_datetime || now,
+        event_name: eventName,
+        seats: r.seats ?? null,
+        food_gtd_contract: r.food_gtd_contract ?? null,
+        food_exp_contract: r.food_exp_contract ?? null,
+        food_gtd_final: r.food_gtd_final ?? null,
+        food_exp_final: r.food_exp_final ?? null,
+        created_at:
+          (typeof r.created_at === 'string' && r.created_at.trim()) || now,
+        updated_at: now,
+      };
+      store.events.push(newEv);
+      persistDoc('events', newEv.id);
+      if (Array.isArray(r.food_items) && r.food_items.length > 0) {
+        replaceFoodItems(newEv.id, r.food_items);
+      }
+      added++;
+    }
+  }
+  res.json({
+    ok: added + updated,
+    failed: errors.length,
+    added,
+    updated,
+    errors,
+    dryRun,
+  });
+});
+
 // 일괄 삭제 — 관리자 전용. 행사와 자식 컬렉션(식음/업체연결/INVOICE/첨부/취소/리뷰) 모두 정리.
 // 고객/사용자/캘린더공유/매출목표는 건드리지 않음.
 // 주의: 라우트 순서상 '/:id' 보다 먼저 정의해야 'id=_clear-all'로 잡히지 않음.
