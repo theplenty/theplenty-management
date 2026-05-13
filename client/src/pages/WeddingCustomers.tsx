@@ -20,12 +20,142 @@ import Modal from '../components/Modal';
 import { Field, StatusBadge } from '../components/Field';
 import ExcelButtons from '../components/ExcelButtons';
 import ChangeLogPanel from '../components/ChangeLogPanel';
+import TableColumnMenu from '../components/TableColumnMenu';
+import { useTableControls, compareSortValues } from '../lib/useTableControls';
 import {
   buildWeddingFlatRows,
   groupWeddingFlatRows,
   WEDDING_FLAT_COLUMNS,
   type WeddingFlatRow,
 } from '../lib/customerColumns';
+
+interface WedCol {
+  key: string;
+  label: string;
+  render: (c: WeddingCustomer) => React.ReactNode;
+  sortValue?: (c: WeddingCustomer) => string | number | null;
+  tdClassName?: string;
+}
+
+function nextWeddingDatetime(c: WeddingCustomer): string {
+  for (const i of c.event_inquiries) {
+    if (i.wedding_datetime) return i.wedding_datetime;
+  }
+  return '';
+}
+
+const WEDDING_COLUMNS: WedCol[] = [
+  {
+    key: 'wedding_event_name',
+    label: '행사명',
+    render: (c) => <span className="font-medium text-gray-900">{c.wedding_event_name}</span>,
+    sortValue: (c) => c.wedding_event_name,
+  },
+  {
+    key: 'progress_status',
+    label: '진행단계',
+    render: (c) => <StatusBadge value={c.progress_status} variant={c.progress_status} />,
+    sortValue: (c) => c.progress_status,
+  },
+  {
+    key: 'inquiry_date',
+    label: '신규문의일자',
+    render: (c) => fmtDateOrDateTime(c.inquiry_date),
+    sortValue: (c) => c.inquiry_date || '',
+  },
+  {
+    key: 'desired_consultation_date',
+    label: '희망상담일자',
+    render: (c) => fmtDateOrDateTime(c.desired_consultation_date),
+    sortValue: (c) => c.desired_consultation_date || '',
+  },
+  {
+    key: 'groom',
+    label: '신랑',
+    render: (c) => (
+      <>
+        {c.groom_name || '-'}
+        {c.groom_phone && <span className="ml-1 text-xs text-gray-500">{c.groom_phone}</span>}
+      </>
+    ),
+    sortValue: (c) => c.groom_name,
+  },
+  {
+    key: 'bride',
+    label: '신부',
+    render: (c) => (
+      <>
+        {c.bride_name || '-'}
+        {c.bride_phone && <span className="ml-1 text-xs text-gray-500">{c.bride_phone}</span>}
+      </>
+    ),
+    sortValue: (c) => c.bride_name,
+  },
+  {
+    key: 'source',
+    label: '유입경로',
+    render: (c) => (
+      <>
+        {c.source || '-'}
+        {c.source_detail && <span className="ml-1 text-xs text-gray-500">/ {c.source_detail}</span>}
+      </>
+    ),
+    sortValue: (c) => c.source,
+  },
+  {
+    key: 'desired_budget',
+    label: '희망예산',
+    render: (c) => c.desired_budget || '-',
+    sortValue: (c) => c.desired_budget,
+  },
+  {
+    key: 'event_candidates',
+    label: '예식 후보 일정',
+    render: (c) => (
+      <span className="text-xs">
+        {c.event_inquiries
+          .map((i) =>
+            i.wedding_datetime
+              ? new Date(i.wedding_datetime).toLocaleString('ko-KR', {
+                  month: 'numeric',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : '미정'
+          )
+          .join(' / ') || '-'}
+      </span>
+    ),
+    sortValue: (c) => nextWeddingDatetime(c),
+  },
+  {
+    key: 'last_modified',
+    label: '최종 수정',
+    render: (c) => (
+      <span className="text-xs text-gray-500">
+        {c.last_modified_by_name ? (
+          <>
+            {c.last_modified_by_name}
+            <br />
+            <span className="text-gray-400">
+              {c.last_modified_at &&
+                new Date(c.last_modified_at).toLocaleString('ko-KR', {
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+            </span>
+          </>
+        ) : (
+          '-'
+        )}
+      </span>
+    ),
+    sortValue: (c) => c.last_modified_at || '',
+  },
+];
 
 type FormState = Omit<WeddingCustomer, 'id' | 'created_at' | 'updated_at' | 'customer_type'>;
 
@@ -259,11 +389,37 @@ export default function WeddingCustomers() {
 
   const flatRows = useMemo(() => buildWeddingFlatRows(items), [items]);
 
+  const tc = useTableControls({ storageKey: 'wedding_customers_table' });
+  const visibleColumns = useMemo(
+    () => WEDDING_COLUMNS.filter((col) => !tc.isHidden(col.key)),
+    [tc]
+  );
+  const sortedFiltered = useMemo(() => {
+    if (!tc.sort.key) return filtered;
+    const col = WEDDING_COLUMNS.find((c) => c.key === tc.sort.key);
+    if (!col?.sortValue) return filtered;
+    return [...filtered].sort((a, b) => compareSortValues(col.sortValue!(a), col.sortValue!(b), tc.sort.dir));
+  }, [filtered, tc.sort]);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold">WEDDING 고객정보</h1>
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <h1 className="text-2xl font-bold">WEDDING 고객정보</h1>
+          <span className="text-sm text-gray-500">
+            전체 <span className="font-semibold text-gray-900">{items.length.toLocaleString()}</span>건
+            {filtered.length !== items.length && (
+              <> · 표시 <span className="font-semibold text-gray-900">{filtered.length.toLocaleString()}</span>건</>
+            )}
+          </span>
+        </div>
         <div className="flex items-center gap-2">
+          <TableColumnMenu
+            columns={WEDDING_COLUMNS}
+            hidden={tc.hidden}
+            onToggle={tc.toggleHidden}
+            onReset={() => tc.setHiddenAll([])}
+          />
           <ExcelButtons
             filename={`WEDDING_고객정보_${new Date().toISOString().slice(0, 10)}.xlsx`}
             sheetName="WEDDING 고객정보"
@@ -342,117 +498,67 @@ export default function WeddingCustomers() {
           <table className="w-full text-sm whitespace-nowrap">
             <thead className="bg-gray-50 text-gray-700">
               <tr>
-                <Th>행사명</Th>
-                <Th>진행단계</Th>
-                <Th>신규문의일자</Th>
-                <Th>희망상담일자</Th>
-                <Th>신랑</Th>
-                <Th>신부</Th>
-                <Th>유입경로</Th>
-                <Th>희망예산</Th>
-                <Th>예식 후보 일정</Th>
-                <Th>최종 수정</Th>
-                <Th></Th>
+                {visibleColumns.map((col) => {
+                  const sortable = !!col.sortValue;
+                  const active = tc.sort.key === col.key;
+                  const arrow = !active ? '' : tc.sort.dir === 'asc' ? ' ▲' : ' ▼';
+                  return (
+                    <th
+                      key={col.key}
+                      onClick={() => sortable && tc.toggleSort(col.key)}
+                      className={
+                        'text-left px-3 py-2 font-semibold border-b select-none ' +
+                        (sortable ? 'cursor-pointer hover:bg-gray-100' : '')
+                      }
+                      title={sortable ? '클릭하여 정렬' : undefined}
+                    >
+                      {col.label}
+                      <span className={active ? 'text-blue-600' : 'text-gray-300'}>{arrow}</span>
+                    </th>
+                  );
+                })}
+                <th className="text-left px-3 py-2 font-semibold border-b w-12" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="text-center text-gray-400 py-8">
+                  <td colSpan={visibleColumns.length + 1} className="text-center text-gray-400 py-8">
                     불러오는 중...
                   </td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : sortedFiltered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="text-center text-gray-400 py-8">
+                  <td colSpan={visibleColumns.length + 1} className="text-center text-gray-400 py-8">
                     {query ? '검색 결과가 없습니다.' : '등록된 고객이 없습니다.'}
                   </td>
                 </tr>
               ) : (
-                filtered.map((c) => (
+                sortedFiltered.map((c) => (
                   <tr
                     key={c.id}
                     onClick={() => openEdit(c)}
                     className="border-t hover:bg-pink-50 cursor-pointer"
                   >
-                    <Td className="font-medium text-gray-900">{c.wedding_event_name}</Td>
-                    <Td>
-                      <StatusBadge value={c.progress_status} variant={c.progress_status} />
-                    </Td>
-                    <Td>{fmtDateOrDateTime(c.inquiry_date)}</Td>
-                    <Td>{fmtDateOrDateTime(c.desired_consultation_date)}</Td>
-                    <Td>
-                      {c.groom_name || '-'}
-                      {c.groom_phone && (
-                        <span className="ml-1 text-xs text-gray-500">{c.groom_phone}</span>
-                      )}
-                    </Td>
-                    <Td>
-                      {c.bride_name || '-'}
-                      {c.bride_phone && (
-                        <span className="ml-1 text-xs text-gray-500">{c.bride_phone}</span>
-                      )}
-                    </Td>
-                    <Td>
-                      {c.source || '-'}
-                      {c.source_detail && (
-                        <span className="ml-1 text-xs text-gray-500">/ {c.source_detail}</span>
-                      )}
-                    </Td>
-                    <Td>{c.desired_budget || '-'}</Td>
-                    <Td>
-                      <span className="text-xs">
-                        {c.event_inquiries
-                          .map((i) =>
-                            i.wedding_datetime
-                              ? new Date(i.wedding_datetime).toLocaleString('ko-KR', {
-                                  month: 'numeric',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })
-                              : '미정'
-                          )
-                          .join(' / ') || '-'}
-                      </span>
-                    </Td>
-                    <Td className="text-xs text-gray-500">
-                      {c.last_modified_by_name ? (
-                        <>
-                          {c.last_modified_by_name}
-                          <br />
-                          <span className="text-gray-400">
-                            {c.last_modified_at &&
-                              new Date(c.last_modified_at).toLocaleString('ko-KR', {
-                                month: '2-digit',
-                                day: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                          </span>
-                        </>
-                      ) : (
-                        '-'
-                      )}
-                    </Td>
-                    <Td onClick={(e) => e.stopPropagation()}>
+                    {visibleColumns.map((col) => (
+                      <td key={col.key} className={`px-3 py-2 ${col.tdClassName || ''}`}>
+                        {col.render(c)}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => remove(c)}
                         className="text-xs text-red-600 hover:underline"
                       >
                         삭제
                       </button>
-                    </Td>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
-      </div>
-
-      <div className="text-xs text-gray-500 mt-3">
-        총 {filtered.length}건 표시 / 전체 {items.length}건
       </div>
 
       <Modal
@@ -807,20 +913,6 @@ export default function WeddingCustomers() {
   );
 }
 
-function Th({ children }: { children?: React.ReactNode }) {
-  return <th className="text-left px-3 py-2 font-semibold border-b">{children}</th>;
-}
-function Td({
-  children,
-  className,
-  ...rest
-}: React.TdHTMLAttributes<HTMLTableCellElement> & { children?: React.ReactNode }) {
-  return (
-    <td className={`px-3 py-2 ${className || ''}`} {...rest}>
-      {children}
-    </td>
-  );
-}
 function Section({
   title,
   right,

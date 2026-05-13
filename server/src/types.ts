@@ -178,9 +178,11 @@ export interface FoodItem {
   id: string;
   event_id: string;
   menu_name: MenuName;
-  // set/lunchbox 메뉴: gtd, exp 사용
-  gtd: number | null;
-  exp: number | null;
+  // set/lunchbox 메뉴 — 계약 시점과 행사 직전 확정 시점을 분리해서 보관
+  gtd_contract: number | null;
+  exp_contract: number | null;
+  gtd_final: number | null;
+  exp_final: number | null;
   // coffee break: time_label, service_time, quantity 사용
   time_label: string;
   service_time: string;

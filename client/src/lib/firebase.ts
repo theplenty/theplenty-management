@@ -8,6 +8,8 @@ import {
   signInWithPopup,
   signOut as firebaseSignOut,
   onIdTokenChanged,
+  setPersistence,
+  browserSessionPersistence,
   type User as FirebaseUser,
   type Auth,
 } from 'firebase/auth';
@@ -26,6 +28,7 @@ export const FIREBASE_CONFIGURED = !!(cfg.apiKey && cfg.projectId && cfg.appId);
 
 let _app: FirebaseApp | null = null;
 let _auth: Auth | null = null;
+let _persistenceReady: Promise<void> | null = null;
 
 export function getFirebaseApp(): FirebaseApp {
   if (!_app) {
@@ -40,8 +43,24 @@ export function getFirebaseApp(): FirebaseApp {
 }
 
 export function getFirebaseAuth(): Auth {
-  if (!_auth) _auth = getAuth(getFirebaseApp());
+  if (!_auth) {
+    _auth = getAuth(getFirebaseApp());
+    // 세션 단위 지속성 — 브라우저(또는 탭)를 닫으면 로그인 풀림, 새로고침은 유지.
+    // setPersistence는 비동기이므로 첫 로그인 호출 전에 await 해야 함.
+    _persistenceReady = setPersistence(_auth, browserSessionPersistence).catch((e) => {
+      console.warn('[firebase] setPersistence 실패:', (e as Error).message);
+    });
+  }
   return _auth;
+}
+
+// Firebase Auth가 저장소(sessionStorage)에서 사용자 복원을 끝낼 때까지 기다림.
+// 새로고침 직후 /api/auth/me 호출이 Bearer 토큰 없이 나가는 race를 막는 용도.
+export async function waitForAuthReady(): Promise<void> {
+  if (!FIREBASE_CONFIGURED) return;
+  const auth = getFirebaseAuth();
+  if (_persistenceReady) await _persistenceReady;
+  await auth.authStateReady();
 }
 
 export async function signInWithGoogle(): Promise<{ idToken: string; user: FirebaseUser }> {

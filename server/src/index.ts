@@ -77,6 +77,9 @@ export const api = onRequest(
     timeoutSeconds: 60,
     maxInstances: 10,
     cors: true,
+    // Cloud Run invoker 공개 — 누구나 호출 가능. 실제 인증은 Express 미들웨어(attachUser)가 처리.
+    // 이게 없으면 Cloud Run 레벨에서 401 차단되어 우리 코드가 실행조차 안 됨.
+    invoker: 'public',
   },
   app
 );

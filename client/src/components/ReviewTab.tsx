@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { Field } from './Field';
 import { formatKoreanCommas } from '../lib/numberFormat';
+import { useActiveUsers } from '../lib/useActiveUsers';
 import { type EventFile } from '../types';
 
 interface Review {
@@ -59,6 +60,14 @@ export default function ReviewTab({ eventId, canWrite, eventEndDatetime, eventSt
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+
+  // 행사담당자 드롭다운 — 연회팀(banquet) 권한 사용자만 노출.
+  // 관리자도 함께 노출(연회팀 겸직 가능). 기존 값이 목록에 없으면 fallback 옵션으로 표시.
+  const activeUsers = useActiveUsers();
+  const banquetOptions = useMemo(
+    () => activeUsers.filter((u) => u.role === 'banquet' || u.role === 'admin'),
+    [activeUsers]
+  );
 
   // 최종 INVOICE 첨부파일 — review와 별개로 fetch
   const [finalInvoices, setFinalInvoices] = useState<EventFile[]>([]);
@@ -253,12 +262,25 @@ export default function ReviewTab({ eventId, canWrite, eventEndDatetime, eventSt
         연회팀 행사리뷰 — 행사 종료 후 운영 결과와 피드백을 기록합니다.
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Field label="행사담당자">
-          <input
+        <Field label="행사담당자" hint="권한이 '연회팀'인 사용자 중 선택">
+          <select
             className="input"
             value={draft.banquet_manager}
             onChange={(e) => set('banquet_manager', e.target.value)}
-          />
+          >
+            <option value="">선택...</option>
+            {/* 현재 값이 목록에 없으면 fallback (옛 데이터·삭제된 사용자 호환) */}
+            {draft.banquet_manager &&
+              !banquetOptions.some((u) => u.name === draft.banquet_manager) && (
+                <option value={draft.banquet_manager}>{draft.banquet_manager} (목록 외)</option>
+              )}
+            {banquetOptions.map((u) => (
+              <option key={u.id} value={u.name}>
+                {u.name}
+                {u.role === 'admin' ? ' (관리자)' : ''}
+              </option>
+            ))}
+          </select>
         </Field>
         <div />
         <Field label="실제 식사 인원">

@@ -59,10 +59,11 @@ router.post('/login', async (req, res) => {
         }
       }
       // 쿠키도 함께 발급해서 dev 환경의 fetch 호환 보존
+      // 세션 쿠키 — maxAge 미지정 → 브라우저(또는 탭)를 닫으면 자동 만료.
+      // 새로고침은 유지되지만 인터넷 창을 끄면 로그인이 풀리는 것이 의도된 동작.
       res.cookie('uid', user.id, {
         httpOnly: true,
         sameSite: 'lax',
-        maxAge: 1000 * 60 * 60 * 24 * 14,
       });
       return res.json({ user });
     } catch (e) {
@@ -96,10 +97,10 @@ router.post('/login', async (req, res) => {
     persistDoc('users', user.id);
   }
 
+  // 세션 쿠키 — 브라우저 닫으면 자동 만료.
   res.cookie('uid', user.id, {
     httpOnly: true,
     sameSite: 'lax',
-    maxAge: 1000 * 60 * 60 * 24 * 14,
   });
   res.json({ user });
 });

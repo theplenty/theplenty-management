@@ -30,6 +30,66 @@ router.get('/_all', (_req, res) => {
   res.json({ reviews: store.event_reviews });
 });
 
+// 일괄 upsert — 엑셀 import 용. event_id로 매칭, 있으면 update / 없으면 create.
+router.post('/_bulk-upsert', (req, res) => {
+  if (!canWriteReview(req.user!.role)) return res.status(403).json({ error: 'forbidden' });
+  const body = req.body as { rows?: Array<Partial<EventReview>> };
+  const rows = Array.isArray(body.rows) ? body.rows : [];
+  let ok = 0;
+  let failed = 0;
+  const errors: Array<{ event_id: string; reason: string }> = [];
+  const now = new Date().toISOString();
+  for (const r of rows) {
+    const eventId = r.event_id;
+    if (!eventId) {
+      failed++;
+      errors.push({ event_id: '(없음)', reason: 'event_id가 비어있습니다' });
+      continue;
+    }
+    const ev = store.events.find((e) => e.id === eventId);
+    if (!ev) {
+      failed++;
+      errors.push({ event_id: eventId, reason: '해당 행사를 찾을 수 없음' });
+      continue;
+    }
+    let review = store.event_reviews.find((rv) => rv.event_id === eventId);
+    if (!review) {
+      review = {
+        id: nanoid(10),
+        event_id: eventId,
+        banquet_manager: '',
+        actual_meal_count: null,
+        paid_meal_count: null,
+        additional_sales: '',
+        system_issues: '',
+        event_special_notes: '',
+        flower_issues: '',
+        next_event_feedback: '',
+        general_comment: '',
+        final_revenue: null,
+        created_by: req.user!.id,
+        created_at: now,
+        updated_at: now,
+      };
+      store.event_reviews.push(review);
+    }
+    if (r.banquet_manager !== undefined) review.banquet_manager = r.banquet_manager;
+    if (r.actual_meal_count !== undefined) review.actual_meal_count = r.actual_meal_count;
+    if (r.paid_meal_count !== undefined) review.paid_meal_count = r.paid_meal_count;
+    if (r.additional_sales !== undefined) review.additional_sales = r.additional_sales;
+    if (r.system_issues !== undefined) review.system_issues = r.system_issues;
+    if (r.event_special_notes !== undefined) review.event_special_notes = r.event_special_notes;
+    if (r.flower_issues !== undefined) review.flower_issues = r.flower_issues;
+    if (r.next_event_feedback !== undefined) review.next_event_feedback = r.next_event_feedback;
+    if (r.general_comment !== undefined) review.general_comment = r.general_comment;
+    if (r.final_revenue !== undefined) review.final_revenue = r.final_revenue;
+    review.updated_at = now;
+    persistDoc('event_reviews', review.id);
+    ok++;
+  }
+  res.json({ ok, failed, errors });
+});
+
 // 단건 조회
 router.get('/:eventId', (req, res) => {
   const review = store.event_reviews.find((r) => r.event_id === req.params.eventId);

@@ -42,8 +42,10 @@ function replaceFoodItems(eventId: string, items: Partial<FoodItem>[] | undefine
     id: it.id || nanoid(10),
     event_id: eventId,
     menu_name: it.menu_name as FoodItem['menu_name'],
-    gtd: it.gtd ?? null,
-    exp: it.exp ?? null,
+    gtd_contract: it.gtd_contract ?? null,
+    exp_contract: it.exp_contract ?? null,
+    gtd_final: it.gtd_final ?? null,
+    exp_final: it.exp_final ?? null,
     time_label: it.time_label || '',
     service_time: it.service_time || '',
     quantity: it.quantity ?? null,
@@ -144,6 +146,27 @@ router.get('/', (req, res) => {
     return { ...e, food_items, invoice };
   });
   res.json({ events: enriched });
+});
+
+// 일괄 삭제 — 관리자 전용. 행사와 자식 컬렉션(식음/업체연결/INVOICE/첨부/취소/리뷰) 모두 정리.
+// 고객/사용자/캘린더공유/매출목표는 건드리지 않음.
+// 주의: 라우트 순서상 '/:id' 보다 먼저 정의해야 'id=_clear-all'로 잡히지 않음.
+router.post('/_clear-all', (req, res) => {
+  if (req.user!.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const before = store.events.length;
+  // 부모 행사 먼저 제거 (in-memory + Firestore)
+  const eventIds = store.events.map((e) => e.id);
+  store.events.length = 0;
+  for (const id of eventIds) persistDelete('events', id);
+  // 자식 컬렉션 모두 비우기
+  deleteMatching('event_food_items', () => true);
+  deleteMatching('event_customers', () => true);
+  deleteMatching('invoices', () => true);
+  deleteMatching('event_files', () => true);
+  deleteMatching('cancellations', () => true);
+  deleteMatching('event_reviews', () => true);
+  console.log(`[events] 일괄 삭제 — 행사 ${before}건 + 자식 컬렉션 정리`);
+  res.json({ ok: true, deleted: before });
 });
 
 router.get('/:id', (req, res) => {

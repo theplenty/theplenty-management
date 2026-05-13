@@ -19,12 +19,138 @@ import Modal from '../components/Modal';
 import { Field, StatusBadge } from '../components/Field';
 import ExcelButtons from '../components/ExcelButtons';
 import ChangeLogPanel from '../components/ChangeLogPanel';
+import TableColumnMenu from '../components/TableColumnMenu';
+import { useTableControls, compareSortValues } from '../lib/useTableControls';
 import {
   buildMiceFlatRows,
   groupMiceFlatRows,
   MICE_FLAT_COLUMNS,
   type MiceFlatRow,
 } from '../lib/customerColumns';
+
+// 테이블 컬럼 정의 — 키, 라벨, 셀 렌더링, 정렬값.
+interface MiceCol {
+  key: string;
+  label: string;
+  render: (c: MiceCustomer) => React.ReactNode;
+  sortValue?: (c: MiceCustomer) => string | number | null;
+  tdClassName?: string;
+}
+
+function lastInquiryOf(c: MiceCustomer): MiceInquiry | undefined {
+  return c.inquiries[c.inquiries.length - 1];
+}
+function lastContactsLabel(c: MiceCustomer): string {
+  const last = lastInquiryOf(c);
+  const cts = last?.contacts || [];
+  if (!cts.length) return '';
+  return cts.map((ct) => ct.name || '(이름없음)').join(', ');
+}
+
+const MICE_COLUMNS: MiceCol[] = [
+  {
+    key: 'mice_category',
+    label: '구분',
+    render: (c) => c.mice_category,
+    sortValue: (c) => c.mice_category,
+  },
+  {
+    key: 'organization_name',
+    label: '업체명',
+    render: (c) => <span className="font-medium text-gray-900">{c.organization_name}</span>,
+    sortValue: (c) => c.organization_name,
+  },
+  {
+    key: 'official_phone',
+    label: '공식연락처',
+    render: (c) => c.official_phone || '-',
+    sortValue: (c) => c.official_phone,
+  },
+  {
+    key: 'official_email',
+    label: '공식이메일',
+    render: (c) => <span className="text-gray-600">{c.official_email || '-'}</span>,
+    sortValue: (c) => c.official_email,
+  },
+  {
+    key: 'official_website',
+    label: '홈페이지/블로그',
+    render: (c) => (
+      <span className="block max-w-[12rem] truncate" title={c.official_website}>
+        {c.official_website || '-'}
+      </span>
+    ),
+    sortValue: (c) => c.official_website,
+  },
+  {
+    key: 'inquiries_count',
+    label: '문의건수',
+    render: (c) => <span className="block text-center">{c.inquiries.length}</span>,
+    sortValue: (c) => c.inquiries.length,
+  },
+  {
+    key: 'last_progress',
+    label: '최근 진행상황',
+    render: (c) => {
+      const last = lastInquiryOf(c);
+      return last ? (
+        <StatusBadge value={last.progress_status} variant={last.progress_status} />
+      ) : (
+        '-'
+      );
+    },
+    sortValue: (c) => lastInquiryOf(c)?.progress_status || '',
+  },
+  {
+    key: 'last_contacts',
+    label: '최근 담당자',
+    render: (c) => {
+      const label = lastContactsLabel(c) || '-';
+      return (
+        <span className="block max-w-[10rem] truncate" title={label}>
+          {label}
+        </span>
+      );
+    },
+    sortValue: (c) => lastContactsLabel(c),
+  },
+  {
+    key: 'last_modified',
+    label: '최종 수정',
+    render: (c) => (
+      <span className="text-xs text-gray-500">
+        {c.last_modified_by_name ? (
+          <>
+            {c.last_modified_by_name}
+            <br />
+            <span className="text-gray-400">
+              {c.last_modified_at &&
+                new Date(c.last_modified_at).toLocaleString('ko-KR', {
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+            </span>
+          </>
+        ) : (
+          '-'
+        )}
+      </span>
+    ),
+    sortValue: (c) => c.last_modified_at || '',
+  },
+  {
+    key: 'memo',
+    label: '메모',
+    render: (c) => (
+      <span className="block max-w-[14rem] truncate" title={c.memo}>
+        {c.memo || '-'}
+      </span>
+    ),
+    sortValue: (c) => c.memo,
+  },
+];
 
 type FormState = Omit<MiceCustomer, 'id' | 'created_at' | 'updated_at' | 'customer_type'>;
 
@@ -252,11 +378,38 @@ export default function MiceCustomers() {
 
   const flatRows = useMemo(() => buildMiceFlatRows(items), [items]);
 
+  // 컬럼 표시/숨김 + 정렬 — localStorage에 페이지별로 보존.
+  const tc = useTableControls({ storageKey: 'mice_customers_table' });
+  const visibleColumns = useMemo(
+    () => MICE_COLUMNS.filter((col) => !tc.isHidden(col.key)),
+    [tc]
+  );
+  const sortedFiltered = useMemo(() => {
+    if (!tc.sort.key) return filtered;
+    const col = MICE_COLUMNS.find((c) => c.key === tc.sort.key);
+    if (!col?.sortValue) return filtered;
+    return [...filtered].sort((a, b) => compareSortValues(col.sortValue!(a), col.sortValue!(b), tc.sort.dir));
+  }, [filtered, tc.sort]);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold">MICE 고객정보</h1>
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <h1 className="text-2xl font-bold">MICE 고객정보</h1>
+          <span className="text-sm text-gray-500">
+            전체 <span className="font-semibold text-gray-900">{items.length.toLocaleString()}</span>건
+            {filtered.length !== items.length && (
+              <> · 표시 <span className="font-semibold text-gray-900">{filtered.length.toLocaleString()}</span>건</>
+            )}
+          </span>
+        </div>
         <div className="flex items-center gap-2">
+          <TableColumnMenu
+            columns={MICE_COLUMNS}
+            hidden={tc.hidden}
+            onToggle={tc.toggleHidden}
+            onReset={() => tc.setHiddenAll([])}
+          />
           <ExcelButtons
             filename={`MICE_고객정보_${new Date().toISOString().slice(0, 10)}.xlsx`}
             sheetName="MICE 고객정보"
@@ -335,104 +488,67 @@ export default function MiceCustomers() {
           <table className="w-full text-sm whitespace-nowrap">
             <thead className="bg-gray-50 text-gray-700">
               <tr>
-                <Th>구분</Th>
-                <Th>업체명</Th>
-                <Th>공식연락처</Th>
-                <Th>공식이메일</Th>
-                <Th>홈페이지/블로그</Th>
-                <Th>문의건수</Th>
-                <Th>최근 진행상황</Th>
-                <Th>최근 담당자</Th>
-                <Th>최종 수정</Th>
-                <Th>메모</Th>
-                <Th></Th>
+                {visibleColumns.map((col) => {
+                  const sortable = !!col.sortValue;
+                  const active = tc.sort.key === col.key;
+                  const arrow = !active ? '' : tc.sort.dir === 'asc' ? ' ▲' : ' ▼';
+                  return (
+                    <th
+                      key={col.key}
+                      onClick={() => sortable && tc.toggleSort(col.key)}
+                      className={
+                        'text-left px-3 py-2 font-semibold border-b select-none ' +
+                        (sortable ? 'cursor-pointer hover:bg-gray-100' : '')
+                      }
+                      title={sortable ? '클릭하여 정렬' : undefined}
+                    >
+                      {col.label}
+                      <span className={active ? 'text-blue-600' : 'text-gray-300'}>{arrow}</span>
+                    </th>
+                  );
+                })}
+                <th className="text-left px-3 py-2 font-semibold border-b w-12" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="text-center text-gray-400 py-8">
+                  <td colSpan={visibleColumns.length + 1} className="text-center text-gray-400 py-8">
                     불러오는 중...
                   </td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : sortedFiltered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="text-center text-gray-400 py-8">
+                  <td colSpan={visibleColumns.length + 1} className="text-center text-gray-400 py-8">
                     {query ? '검색 결과가 없습니다.' : '등록된 고객이 없습니다.'}
                   </td>
                 </tr>
               ) : (
-                filtered.map((c) => {
-                  const last = c.inquiries[c.inquiries.length - 1];
-                  const lastContacts = last?.contacts || [];
-                  const lastContactsLabel = lastContacts.length
-                    ? lastContacts.map((ct) => ct.name || '(이름없음)').join(', ')
-                    : '-';
-                  return (
-                    <tr
-                      key={c.id}
-                      onClick={() => openEdit(c)}
-                      className="border-t hover:bg-blue-50 cursor-pointer"
-                    >
-                      <Td>{c.mice_category}</Td>
-                      <Td className="font-medium text-gray-900">{c.organization_name}</Td>
-                      <Td>{c.official_phone || '-'}</Td>
-                      <Td className="text-gray-600">{c.official_email || '-'}</Td>
-                      <Td className="max-w-[12rem] truncate" title={c.official_website}>
-                        {c.official_website || '-'}
-                      </Td>
-                      <Td className="text-center">{c.inquiries.length}</Td>
-                      <Td>
-                        {last ? (
-                          <StatusBadge value={last.progress_status} variant={last.progress_status} />
-                        ) : (
-                          '-'
-                        )}
-                      </Td>
-                      <Td className="max-w-[10rem] truncate" title={lastContactsLabel}>
-                        {lastContactsLabel}
-                      </Td>
-                      <Td className="text-xs text-gray-500">
-                        {c.last_modified_by_name ? (
-                          <>
-                            {c.last_modified_by_name}
-                            <br />
-                            <span className="text-gray-400">
-                              {c.last_modified_at &&
-                                new Date(c.last_modified_at).toLocaleString('ko-KR', {
-                                  month: '2-digit',
-                                  day: '2-digit',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                            </span>
-                          </>
-                        ) : (
-                          '-'
-                        )}
-                      </Td>
-                      <Td className="max-w-[14rem] truncate" title={c.memo}>
-                        {c.memo || '-'}
-                      </Td>
-                      <Td onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => remove(c)}
-                          className="text-xs text-red-600 hover:underline"
-                        >
-                          삭제
-                        </button>
-                      </Td>
-                    </tr>
-                  );
-                })
+                sortedFiltered.map((c) => (
+                  <tr
+                    key={c.id}
+                    onClick={() => openEdit(c)}
+                    className="border-t hover:bg-blue-50 cursor-pointer"
+                  >
+                    {visibleColumns.map((col) => (
+                      <td key={col.key} className={`px-3 py-2 ${col.tdClassName || ''}`}>
+                        {col.render(c)}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => remove(c)}
+                        className="text-xs text-red-600 hover:underline"
+                      >
+                        삭제
+                      </button>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
-      </div>
-
-      <div className="text-xs text-gray-500 mt-3">
-        총 {filtered.length}건 표시 / 전체 {items.length}건
       </div>
 
       <Modal
@@ -741,20 +857,6 @@ export default function MiceCustomers() {
   );
 }
 
-function Th({ children }: { children?: React.ReactNode }) {
-  return <th className="text-left px-3 py-2 font-semibold border-b">{children}</th>;
-}
-function Td({
-  children,
-  className,
-  ...rest
-}: React.TdHTMLAttributes<HTMLTableCellElement> & { children?: React.ReactNode }) {
-  return (
-    <td className={`px-3 py-2 ${className || ''}`} {...rest}>
-      {children}
-    </td>
-  );
-}
 function Section({
   title,
   right,

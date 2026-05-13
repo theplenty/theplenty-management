@@ -37,7 +37,7 @@ const CONSULT_HEX = '#a855f7'; // 상담 — 보라
 function toFcConsultation(c: WeddingCustomer): EventInput {
   const dt = c.desired_consultation_date!;
   const hasTime = dt.includes('T');
-  const start = hasTime ? dt : dt;
+  const start = dt;
   const baseDate = hasTime ? new Date(dt) : new Date(`${dt}T00:00:00`);
   const end = hasTime ? new Date(baseDate.getTime() + 60 * 60 * 1000).toISOString() : undefined;
   return {
@@ -46,6 +46,10 @@ function toFcConsultation(c: WeddingCustomer): EventInput {
     start,
     end,
     allDay: !hasTime,
+    // 시간이 있는 상담은 dayGrid에서 자동으로 "● 시간 제목" 형태 (list-item),
+    // 시간 없는 상담은 기본적으로 색 블록(block)으로 표시되어 1월/2월 모양이 달라짐.
+    // 모든 상담을 동일한 dot 스타일로 통일하기 위해 강제 list-item.
+    display: 'list-item',
     backgroundColor: CONSULT_HEX,
     borderColor: CONSULT_HEX,
     textColor: '#ffffff',
@@ -363,8 +367,9 @@ export default function Calendar() {
             if (!ev) return;
             const halls = ev.halls.join(' / ') || '홀 미지정';
             const foods = (ev.food_items || []).map((f) => f.menu_name).join(', ');
-            const gtd = `${ev.food_gtd_contract ?? '-'}/${ev.food_gtd_final ?? '-'}`;
-            const exp = `${ev.food_exp_contract ?? '-'}/${ev.food_exp_final ?? '-'}`;
+            // 메뉴 행 합계로 표시 — 없으면 옛 이벤트 단위 값으로 fallback
+            const gtd = `${sumField(ev, 'gtd_contract')}/${sumField(ev, 'gtd_final')}`;
+            const exp = `${sumField(ev, 'exp_contract')}/${sumField(ev, 'exp_final')}`;
             arg.el.title = `[${ev.status}] ${ev.event_name}\n${halls}\nGTD ${gtd} (계약/최종) · EXP ${exp}\n${foods}`;
           }}
           loading={(isLoading) => setLoading(isLoading)}
@@ -395,4 +400,23 @@ export default function Calendar() {
 function formatLocalInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// 한 행사의 메뉴 행 GTD/EXP 합계 — 없으면 옛 이벤트 단위 값 fallback, 그것도 없으면 '-'.
+function sumField(
+  ev: EventWithFood,
+  field: 'gtd_contract' | 'gtd_final' | 'exp_contract' | 'exp_final'
+): string {
+  let sum = 0;
+  let any = false;
+  for (const it of ev.food_items || []) {
+    const v = it[field];
+    if (v != null) {
+      sum += v;
+      any = true;
+    }
+  }
+  if (any) return String(sum);
+  const legacy = (ev as unknown as Record<string, number | null>)[`food_${field}`];
+  return legacy != null ? String(legacy) : '-';
 }

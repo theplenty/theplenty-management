@@ -263,9 +263,37 @@ function migrateEvents() {
   }
 }
 
+// 식음 메뉴 항목 — 기존 단일 gtd/exp → 계약기준/확정 두 쌍으로 분리.
+// 기존 값은 의미상 "계약 시점"으로 간주하여 gtd_contract/exp_contract로 이관, 확정은 null.
+function migrateFoodItems() {
+  let count = 0;
+  for (const f of store.event_food_items) {
+    const raw = f as unknown as Record<string, unknown>;
+    const hasLegacy = 'gtd' in raw || 'exp' in raw;
+    const missingNew =
+      !('gtd_contract' in raw) ||
+      !('exp_contract' in raw) ||
+      !('gtd_final' in raw) ||
+      !('exp_final' in raw);
+    if (!hasLegacy && !missingNew) continue;
+    if (!('gtd_contract' in raw)) raw.gtd_contract = (raw.gtd as number | null) ?? null;
+    if (!('exp_contract' in raw)) raw.exp_contract = (raw.exp as number | null) ?? null;
+    if (!('gtd_final' in raw)) raw.gtd_final = null;
+    if (!('exp_final' in raw)) raw.exp_final = null;
+    if ('gtd' in raw) delete raw.gtd;
+    if ('exp' in raw) delete raw.exp;
+    count++;
+  }
+  if (count > 0) {
+    persist('event_food_items');
+    console.log(`[migrate] event_food_items ${count}건 → 식음 GTD/EXP 계약·확정 분리`);
+  }
+}
+
 export function runMigrations() {
   migrateMiceCustomers();
   migrateWeddingCustomers();
   migrateEventReviews();
   migrateEvents();
+  migrateFoodItems();
 }

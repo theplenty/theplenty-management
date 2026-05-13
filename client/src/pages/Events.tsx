@@ -3,24 +3,249 @@ import { api } from '../lib/api';
 import { canCreateEvent, isAdmin } from '../auth/permissions';
 import { useAuth } from '../auth/AuthContext';
 import {
+  MENU_OPTIONS,
   type Cancellation,
   type Event,
   type EventCustomerLink,
   type EventStatus,
   type EventWithFood,
   type CustomerType,
+  type FoodItem,
   type Invoice,
+  type MenuName,
 } from '../types';
 import { StatusBadge } from '../components/Field';
 import ExcelButtons from '../components/ExcelButtons';
 import EventFormModal from '../components/EventFormModal';
+import TableColumnMenu from '../components/TableColumnMenu';
+import { useTableControls, compareSortValues } from '../lib/useTableControls';
+import { fuzzyMatch } from '../lib/koreanSearch';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
 import type { ColumnDef } from '../lib/excel';
+
+// 테이블 컬럼 정의 — render는 행 렌더링, sortValue는 정렬 키.
+interface EventCol {
+  key: string;
+  label: string;
+  render: (e: EventWithFood) => React.ReactNode;
+  sortValue?: (e: EventWithFood) => string | number | null;
+}
+
+function sumOf(
+  e: EventWithFood,
+  field: 'gtd_contract' | 'gtd_final' | 'exp_contract' | 'exp_final'
+): number | null {
+  let sum = 0;
+  let any = false;
+  for (const it of e.food_items) {
+    const v = it[field];
+    if (v != null) {
+      sum += v;
+      any = true;
+    }
+  }
+  if (any) return sum;
+  const legacy = (e as unknown as Record<string, number | null>)[`food_${field}`];
+  return legacy ?? null;
+}
+
+const EVENT_TABLE_COLUMNS: EventCol[] = [
+  {
+    key: 'event_type',
+    label: '구분',
+    render: (e) => e.event_type,
+    sortValue: (e) => e.event_type,
+  },
+  {
+    key: 'status',
+    label: '상태',
+    render: (e) => <StatusBadge value={e.status} variant={e.status} />,
+    sortValue: (e) => e.status,
+  },
+  {
+    key: 'usage_type',
+    label: '이용시간',
+    render: (e) => e.usage_type || '-',
+    sortValue: (e) => e.usage_type || '',
+  },
+  {
+    key: 'halls',
+    label: '사용홀',
+    render: (e) => e.halls.join(' / ') || '-',
+    sortValue: (e) => e.halls.join(' / '),
+  },
+  {
+    key: 'start_datetime',
+    label: '시작일시',
+    render: (e) => fmt(e.start_datetime),
+    sortValue: (e) => e.start_datetime,
+  },
+  {
+    key: 'end_datetime',
+    label: '종료일시',
+    render: (e) => fmt(e.end_datetime),
+    sortValue: (e) => e.end_datetime,
+  },
+  {
+    key: 'event_name',
+    label: '행사명',
+    render: (e) => <span className="font-medium text-gray-900">{e.event_name}</span>,
+    sortValue: (e) => e.event_name,
+  },
+  {
+    key: 'seats',
+    label: '좌석',
+    render: (e) => e.seats ?? '-',
+    sortValue: (e) => e.seats,
+  },
+  {
+    key: 'gtd',
+    label: 'GTD (계약/최종)',
+    render: (e) => (
+      <span className="text-xs">
+        {sumOrDash(e, 'gtd_contract')}
+        <span className="text-gray-400"> / </span>
+        <span className="font-semibold">{sumOrDash(e, 'gtd_final')}</span>
+      </span>
+    ),
+    sortValue: (e) => sumOf(e, 'gtd_contract'),
+  },
+  {
+    key: 'exp',
+    label: 'EXP (계약/최종)',
+    render: (e) => (
+      <span className="text-xs">
+        {sumOrDash(e, 'exp_contract')}
+        <span className="text-gray-400"> / </span>
+        <span className="font-semibold">{sumOrDash(e, 'exp_final')}</span>
+      </span>
+    ),
+    sortValue: (e) => sumOf(e, 'exp_contract'),
+  },
+  {
+    key: 'menu',
+    label: '메뉴',
+    render: (e) => (
+      <span className="block max-w-[18rem] truncate text-xs text-gray-500">
+        {e.food_items.map((f) => f.menu_name).join(', ') || '-'}
+      </span>
+    ),
+    sortValue: (e) => e.food_items.map((f) => f.menu_name).join(', '),
+  },
+];
+
+// 엑셀 셀 → 문자열 (richText·숫자·날짜 무엇이든 안전하게 trim)
+function asText(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return String(v).trim();
+}
+
+// 숫자 셀 파싱 (빈값/비숫자는 null)
+function parseNumOrNull(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(asText(v).replace(/[^\d.-]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+// 한 행사의 메뉴들에서 특정 필드를 합산 — 합산 결과가 없으면 옛 데이터의 이벤트 단위 값 fallback.
+function sumFoodField(
+  row: { food_items?: { gtd_contract?: number | null; exp_contract?: number | null; gtd_final?: number | null; exp_final?: number | null }[] },
+  field: 'gtd_contract' | 'exp_contract' | 'gtd_final' | 'exp_final',
+  fallback: number | null
+): number | '' {
+  let sum = 0;
+  let any = false;
+  for (const it of row.food_items || []) {
+    const v = it[field];
+    if (v != null) {
+      sum += v;
+      any = true;
+    }
+  }
+  if (any) return sum;
+  return fallback != null ? fallback : '';
+}
+
+// "Korean lunch box, Coffee Break" 같은 콤마 구분 요약 텍스트를 실제 메뉴명 배열로 파싱.
+// 대소문자·공백·전각 구분자를 모두 허용, 알려진 MENU_OPTIONS에 매칭되는 항목만 채택.
+const MENU_BY_LOWER = new Map<string, MenuName>(MENU_OPTIONS.map((m) => [m.toLowerCase(), m]));
+function parseFoodItemsSummary(v: unknown): Partial<FoodItem>[] {
+  if (v == null) return [];
+  const s = String(v).trim();
+  if (!s) return [];
+  // 콤마(,), 슬래시(/), 세미콜론(;), 전각 콤마(、) 모두 구분자로 허용
+  const parts = s.split(/[,/;、]/).map((p) => p.trim()).filter(Boolean);
+  const out: Partial<FoodItem>[] = [];
+  for (const p of parts) {
+    const canonical = MENU_BY_LOWER.get(p.toLowerCase());
+    if (canonical) {
+      out.push({ menu_name: canonical });
+    } else {
+      console.warn(`[excel import] 알 수 없는 식음 메뉴 — 건너뜀: "${p}"`);
+    }
+  }
+  return out;
+}
+
+// 엑셀에 사람이 손으로 입력한 다양한 datetime 형식을 ISO local 형태로 정규화.
+//   "2026-05-12 10:00"  → "2026-05-12T10:00"
+//   "2026/05/12 10:00"  → "2026-05-12T10:00"
+//   "2026.05.12"        → "2026-05-12"
+//   "2026-05-12"        → 그대로
+// 시간이 없으면 날짜만 반환 (서버·display 모두 둘 다 허용).
+function normalizeDateTime(raw: string): string {
+  let s = raw.trim();
+  if (!s) return s;
+  // 한글 슬래시/점 구분자를 -로 통일
+  s = s.replace(/[./]/g, '-');
+  // "YYYY-M-D" → "YYYY-MM-DD" (한 자리 월·일을 0-pad)
+  s = s.replace(
+    /^(\d{4})-(\d{1,2})-(\d{1,2})(.*)$/,
+    (_m, y, mo, d, rest) =>
+      `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}${rest}`
+  );
+  // 날짜와 시간 사이 공백 → T
+  s = s.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})/, '$1T$2');
+  // 한 자리 시간 0-pad
+  s = s.replace(/T(\d):(\d{2})/, 'T0$1:$2');
+  return s;
+}
 
 // 행사 목록 엑셀 컬럼 — food_items는 요약 텍스트로
 const EVENT_COLUMNS: ColumnDef<EventWithFood>[] = [
-  { header: '구분', key: 'event_type', width: 10 },
-  { header: '상태', key: 'status', width: 8 },
-  { header: '이용시간', key: 'usage_type', width: 10 },
+  {
+    header: '구분',
+    key: 'event_type',
+    width: 10,
+    // MICE / WEDDING 외 값은 MICE로 fallback. 대소문자·공백·한글 변형 처리.
+    parse: (v) => {
+      const s = asText(v).toUpperCase();
+      if (s === 'WEDDING' || s.startsWith('WED') || s === '웨딩') return 'WEDDING';
+      return 'MICE';
+    },
+  },
+  {
+    header: '상태',
+    key: 'status',
+    width: 8,
+    // INQ/TEN/DEF/LOS만 허용. 다른 값은 INQ로 fallback.
+    parse: (v) => {
+      const s = asText(v).toUpperCase();
+      return s === 'TEN' || s === 'DEF' || s === 'LOS' ? s : 'INQ';
+    },
+  },
+  {
+    header: '이용시간',
+    key: 'usage_type',
+    width: 10,
+    // AD/AH/HA/HH만 허용. 빈 값·다른 값은 null.
+    parse: (v) => {
+      const s = asText(v).toUpperCase();
+      return s === 'AD' || s === 'AH' || s === 'HA' || s === 'HH' ? s : null;
+    },
+  },
   {
     header: '사용홀',
     key: 'halls',
@@ -28,14 +253,67 @@ const EVENT_COLUMNS: ColumnDef<EventWithFood>[] = [
     format: (v) => (Array.isArray(v) ? v.join(' / ') : ''),
     parse: (v) => (typeof v === 'string' ? v.split(/\s*\/\s*/).filter(Boolean) : []),
   },
-  { header: '시작일시', key: 'start_datetime', width: 18 },
-  { header: '종료일시', key: 'end_datetime', width: 18 },
+  {
+    header: '시작일시',
+    key: 'start_datetime',
+    width: 18,
+    // 엑셀 datetime은 lib/excel.ts에서 YYYY-MM-DDTHH:mm로 변환되어 들어옴.
+    // 텍스트로 손입력한 경우(공백 구분자, /, . 등) 정규화. 빈 값은 null.
+    parse: (v) => {
+      const s = normalizeDateTime(asText(v));
+      return s || null;
+    },
+  },
+  {
+    header: '종료일시',
+    key: 'end_datetime',
+    width: 18,
+    parse: (v) => {
+      const s = normalizeDateTime(asText(v));
+      return s || null;
+    },
+  },
   { header: '행사명', key: 'event_name', width: 32 },
-  { header: '좌석수', key: 'seats', width: 10 },
-  { header: '식음 GTD (계약)', key: 'food_gtd_contract', width: 12 },
-  { header: '식음 EXP (계약)', key: 'food_exp_contract', width: 12 },
-  { header: '식음 GTD (최종)', key: 'food_gtd_final', width: 12 },
-  { header: '식음 EXP (최종)', key: 'food_exp_final', width: 12 },
+  {
+    header: '좌석수',
+    key: 'seats',
+    width: 10,
+    parse: (v) => {
+      if (v == null || v === '') return null;
+      const n = Number(asText(v).replace(/[^\d-]/g, ''));
+      return Number.isFinite(n) ? n : null;
+    },
+  },
+  // 이벤트 단위 GTD/EXP 컬럼 — Excel에는 보이지만 import 시 첫 메뉴 행으로 합쳐짐.
+  // export 시 메뉴 행 합계로 채워짐 (옛 데이터는 이벤트 단위 값 fallback).
+  {
+    header: '식음 GTD (계약)',
+    key: 'food_gtd_contract',
+    width: 12,
+    format: (val, row) => sumFoodField(row, 'gtd_contract', val as number | null),
+    parse: (v) => parseNumOrNull(v),
+  },
+  {
+    header: '식음 EXP (계약)',
+    key: 'food_exp_contract',
+    width: 12,
+    format: (val, row) => sumFoodField(row, 'exp_contract', val as number | null),
+    parse: (v) => parseNumOrNull(v),
+  },
+  {
+    header: '식음 GTD (최종)',
+    key: 'food_gtd_final',
+    width: 12,
+    format: (val, row) => sumFoodField(row, 'gtd_final', val as number | null),
+    parse: (v) => parseNumOrNull(v),
+  },
+  {
+    header: '식음 EXP (최종)',
+    key: 'food_exp_final',
+    width: 12,
+    format: (val, row) => sumFoodField(row, 'exp_final', val as number | null),
+    parse: (v) => parseNumOrNull(v),
+  },
   {
     header: '식음 메뉴 요약',
     key: 'food_items',
@@ -44,8 +322,8 @@ const EVENT_COLUMNS: ColumnDef<EventWithFood>[] = [
       Array.isArray(v)
         ? (v as { menu_name: string }[]).map((f) => f.menu_name).join(', ')
         : '',
-    // 가져올 때는 요약을 다시 항목으로 풀지 않음 (사용자가 행사 화면에서 입력)
-    parse: () => [],
+    // 콤마 구분 메뉴명 → 실제 food_items 배열로 변환. GTD/EXP는 onImportRows에서 첫 메뉴에 분배.
+    parse: parseFoodItemsSummary,
   },
   // 작성일자/작성자 — 일괄등록 시 직접 지정 가능 (비워두면 현재 사용자/현재시각으로 자동 입력)
   { header: '작성일자', key: 'created_at', width: 20 },
@@ -59,6 +337,16 @@ export default function Events() {
   const [error, setError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'ALL' | 'MICE' | 'WEDDING'>('ALL');
   const [filterStatus, setFilterStatus] = useState<'ALL' | EventStatus>('ALL');
+  const [filterYear, setFilterYear] = useState<'ALL' | number>('ALL');
+  const [query, setQuery] = useState('');
+  const debouncedQuery = useDebouncedValue(query, 200);
+
+  // 컬럼 표시/숨김 + 정렬 — localStorage에 페이지별로 보존
+  const tc = useTableControls({ storageKey: 'events_table' });
+  const visibleColumns = useMemo(
+    () => EVENT_TABLE_COLUMNS.filter((col) => !tc.isHidden(col.key)),
+    [tc]
+  );
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EventWithFood | null>(null);
@@ -102,12 +390,94 @@ export default function Events() {
     }
   }
 
+  const [clearing, setClearing] = useState(false);
+
+  async function clearAllEvents() {
+    const total = events.length;
+    if (total === 0) {
+      alert('삭제할 행사가 없습니다.');
+      return;
+    }
+    if (
+      !confirm(
+        `⚠️ 행사 전체 ${total}건을 삭제합니다.\n\n` +
+          `함께 삭제되는 데이터:\n` +
+          `· 식음 메뉴 항목\n· 업체 연결\n· INVOICE\n· 첨부파일 메타데이터\n· 취소 정보\n· 행사 리뷰\n\n` +
+          `보존되는 데이터:\n` +
+          `· 고객정보 (MICE/WEDDING)\n· 사용자\n· 캘린더 공유 링크\n· 매출 목표\n\n` +
+          `이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`
+      )
+    ) {
+      return;
+    }
+    const confirmText = prompt(
+      `정말 진행하려면 "전체삭제"를 입력하세요 (대소문자·공백 포함 정확히):`
+    );
+    if (confirmText !== '전체삭제') {
+      alert('취소되었습니다.');
+      return;
+    }
+    setClearing(true);
+    try {
+      const res = await api.post<{ ok: boolean; deleted: number }>(
+        '/api/events/_clear-all'
+      );
+      setEvents([]);
+      alert(`행사 ${res.deleted}건이 삭제되었습니다.`);
+    } catch (err) {
+      alert('일괄 삭제 실패 (관리자 권한이 필요합니다).');
+      console.error(err);
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  // 필터/검색 우선 적용 (정렬 키와 무관). 기본 정렬은 시작일시 오름차순.
   const filtered = useMemo(() => {
+    const q = debouncedQuery.trim();
     return events
       .filter((e) => filterType === 'ALL' || e.event_type === filterType)
       .filter((e) => filterStatus === 'ALL' || e.status === filterStatus)
-      .sort((a, b) => (a.start_datetime < b.start_datetime ? -1 : 1));
-  }, [events, filterType, filterStatus]);
+      .filter((e) => {
+        if (filterYear === 'ALL') return true;
+        const y = new Date(e.start_datetime).getFullYear();
+        return y === filterYear;
+      })
+      .filter((e) => {
+        if (!q) return true;
+        // 행사명·사용홀·구분·상태·메뉴 텍스트에서 부분일치 (초성/숫자 fuzzy 지원)
+        if (fuzzyMatch(e.event_name, q)) return true;
+        if (fuzzyMatch(e.halls.join(' / '), q)) return true;
+        if (fuzzyMatch(e.event_type, q)) return true;
+        if (fuzzyMatch(e.status, q)) return true;
+        if (fuzzyMatch(e.food_items.map((f) => f.menu_name).join(', '), q)) return true;
+        return false;
+      });
+  }, [events, filterType, filterStatus, filterYear, debouncedQuery]);
+
+  // 검색·필터 통과 후 사용자가 선택한 컬럼으로 정렬 (선택 없으면 시작일시 오름차순)
+  const sortedFiltered = useMemo(() => {
+    if (!tc.sort.key) {
+      return [...filtered].sort((a, b) =>
+        a.start_datetime < b.start_datetime ? -1 : 1
+      );
+    }
+    const col = EVENT_TABLE_COLUMNS.find((c) => c.key === tc.sort.key);
+    if (!col?.sortValue) return filtered;
+    return [...filtered].sort((a, b) =>
+      compareSortValues(col.sortValue!(a), col.sortValue!(b), tc.sort.dir)
+    );
+  }, [filtered, tc.sort]);
+
+  // 필터 드롭다운용 사용 가능한 연도 목록 — 행사 데이터에서 추출 (내림차순)
+  const availableYears = useMemo(() => {
+    const ys = new Set<number>();
+    for (const e of events) {
+      const y = new Date(e.start_datetime).getFullYear();
+      if (Number.isFinite(y)) ys.add(y);
+    }
+    return [...ys].sort((a, b) => b - a);
+  }, [events]);
 
   const allowedTypes: CustomerType[] = useMemo(() => {
     if (
@@ -123,8 +493,32 @@ export default function Events() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold">행사 목록</h1>
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <h1 className="text-2xl font-bold">행사 목록</h1>
+          <span className="text-sm text-gray-500">
+            전체{' '}
+            <span className="font-semibold text-gray-900">
+              {events.length.toLocaleString()}
+            </span>
+            건
+            {sortedFiltered.length !== events.length && (
+              <>
+                {' '}· 표시{' '}
+                <span className="font-semibold text-gray-900">
+                  {sortedFiltered.length.toLocaleString()}
+                </span>
+                건
+              </>
+            )}
+          </span>
+        </div>
         <div className="flex items-center gap-2">
+          <TableColumnMenu
+            columns={EVENT_TABLE_COLUMNS}
+            hidden={tc.hidden}
+            onToggle={tc.toggleHidden}
+            onReset={() => tc.setHiddenAll([])}
+          />
           <ExcelButtons
             filename={`행사목록_${new Date().toISOString().slice(0, 10)}.xlsx`}
             sheetName="행사 목록"
@@ -135,12 +529,46 @@ export default function Events() {
               let failed = 0;
               for (const r of rows) {
                 try {
-                  const payload = { ...r, food_items: [] };
-                  const res = await api.post<{ event: Event; food_items: [] }>(
-                    '/api/events',
-                    payload
-                  );
-                  setEvents((prev) => [{ ...res.event, food_items: [] }, ...prev]);
+                  const foodItems: Partial<FoodItem>[] = Array.isArray(
+                    (r as { food_items?: unknown }).food_items
+                  )
+                    ? [...((r as { food_items: Partial<FoodItem>[] }).food_items)]
+                    : [];
+                  // 이벤트 단위 GTD/EXP가 들어있고 메뉴 행이 있으면 → 첫 메뉴 행에 분배.
+                  // (단일 소스: 메뉴 행. 이벤트 단위 필드는 null로 비움.)
+                  const rr = r as Record<string, unknown>;
+                  if (foodItems.length > 0) {
+                    const first = { ...foodItems[0] };
+                    if (rr.food_gtd_contract != null && first.gtd_contract == null) {
+                      first.gtd_contract = rr.food_gtd_contract as number;
+                    }
+                    if (rr.food_exp_contract != null && first.exp_contract == null) {
+                      first.exp_contract = rr.food_exp_contract as number;
+                    }
+                    if (rr.food_gtd_final != null && first.gtd_final == null) {
+                      first.gtd_final = rr.food_gtd_final as number;
+                    }
+                    if (rr.food_exp_final != null && first.exp_final == null) {
+                      first.exp_final = rr.food_exp_final as number;
+                    }
+                    foodItems[0] = first;
+                  }
+                  const payload = {
+                    ...r,
+                    food_items: foodItems,
+                    food_gtd_contract: null,
+                    food_exp_contract: null,
+                    food_gtd_final: null,
+                    food_exp_final: null,
+                  };
+                  const res = await api.post<{
+                    event: Event;
+                    food_items: FoodItem[];
+                  }>('/api/events', payload);
+                  setEvents((prev) => [
+                    { ...res.event, food_items: res.food_items || [] },
+                    ...prev,
+                  ]);
                   ok++;
                 } catch (e) {
                   console.error('import row failed', r, e);
@@ -164,10 +592,27 @@ export default function Events() {
               + 행사 등록
             </button>
           )}
+          {admin && (
+            <button
+              onClick={clearAllEvents}
+              disabled={clearing || events.length === 0}
+              className="btn-danger !py-1.5 text-xs"
+              title="관리자 전용 — 모든 행사를 일괄 삭제"
+            >
+              {clearing ? '삭제 중...' : `🗑 행사 전체 삭제 (${events.length}건)`}
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="bg-white border rounded-lg p-3 mb-4 flex items-center gap-3 text-xs">
+      <div className="bg-white border rounded-lg p-3 mb-4 flex items-center gap-2 text-xs flex-wrap">
+        <input
+          type="text"
+          className="input !py-1 !text-xs flex-1 min-w-[200px]"
+          placeholder="검색: 행사명 / 사용홀 / 메뉴 / 구분·상태 (초성도 가능)"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
         <select
           className="input !py-1 !text-xs !w-auto"
           value={filterType}
@@ -188,7 +633,20 @@ export default function Events() {
           <option value="DEF">DEF</option>
           <option value="LOS">LOS</option>
         </select>
-        <span className="ml-auto text-gray-500">총 {filtered.length}건</span>
+        <select
+          className="input !py-1 !text-xs !w-auto"
+          value={filterYear === 'ALL' ? 'ALL' : String(filterYear)}
+          onChange={(e) =>
+            setFilterYear(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))
+          }
+        >
+          <option value="ALL">전체 연도</option>
+          {availableYears.map((y) => (
+            <option key={y} value={String(y)}>
+              {y}년
+            </option>
+          ))}
+        </select>
       </div>
 
       {error && (
@@ -202,35 +660,49 @@ export default function Events() {
           <table className="w-full text-sm whitespace-nowrap">
             <thead className="bg-gray-50 text-gray-700">
               <tr>
-                <Th>구분</Th>
-                <Th>상태</Th>
-                <Th>이용시간</Th>
-                <Th>사용홀</Th>
-                <Th>시작일시</Th>
-                <Th>종료일시</Th>
-                <Th>행사명</Th>
-                <Th>좌석</Th>
-                <Th>GTD<br /><span className="text-[10px] font-normal text-gray-400">계약/최종</span></Th>
-                <Th>EXP<br /><span className="text-[10px] font-normal text-gray-400">계약/최종</span></Th>
-                <Th>메뉴</Th>
-                {admin && <Th></Th>}
+                {visibleColumns.map((col) => {
+                  const sortable = !!col.sortValue;
+                  const active = tc.sort.key === col.key;
+                  const arrow = !active ? '' : tc.sort.dir === 'asc' ? ' ▲' : ' ▼';
+                  return (
+                    <th
+                      key={col.key}
+                      onClick={() => sortable && tc.toggleSort(col.key)}
+                      className={
+                        'text-left px-3 py-2 font-semibold border-b select-none ' +
+                        (sortable ? 'cursor-pointer hover:bg-gray-100' : '')
+                      }
+                      title={sortable ? '클릭하여 정렬' : undefined}
+                    >
+                      {col.label}
+                      <span className={active ? 'text-blue-600' : 'text-gray-300'}>{arrow}</span>
+                    </th>
+                  );
+                })}
+                {admin && <th className="text-left px-3 py-2 font-semibold border-b w-12" />}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={admin ? 12 : 11} className="text-center text-gray-400 py-8">
+                  <td
+                    colSpan={visibleColumns.length + (admin ? 1 : 0)}
+                    className="text-center text-gray-400 py-8"
+                  >
                     불러오는 중...
                   </td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : sortedFiltered.length === 0 ? (
                 <tr>
-                  <td colSpan={admin ? 12 : 11} className="text-center text-gray-400 py-8">
-                    등록된 행사가 없습니다.
+                  <td
+                    colSpan={visibleColumns.length + (admin ? 1 : 0)}
+                    className="text-center text-gray-400 py-8"
+                  >
+                    {query ? '검색 결과가 없습니다.' : '등록된 행사가 없습니다.'}
                   </td>
                 </tr>
               ) : (
-                filtered.map((e) => (
+                sortedFiltered.map((e) => (
                   <tr
                     key={e.id}
                     onClick={async () => {
@@ -254,31 +726,13 @@ export default function Events() {
                     }}
                     className="border-t hover:bg-blue-50 cursor-pointer"
                   >
-                    <Td>{e.event_type}</Td>
-                    <Td>
-                      <StatusBadge value={e.status} variant={e.status} />
-                    </Td>
-                    <Td>{e.usage_type || '-'}</Td>
-                    <Td>{e.halls.join(' / ') || '-'}</Td>
-                    <Td>{fmt(e.start_datetime)}</Td>
-                    <Td>{fmt(e.end_datetime)}</Td>
-                    <Td className="font-medium text-gray-900">{e.event_name}</Td>
-                    <Td>{e.seats ?? '-'}</Td>
-                    <Td className="text-xs">
-                      {e.food_gtd_contract ?? '-'}
-                      <span className="text-gray-400"> / </span>
-                      <span className="font-semibold">{e.food_gtd_final ?? '-'}</span>
-                    </Td>
-                    <Td className="text-xs">
-                      {e.food_exp_contract ?? '-'}
-                      <span className="text-gray-400"> / </span>
-                      <span className="font-semibold">{e.food_exp_final ?? '-'}</span>
-                    </Td>
-                    <Td className="text-xs text-gray-500 max-w-[18rem] truncate">
-                      {e.food_items.map((f) => f.menu_name).join(', ') || '-'}
-                    </Td>
+                    {visibleColumns.map((col) => (
+                      <td key={col.key} className="px-3 py-2">
+                        {col.render(e)}
+                      </td>
+                    ))}
                     {admin && (
-                      <Td>
+                      <td className="px-3 py-2">
                         <button
                           onClick={(ev) => deleteEvent(e, ev)}
                           className="text-xs text-red-600 hover:underline"
@@ -286,7 +740,7 @@ export default function Events() {
                         >
                           삭제
                         </button>
-                      </Td>
+                      </td>
                     )}
                   </tr>
                 ))
@@ -322,20 +776,24 @@ export default function Events() {
   );
 }
 
-function Th({ children }: { children?: React.ReactNode }) {
-  return <th className="text-left px-3 py-2 font-semibold border-b">{children}</th>;
-}
-
-function Td({
-  children,
-  className,
-  ...rest
-}: React.TdHTMLAttributes<HTMLTableCellElement> & { children?: React.ReactNode }) {
-  return (
-    <td className={`px-3 py-2 ${className || ''}`} {...rest}>
-      {children}
-    </td>
-  );
+// 메뉴 행별 GTD/EXP 합계 — 합계가 없으면 옛 데이터의 이벤트 단위 값 fallback.
+function sumOrDash(
+  event: EventWithFood,
+  field: 'gtd_contract' | 'gtd_final' | 'exp_contract' | 'exp_final'
+): string {
+  let sum = 0;
+  let hasAny = false;
+  for (const it of event.food_items) {
+    const v = it[field];
+    if (v != null) {
+      sum += v;
+      hasAny = true;
+    }
+  }
+  if (hasAny) return sum.toLocaleString('ko-KR');
+  // 옛 데이터: 이벤트 단위 필드 (food_gtd_contract 등)에 값이 있을 수 있음
+  const legacy = (event as unknown as Record<string, number | null>)[`food_${field}`];
+  return legacy != null ? legacy.toLocaleString('ko-KR') : '-';
 }
 
 function fmt(s: string): string {

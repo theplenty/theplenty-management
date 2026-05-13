@@ -13,6 +13,7 @@ import {
   signInWithGoogle,
   signOut as firebaseSignOut,
   onTokenChange,
+  waitForAuthReady,
 } from '../lib/firebase';
 import type { User } from '../types';
 
@@ -44,11 +45,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // 부팅 시 1회 + Firebase auth state 변경 시 자동 갱신
+  // 부팅 시 1회 + Firebase auth state 변경 시 자동 갱신.
+  // 주의: Firebase가 sessionStorage에서 사용자 복원을 마치기 전에 /api/auth/me 를 부르면
+  // Bearer 토큰 없이 요청 → 새로고침 = 로그아웃 처럼 보임. waitForAuthReady로 race 차단.
   useEffect(() => {
     if (!initialRefreshDone.current) {
       initialRefreshDone.current = true;
-      refresh();
+      waitForAuthReady().then(refresh);
     }
     if (!FIREBASE_CONFIGURED) return;
     const unsub = onTokenChange(() => {

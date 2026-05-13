@@ -50,6 +50,8 @@ interface Props {
   onSaved: (saved: EventWithFood, links: EventCustomerLink[]) => void;
   // 관리자 삭제 콜백 — 부모가 목록에서 제거 처리. 미제공 시 삭제 버튼 미노출.
   onDeleted?: (eventId: string) => void;
+  // 모달 열릴 때 처음 보일 탭 — 미지정 시 '기본정보'.
+  initialTab?: 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review';
 }
 
 interface FormState {
@@ -133,6 +135,7 @@ export default function EventFormModal({
   otherEvents,
   onSaved,
   onDeleted,
+  initialTab,
 }: Props) {
   const { user } = useAuth();
   const admin = isAdmin(user?.role);
@@ -170,8 +173,10 @@ export default function EventFormModal({
         (initialFoodItems || []).map((f) => ({
           id: f.id,
           menu_name: f.menu_name,
-          gtd: f.gtd,
-          exp: f.exp,
+          gtd_contract: f.gtd_contract,
+          exp_contract: f.exp_contract,
+          gtd_final: f.gtd_final,
+          exp_final: f.exp_final,
           time_label: f.time_label,
           service_time: f.service_time,
           quantity: f.quantity,
@@ -210,7 +215,7 @@ export default function EventFormModal({
       setInvoice(emptyInvoiceDraft());
       setCancellation(emptyCancellationDraft());
     }
-    setTab('basic');
+    setTab(initialTab || 'basic');
   }, [
     open,
     initialEvent,
@@ -220,6 +225,7 @@ export default function EventFormModal({
     initialCancellation,
     initialDate,
     allowedTypes,
+    initialTab,
   ]);
 
   const conflict = useMemo(() => {
@@ -309,8 +315,10 @@ export default function EventFormModal({
         food_items: foods.map((f) => ({
           id: f.id.startsWith('tmp_') ? undefined : f.id,
           menu_name: f.menu_name,
-          gtd: f.gtd,
-          exp: f.exp,
+          gtd_contract: f.gtd_contract,
+          exp_contract: f.exp_contract,
+          gtd_final: f.gtd_final,
+          exp_final: f.exp_final,
           time_label: f.time_label,
           service_time: f.service_time,
           quantity: f.quantity,
@@ -613,58 +621,6 @@ function BasicInfoTab({
               className="input"
               value={form.event_name}
               onChange={(e) => setForm({ ...form, event_name: e.target.value })}
-            />
-          </Field>
-          <Field label="식음 GTD — 계약기준" hint="계약 시점 보증인원 기준">
-            <input
-              type="number"
-              className="input"
-              value={form.food_gtd_contract ?? ''}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  food_gtd_contract: e.target.value === '' ? null : Number(e.target.value),
-                })
-              }
-            />
-          </Field>
-          <Field label="식음 EXP — 계약기준">
-            <input
-              type="number"
-              className="input"
-              value={form.food_exp_contract ?? ''}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  food_exp_contract: e.target.value === '' ? null : Number(e.target.value),
-                })
-              }
-            />
-          </Field>
-          <Field label="식음 GTD — 최종확정" hint="행사 직전 확정 인원 기준">
-            <input
-              type="number"
-              className="input"
-              value={form.food_gtd_final ?? ''}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  food_gtd_final: e.target.value === '' ? null : Number(e.target.value),
-                })
-              }
-            />
-          </Field>
-          <Field label="식음 EXP — 최종확정">
-            <input
-              type="number"
-              className="input"
-              value={form.food_exp_final ?? ''}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  food_exp_final: e.target.value === '' ? null : Number(e.target.value),
-                })
-              }
             />
           </Field>
           <Field label="작성일자">

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { nanoid } from 'nanoid';
-import { store, persistDoc } from '../store/mockStore.js';
+import { store, persistDoc, ensureHydrated } from '../store/mockStore.js';
 import type { Role, User } from '../types.js';
 
 declare global {
@@ -93,6 +93,13 @@ function findOrCreateUserByEmail(
 //   1) Authorization: Bearer <Firebase ID 토큰>  ← 운영 (Phase 4 이후)
 //   2) Cookie: uid=<user.id>                       ← 로컬 dev mock 로그인 호환
 export async function attachUser(req: Request, _res: Response, next: NextFunction) {
+  // Cloud Functions cold start 시 Firestore에서 데이터를 in-memory로 로드 (한 번만).
+  try {
+    await ensureHydrated();
+  } catch (e) {
+    console.error('[auth] hydrate 실패, 다음 요청에서 재시도:', e);
+  }
+
   // 1) Bearer ID token 우선
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith('Bearer ')) {

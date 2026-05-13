@@ -171,6 +171,47 @@ export function getCollection<K extends keyof DB>(name: K): DB[K] {
 }
 
 // ===================================================================
+// Firestore에서 부팅 시 in-memory 데이터 hydrate
+// ===================================================================
+// Cloud Functions 환경 (STORE_BACKEND=firestore)에서는 JSON 파일이 없으므로
+// 부팅 시 Firestore에서 모든 컬렉션을 메모리로 로드해야 라우트들이 정상 동작.
+// dev 환경 (STORE_BACKEND=json|dual)에서는 JSON 파일이 이미 로드되었으니 skip.
+let _hydratePromise: Promise<void> | null = null;
+
+async function hydrateFromFirestore() {
+  const backend = (process.env.STORE_BACKEND || 'json').toLowerCase();
+  if (backend !== 'firestore') return; // JSON / dual 모드는 이미 부팅 완료
+  // eslint-disable-next-line no-console
+  console.log('[mockStore] Firestore에서 in-memory hydrate 시작');
+  const { firestore } = await import('../lib/firebase.js');
+  const t0 = Date.now();
+  let total = 0;
+  for (const coll of COLLECTIONS) {
+    const snap = await firestore.collection(coll).get();
+    const docs = snap.docs.map((d) => d.data());
+    // 기존 배열 in-place 갱신 (다른 모듈이 store reference를 hold할 수 있으므로)
+    (db[coll] as unknown[]).length = 0;
+    (db[coll] as unknown[]).push(...docs);
+    total += docs.length;
+    // eslint-disable-next-line no-console
+    console.log(`  [hydrate] ${coll}: ${docs.length}건`);
+  }
+  // eslint-disable-next-line no-console
+  console.log(`[mockStore] hydrate 완료 — 총 ${total}건 (${Date.now() - t0}ms)`);
+}
+
+export function ensureHydrated(): Promise<void> {
+  if (!_hydratePromise) {
+    _hydratePromise = hydrateFromFirestore().catch((e) => {
+      console.error('[mockStore] hydrate 실패:', e);
+      _hydratePromise = null; // 다음 요청에서 재시도 가능하게
+      throw e;
+    });
+  }
+  return _hydratePromise;
+}
+
+// ===================================================================
 // Firestore 동기화 — STORE_BACKEND 에 따라 활성화
 // ===================================================================
 // 'json'      : 로컬 JSON 파일에만 쓰기 (개발 기본)

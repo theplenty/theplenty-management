@@ -295,8 +295,11 @@ export interface FoodItem {
   id: string;
   event_id: string;
   menu_name: MenuName;
-  gtd: number | null;
-  exp: number | null;
+  // set/lunchbox 메뉴 — 계약 시점과 행사 직전 확정 시점을 분리하여 인원/식수 변화를 추적
+  gtd_contract: number | null;
+  exp_contract: number | null;
+  gtd_final: number | null;
+  exp_final: number | null;
   time_label: string;
   service_time: string;
   quantity: number | null;
@@ -417,6 +420,25 @@ export interface EventFile {
   file_url: string;
   uploaded_by: string;
   uploaded_at: string;
+}
+
+// ===== 행사 리뷰 =====
+export interface EventReview {
+  id: string;
+  event_id: string;
+  banquet_manager: string;
+  actual_meal_count: number | null;
+  paid_meal_count: number | null;
+  additional_sales: string;
+  system_issues: string;
+  event_special_notes: string;
+  flower_issues: string;
+  next_event_feedback: string;
+  general_comment: string;
+  final_revenue: number | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // ===== 영업 목표 (Forecasting) =====

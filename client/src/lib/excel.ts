@@ -106,11 +106,27 @@ export async function importFromXlsx<T>(opts: {
       if (v && typeof v === 'object' && 'result' in (v as object)) {
         v = (v as { result: unknown }).result;
       }
+      // richText 셀 ({ richText: [{ text: '...' }, ...] }) → 일반 문자열로 평탄화
+      if (v && typeof v === 'object' && 'richText' in (v as object)) {
+        const parts = (v as { richText: { text?: string }[] }).richText;
+        v = parts.map((p) => p.text ?? '').join('');
+      }
       if (v instanceof Date) {
-        // YYYY-MM-DD로 변환
+        // ExcelJS는 셀의 시리얼 날짜를 UTC로 해석함.
+        // 한국(KST=UTC+9)에서 d.getHours()를 부르면 9시간 어긋남.
+        //   엑셀 "9:00 AM" → 내부 UTC 9:00 → getHours() = 18 (오후 6시) ← 버그
+        // 사용자는 엑셀에 적은 그대로의 시각을 기대하므로 UTC 메서드로 추출해야 동일.
         const d = v as Date;
         const pad = (n: number) => String(n).padStart(2, '0');
-        v = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const hasTime =
+          d.getUTCHours() !== 0 ||
+          d.getUTCMinutes() !== 0 ||
+          d.getUTCSeconds() !== 0;
+        if (hasTime) {
+          v = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+        } else {
+          v = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+        }
       }
       if (typeof v === 'string') v = v.trim();
       if (v !== null && v !== undefined && v !== '') hasAny = true;
