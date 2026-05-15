@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
-import { matchesAnyField } from '../lib/koreanSearch';
+import { buildSearchEntry, fuzzyMatchEntry, type SearchEntry } from '../lib/koreanSearch';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { useAuth } from '../auth/AuthContext';
 import { useActiveUsers } from '../lib/useActiveUsers';
@@ -21,6 +21,7 @@ import { Field, StatusBadge } from '../components/Field';
 import ExcelButtons from '../components/ExcelButtons';
 import ChangeLogPanel from '../components/ChangeLogPanel';
 import TableColumnMenu from '../components/TableColumnMenu';
+import Pagination, { usePaginated, PAGE_SIZE } from '../components/Pagination';
 import { useTableControls, compareSortValues } from '../lib/useTableControls';
 import {
   buildWeddingFlatRows,
@@ -221,6 +222,11 @@ export default function WeddingCustomers() {
   const authorName = user?.name || '';
   const authorId = user?.id || '';
   const activeUsers = useActiveUsers();
+  // 담당지배인 드롭다운 — 웨딩세일즈 + 관리자만 노출
+  const weddingManagerOptions = useMemo(
+    () => activeUsers.filter((u) => u.role === 'sales_wedding' || u.role === 'admin'),
+    [activeUsers]
+  );
 
   const [items, setItems] = useState<WeddingCustomer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -266,26 +272,45 @@ export default function WeddingCustomers() {
     }
   }, [items]);
 
+  // items 가 바뀔 때만 검색 인덱스를 재계산. 키 입력마다는 includes() 만 돌도록.
+  const searchIndex = useMemo(() => {
+    const map = new Map<string, SearchEntry>();
+    for (const c of items) {
+      const parts: Array<string | null | undefined> = [
+        c.wedding_event_name,
+        c.groom_name,
+        c.bride_name,
+        c.groom_phone,
+        c.bride_phone,
+        c.groom_email,
+        c.bride_email,
+        c.progress_status,
+        c.source,
+        c.source_detail,
+        c.competing_venues,
+        c.desired_budget,
+        c.memo,
+      ];
+      for (const i of c.event_inquiries) {
+        parts.push(
+          i.wedding_datetime,
+          i.estimate_detail,
+          i.visit_consultation_comment,
+          i.assigned_manager_name,
+        );
+      }
+      map.set(c.id, buildSearchEntry(parts));
+    }
+    return map;
+  }, [items]);
+
   const filtered = useMemo(() => {
     if (!debouncedQuery.trim()) return items;
-    return items.filter((c) =>
-      matchesAnyField(
-        c as unknown as Record<string, unknown>,
-        [
-          'wedding_event_name',
-          'groom_name',
-          'bride_name',
-          'groom_phone',
-          'bride_phone',
-          'groom_email',
-          'bride_email',
-          'progress_status',
-          'source',
-        ],
-        debouncedQuery
-      )
-    );
-  }, [items, debouncedQuery]);
+    return items.filter((c) => {
+      const e = searchIndex.get(c.id);
+      return e ? fuzzyMatchEntry(e, debouncedQuery) : false;
+    });
+  }, [items, debouncedQuery, searchIndex]);
 
   const suggestions = useMemo(
     () => (debouncedQuery.trim() ? filtered.slice(0, 6) : []),
@@ -368,6 +393,7 @@ export default function WeddingCustomers() {
         setEditingId(res.customer.id);
         setLogRefresh((n) => n + 1);
       }
+      alert('저장되었습니다.');
     } catch (e) {
       alert('저장 실패');
       console.error(e);
@@ -401,11 +427,18 @@ export default function WeddingCustomers() {
     return [...filtered].sort((a, b) => compareSortValues(col.sortValue!(a), col.sortValue!(b), tc.sort.dir));
   }, [filtered, tc.sort]);
 
+  // 페이지네이션 — 20개씩
+  const { page, setPage, pageItems } = usePaginated(sortedFiltered, [
+    debouncedQuery,
+    tc.sort.key,
+    tc.sort.dir,
+  ]);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-baseline gap-3 flex-wrap">
-          <h1 className="text-2xl font-bold">WEDDING 고객정보</h1>
+          <h1 className="text-xl md:text-2xl font-bold">WEDDING 고객정보</h1>
           <span className="text-sm text-gray-500">
             전체 <span className="font-semibold text-gray-900">{items.length.toLocaleString()}</span>건
             {filtered.length !== items.length && (
@@ -492,11 +525,57 @@ export default function WeddingCustomers() {
         </div>
       )}
 
-      <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
+      {/* 모바일 카드 뷰 — md 미만 */}
+      <div className="md:hidden space-y-2">
+        {loading ? (
+          <div className="text-center text-gray-400 py-8 bg-white border rounded-lg">불러오는 중...</div>
+        ) : sortedFiltered.length === 0 ? (
+          <div className="text-center text-gray-400 py-8 bg-white border rounded-lg">
+            {query ? '검색 결과가 없습니다.' : '등록된 고객이 없습니다.'}
+          </div>
+        ) : (
+          pageItems.map((c, i) => (
+            <div
+              key={c.id}
+              onClick={() => openEdit(c)}
+              className="bg-white border rounded-lg p-3 shadow-sm active:bg-blue-50 cursor-pointer"
+            >
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <span className="font-semibold text-gray-900 truncate">
+                  <span className="text-gray-400 font-normal mr-1.5">#{page * PAGE_SIZE + i + 1}</span>
+                  {c.wedding_event_name || '(이름 없음)'}
+                </span>
+                <StatusBadge value={c.progress_status} variant={c.progress_status} />
+              </div>
+              <div className="text-xs text-gray-600 flex flex-wrap gap-x-3 gap-y-0.5 mb-1">
+                {c.inquiry_date && <span>문의 {fmtDateOrDateTime(c.inquiry_date)}</span>}
+                {c.desired_consultation_date && (
+                  <span>상담 {fmtDateOrDateTime(c.desired_consultation_date)}</span>
+                )}
+              </div>
+              <div className="text-xs text-gray-700 truncate">
+                {c.groom_name || '-'} {c.groom_phone && <span className="text-gray-500">{c.groom_phone}</span>}
+                {' / '}
+                {c.bride_name || '-'} {c.bride_phone && <span className="text-gray-500">{c.bride_phone}</span>}
+              </div>
+              {c.source && (
+                <div className="text-xs text-gray-500 truncate mt-0.5">
+                  유입: {c.source}
+                  {c.source_detail && ` / ${c.source_detail}`}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* 데스크탑 테이블 — md 이상 */}
+      <div className="hidden md:block bg-white border rounded-lg overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm whitespace-nowrap">
+          <table className="w-full text-sm table-auto [&_th]:whitespace-nowrap">
             <thead className="bg-gray-50 text-gray-700">
               <tr>
+                <th className="text-right px-2 py-2 font-semibold border-b w-12 text-gray-400">#</th>
                 {visibleColumns.map((col) => {
                   const sortable = !!col.sortValue;
                   const active = tc.sort.key === col.key;
@@ -522,23 +601,26 @@ export default function WeddingCustomers() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={visibleColumns.length + 1} className="text-center text-gray-400 py-8">
+                  <td colSpan={visibleColumns.length + 2} className="text-center text-gray-400 py-8">
                     불러오는 중...
                   </td>
                 </tr>
               ) : sortedFiltered.length === 0 ? (
                 <tr>
-                  <td colSpan={visibleColumns.length + 1} className="text-center text-gray-400 py-8">
+                  <td colSpan={visibleColumns.length + 2} className="text-center text-gray-400 py-8">
                     {query ? '검색 결과가 없습니다.' : '등록된 고객이 없습니다.'}
                   </td>
                 </tr>
               ) : (
-                sortedFiltered.map((c) => (
+                pageItems.map((c, i) => (
                   <tr
                     key={c.id}
                     onClick={() => openEdit(c)}
                     className="border-t hover:bg-pink-50 cursor-pointer"
                   >
+                    <td className="px-2 py-2 text-right text-xs text-gray-400 tabular-nums">
+                      {page * PAGE_SIZE + i + 1}
+                    </td>
                     {visibleColumns.map((col) => (
                       <td key={col.key} className={`px-3 py-2 ${col.tdClassName || ''}`}>
                         {col.render(c)}
@@ -559,6 +641,8 @@ export default function WeddingCustomers() {
           </table>
         </div>
       </div>
+
+      <Pagination total={sortedFiltered.length} page={page} onChange={setPage} />
 
       <Modal
         open={open}
@@ -823,7 +907,15 @@ export default function WeddingCustomers() {
                       className="input"
                       value={inq.assigned_manager_id || ''}
                       onChange={(e) => {
-                        const u = activeUsers.find((x) => x.id === e.target.value);
+                        const id = e.target.value;
+                        if (!id) {
+                          updateInquiry(inq.id, {
+                            assigned_manager_id: '',
+                            assigned_manager_name: '',
+                          });
+                          return;
+                        }
+                        const u = weddingManagerOptions.find((x) => x.id === id);
                         if (u) {
                           updateInquiry(inq.id, {
                             assigned_manager_id: u.id,
@@ -832,13 +924,16 @@ export default function WeddingCustomers() {
                         }
                       }}
                     >
-                      {!activeUsers.find((x) => x.id === inq.assigned_manager_id) &&
+                      <option value="">선택...</option>
+                      {/* 현재 담당자가 목록에 없으면 fallback 옵션 유지 */}
+                      {inq.assigned_manager_id &&
+                        !weddingManagerOptions.find((x) => x.id === inq.assigned_manager_id) &&
                         inq.assigned_manager_name && (
-                          <option value={inq.assigned_manager_id || ''}>
-                            {inq.assigned_manager_name}
+                          <option value={inq.assigned_manager_id}>
+                            {inq.assigned_manager_name} (현재)
                           </option>
                         )}
-                      {activeUsers.map((u) => (
+                      {weddingManagerOptions.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.name}
                         </option>

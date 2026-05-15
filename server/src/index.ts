@@ -24,6 +24,9 @@ import eventReviewsRouter from './routes/eventReviews.js';
 import calendarSharesRouter from './routes/calendarShares.js';
 import publicCalendarRouter from './routes/publicCalendar.js';
 import salesTargetsRouter from './routes/salesTargets.js';
+import apiKeysRouter from './routes/apiKeys.js';
+import publicApiRouter from './routes/publicApi.js';
+import trashRouter from './routes/trash.js';
 import { attachUser } from './middleware/auth.js';
 import { runSeed } from './store/seed.js';
 import { runMigrations } from './store/migrate.js';
@@ -53,8 +56,12 @@ app.use('/api/event-reviews', eventReviewsRouter);
 app.use('/api/events', eventsRouter);
 app.use('/api/calendar-shares', calendarSharesRouter);
 app.use('/api/sales-targets', salesTargetsRouter);
+app.use('/api/admin/api-keys', apiKeysRouter);
+app.use('/api/admin/trash', trashRouter);
 
-// 공개(토큰만으로 접근) — 외부 업체에게 특정 월 캘린더 공유용
+// 외부 클라이언트용 공개 API (API 키 인증) — 더 specific 한 prefix 를 먼저 등록
+app.use('/api/public/v1', publicApiRouter);
+// 공개(토큰만으로 접근) — 외부 업체에게 특정 월 캘린더 공유용 (구버전)
 app.use('/api/public', publicCalendarRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

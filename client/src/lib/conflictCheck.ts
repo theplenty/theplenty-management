@@ -1,4 +1,4 @@
-import type { Event, Hall } from '../types';
+import { isCancelledStatus, type Event, type Hall } from '../types';
 
 // 두 홀 이름이 물리적으로 겹치는지 — "Hall A+B"는 Hall A, Hall B를 포함한다.
 // 다른 홀끼리는 독립적이므로 이름 일치만 검사.
@@ -32,25 +32,21 @@ export type ConflictLevel = 'none' | 'soft' | 'hard';
 
 /**
  * 한 행사가 다른 행사들과 충돌하는지 판정.
- * - hard: DEF/TEN 끼리 같은 홀+시간에 겹침 (강한 경고)
- * - soft: INQ가 다른 행사와 겹침 (약한 경고, 등록 허용)
- * - LOS 상태는 충돌 검사에서 제외
+ * - hard: DEF 끼리 같은 홀+시간에 겹침 (강한 경고)
+ * - soft: 그 외 활성 상태가 다른 행사와 겹침 (약한 경고, 등록 허용)
+ * - 취소 계열(LOS / 상담취소 / 미팅취소) 은 충돌 검사에서 제외
  */
 export function detectConflict(target: Event, others: Event[]): { level: ConflictLevel; with: Event[] } {
-  if (target.status === 'LOS') return { level: 'none', with: [] };
+  if (isCancelledStatus(target.status)) return { level: 'none', with: [] };
 
   const conflicts = others.filter((o) => {
     if (o.id === target.id) return false;
-    if (o.status === 'LOS') return false;
+    if (isCancelledStatus(o.status)) return false;
     return hallsOverlap(target, o) && timeOverlaps(target, o);
   });
 
   if (conflicts.length === 0) return { level: 'none', with: [] };
 
-  const hard = conflicts.some(
-    (o) =>
-      (o.status === 'DEF' || o.status === 'TEN') &&
-      (target.status === 'DEF' || target.status === 'TEN')
-  );
+  const hard = conflicts.some((o) => o.status === 'DEF' && target.status === 'DEF');
   return { level: hard ? 'hard' : 'soft', with: conflicts };
 }

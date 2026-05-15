@@ -136,6 +136,7 @@ export default function ReviewTab({ eventId, canWrite, eventEndDatetime, eventSt
       const res = await api.put<{ review: Review }>(`/api/event-reviews/${eventId}`, draft);
       setReview(res.review);
       setEditing(false);
+      alert('저장되었습니다.');
     } catch (e) {
       alert('저장 실패');
       console.error(e);

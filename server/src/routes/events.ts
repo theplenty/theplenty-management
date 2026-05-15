@@ -1,7 +1,17 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { store, persistDoc, persistDelete, replaceMatching, deleteMatching } from '../store/mockStore.js';
+import {
+  store,
+  persistDoc,
+  persistDelete,
+  replaceMatching,
+  deleteMatching,
+  softDelete,
+  activeRows,
+  isDeleted,
+} from '../store/mockStore.js';
 import { requireActiveRole } from '../middleware/auth.js';
+import { logChange, computeDiff, getLogsForEntity } from '../store/changeLog.js';
 import type {
   Event,
   CustomerType,
@@ -12,6 +22,39 @@ import type {
   Invoice,
   Cancellation,
 } from '../types.js';
+
+// WEDDING 행사일 때, 연결된 WEDDING 고객의 첫 예식후보 담당지배인을 가져온다.
+// 없거나 MICE 행사면 [null, null].
+function deriveWeddingManager(eventId: string): { id: string; name: string } | null {
+  const links = store.event_customers.filter((l) => l.event_id === eventId);
+  for (const l of links) {
+    const c = store.wedding_customers.find((w) => w.id === l.customer_id);
+    if (!c) continue;
+    const inq = c.event_inquiries[0];
+    if (inq && (inq.assigned_manager_id || inq.assigned_manager_name)) {
+      return { id: inq.assigned_manager_id || '', name: inq.assigned_manager_name || '' };
+    }
+  }
+  return null;
+}
+
+const EVENT_FIELD_LABELS: Record<string, string> = {
+  event_type: '구분',
+  status: '상태',
+  usage_type: '이용시간',
+  halls: '사용홀',
+  start_datetime: '시작일시',
+  end_datetime: '종료일시',
+  event_name: '행사명',
+  seats: '좌석수',
+  food_gtd_contract: '식음 GTD(계약)',
+  food_exp_contract: '식음 EXP(계약)',
+  food_gtd_final: '식음 GTD(확정)',
+  food_exp_final: '식음 EXP(확정)',
+  memo: '메모',
+  // assigned_manager_id 는 PATCH 핸들러에서 diff 대상에서 제외 → _name 변경만 '담당자'로 노출
+  assigned_manager_name: '담당자',
+};
 
 const router = Router();
 router.use(requireActiveRole);
@@ -138,7 +181,7 @@ function upsertCancellation(eventId: string, data: Partial<Cancellation> | null 
 
 router.get('/', (req, res) => {
   const role = req.user!.role;
-  const list = store.events.filter((e) => canReadType(role, e.event_type));
+  const list = activeRows(store.events).filter((e) => canReadType(role, e.event_type));
   // 캘린더 표시 + 대시보드 통계용으로 식음 메뉴 + invoice를 함께 반환
   const enriched = list.map((e) => {
     const food_items = store.event_food_items.filter((f) => f.event_id === e.id);
@@ -181,12 +224,14 @@ router.post('/_bulk-upsert', (req, res) => {
       continue;
     }
 
+    // 휴지통 row는 매칭 대상에서 제외 — 새 row로 인입.
     let existing: Event | undefined;
-    if (r.id) existing = store.events.find((e) => e.id === r.id);
+    if (r.id) existing = store.events.find((e) => e.id === r.id && !e.deleted_at);
     if (!existing) {
       // 복합키: event_name + start_datetime + event_type
       existing = store.events.find(
         (e) =>
+          !e.deleted_at &&
           e.event_type === evType &&
           e.event_name.trim() === eventName &&
           e.start_datetime === r.start_datetime
@@ -210,6 +255,9 @@ router.post('/_bulk-upsert', (req, res) => {
       if (r.food_exp_contract !== undefined) existing.food_exp_contract = r.food_exp_contract;
       if (r.food_gtd_final !== undefined) existing.food_gtd_final = r.food_gtd_final;
       if (r.food_exp_final !== undefined) existing.food_exp_final = r.food_exp_final;
+      if (r.memo !== undefined) existing.memo = r.memo || '';
+      if (r.assigned_manager_id !== undefined) existing.assigned_manager_id = r.assigned_manager_id || '';
+      if (r.assigned_manager_name !== undefined) existing.assigned_manager_name = r.assigned_manager_name || '';
       existing.updated_at = now;
       persistDoc('events', existing.id);
       // food_items은 Excel에 있는 경우만 교체
@@ -240,6 +288,9 @@ router.post('/_bulk-upsert', (req, res) => {
         food_exp_contract: r.food_exp_contract ?? null,
         food_gtd_final: r.food_gtd_final ?? null,
         food_exp_final: r.food_exp_final ?? null,
+        memo: r.memo || '',
+        assigned_manager_id: r.assigned_manager_id || '',
+        assigned_manager_name: r.assigned_manager_name || '',
         created_at:
           (typeof r.created_at === 'string' && r.created_at.trim()) || now,
         updated_at: now,
@@ -283,9 +334,19 @@ router.post('/_clear-all', (req, res) => {
   res.json({ ok: true, deleted: before });
 });
 
+router.get('/:id/logs', (req, res) => {
+  const ev = store.events.find((e) => e.id === req.params.id);
+  if (!ev || isDeleted(ev)) return res.status(404).json({ error: 'not_found' });
+  if (!canReadType(req.user!.role, ev.event_type)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const logs = getLogsForEntity('event', req.params.id);
+  res.json({ logs });
+});
+
 router.get('/:id', (req, res) => {
   const ev = store.events.find((e) => e.id === req.params.id);
-  if (!ev) return res.status(404).json({ error: 'not_found' });
+  if (!ev || isDeleted(ev)) return res.status(404).json({ error: 'not_found' });
   if (!canReadType(req.user!.role, ev.event_type)) {
     return res.status(403).json({ error: 'forbidden' });
   }
@@ -335,6 +396,9 @@ router.post('/', (req, res) => {
     food_exp_contract: body.food_exp_contract ?? null,
     food_gtd_final: body.food_gtd_final ?? null,
     food_exp_final: body.food_exp_final ?? null,
+    memo: body.memo || '',
+    assigned_manager_id: body.assigned_manager_id || '',
+    assigned_manager_name: body.assigned_manager_name || '',
     created_at: overrideCreatedAt || now,
     updated_at: now,
   };
@@ -344,10 +408,26 @@ router.post('/', (req, res) => {
   replaceCustomerLinks(ev.id, body.customer_links);
   upsertInvoice(ev.id, body.invoice);
   upsertCancellation(ev.id, body.cancellation);
+  // WEDDING 행사면 연결된 고객의 담당지배인으로 덮어쓰기
+  if (ev.event_type === 'WEDDING') {
+    const mgr = deriveWeddingManager(ev.id);
+    if (mgr) {
+      ev.assigned_manager_id = mgr.id;
+      ev.assigned_manager_name = mgr.name;
+      persistDoc('events', ev.id);
+    }
+  }
   const food_items = store.event_food_items.filter((f) => f.event_id === ev.id);
   const customer_links = store.event_customers.filter((l) => l.event_id === ev.id);
   const invoice = store.invoices.find((i) => i.event_id === ev.id) || null;
   const cancellation = store.cancellations.find((c) => c.event_id === ev.id) || null;
+  logChange({
+    entity_type: 'event',
+    entity_id: ev.id,
+    action: 'create',
+    summary: `[${ev.event_name || '(이름 없음)'}] 신규 등록`,
+    user: req.user!,
+  });
   res.status(201).json({ event: ev, food_items, customer_links, invoice, cancellation });
 });
 
@@ -358,6 +438,8 @@ router.patch('/:id', (req, res) => {
     return res.status(403).json({ error: 'forbidden' });
   }
   const body = req.body as EventBody;
+  // diff 용으로 스칼라 필드만 스냅샷 (body 의 자식 컬렉션은 ev 에 없으므로 비교 노이즈 회피)
+  const before: Record<string, unknown> = { ...ev };
   Object.assign(ev, body, {
     id: ev.id,
     event_type: ev.event_type,
@@ -366,35 +448,61 @@ router.patch('/:id', (req, res) => {
     created_at: ev.created_at,
     updated_at: new Date().toISOString(),
   });
+  // assigned_manager_id 가 함께 바뀌면 _name 변경은 라벨 중복이라 무시 (서버 측 후처리)
   if (body.food_items !== undefined) replaceFoodItems(ev.id, body.food_items);
   if (body.customer_links !== undefined) replaceCustomerLinks(ev.id, body.customer_links);
   if (body.invoice !== undefined) upsertInvoice(ev.id, body.invoice);
   if (body.cancellation !== undefined) upsertCancellation(ev.id, body.cancellation);
   // 상태가 LOS가 아닌데 cancellation이 남아있으면 정리
   if (ev.status !== 'LOS') upsertCancellation(ev.id, null);
+  // WEDDING 행사면 연결된 고객의 담당지배인으로 덮어쓰기 (클라이언트가 보낸 값보다 우선)
+  if (ev.event_type === 'WEDDING') {
+    const mgr = deriveWeddingManager(ev.id);
+    if (mgr) {
+      ev.assigned_manager_id = mgr.id;
+      ev.assigned_manager_name = mgr.name;
+    }
+  }
   persistDoc('events', ev.id);
   const food_items = store.event_food_items.filter((f) => f.event_id === ev.id);
   const customer_links = store.event_customers.filter((l) => l.event_id === ev.id);
   const invoice = store.invoices.find((i) => i.event_id === ev.id) || null;
   const cancellation = store.cancellations.find((c) => c.event_id === ev.id) || null;
+  // 담당자 id 는 사용자에게 의미 없으므로 diff 대상에서 제외 — _name 변경만 '담당자'로 노출
+  const beforeForDiff = { ...before };
+  delete beforeForDiff.assigned_manager_id;
+  const afterForDiff = { ...(ev as unknown as Record<string, unknown>) };
+  delete afterForDiff.assigned_manager_id;
+  const diff = computeDiff(beforeForDiff, afterForDiff, EVENT_FIELD_LABELS);
+  if (diff.changes.length > 0) {
+    logChange({
+      entity_type: 'event',
+      entity_id: ev.id,
+      action: 'update',
+      summary: diff.summary,
+      changes: diff.changes,
+      user: req.user!,
+    });
+  }
   res.json({ event: ev, food_items, customer_links, invoice, cancellation });
 });
 
+// 행사 삭제 — 휴지통으로 이동 (soft delete).
+// 자식(food_items/links/invoice/files/cancellation/review)은 그대로 유지.
+// 부모가 deleted_at 갖는 한 list/detail에서 안 보임. 영구삭제 시에만 자식 cascade.
 router.delete('/:id', (req, res) => {
   if (req.user!.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
-  const idx = store.events.findIndex((e) => e.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'not_found' });
-  const eid = store.events[idx].id;
-  store.events.splice(idx, 1);
-  persistDelete('events', eid);
-  // cascade — 자식 컬렉션은 deleteMatching이 in-memory + Firestore 둘 다 정리
-  deleteMatching('event_food_items', (f) => f.event_id === eid);
-  deleteMatching('event_customers', (l) => l.event_id === eid);
-  deleteMatching('invoices', (i) => i.event_id === eid);
-  deleteMatching('event_files', (f) => f.event_id === eid);
-  deleteMatching('cancellations', (c) => c.event_id === eid);
-  deleteMatching('event_reviews', (r) => r.event_id === eid);
-  res.json({ ok: true });
+  const ev = store.events.find((e) => e.id === req.params.id);
+  if (!ev || isDeleted(ev)) return res.status(404).json({ error: 'not_found' });
+  softDelete('events', ev.id, { id: req.user!.id, name: req.user!.name });
+  logChange({
+    entity_type: 'event',
+    entity_id: ev.id,
+    action: 'delete',
+    summary: `[${ev.event_name || '(이름 없음)'}] 휴지통으로 이동`,
+    user: req.user!,
+  });
+  res.json({ ok: true, trashed: true });
 });
 
 export default router;

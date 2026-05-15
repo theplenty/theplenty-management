@@ -11,8 +11,11 @@ import Events from './pages/Events';
 import Reviews from './pages/Reviews';
 import Files from './pages/Files';
 import AdminUsers from './pages/AdminUsers';
+import AdminApiKeys from './pages/AdminApiKeys';
+import Trash from './pages/Trash';
 import Dashboard from './pages/Dashboard';
 import PublicCalendar from './pages/PublicCalendar';
+import ApiDocs from './pages/ApiDocs';
 
 export default function App() {
   return (
@@ -20,6 +23,8 @@ export default function App() {
       <Routes>
         {/* 공개 — 인증 없이 접근, 토큰 기반 외부 공유 */}
         <Route path="/public/calendar/:token" element={<PublicCalendar />} />
+        {/* 공개 — API 문서 (외부 개발자용) */}
+        <Route path="/api-docs" element={<ApiDocs />} />
 
         {/* 그 외에는 AuthProvider로 감싼 보호된 영역 */}
         <Route
@@ -94,6 +99,22 @@ function ProtectedRoutes() {
           element={
             <ProtectedRoute allow={['admin']}>
               <AdminUsers />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/api-keys"
+          element={
+            <ProtectedRoute allow={['admin']}>
+              <AdminApiKeys />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/trash"
+          element={
+            <ProtectedRoute allow={['admin']}>
+              <Trash />
             </ProtectedRoute>
           }
         />

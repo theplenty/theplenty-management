@@ -24,7 +24,15 @@ export interface User {
 
 export type CustomerType = 'MICE' | 'WEDDING';
 
-export type EventStatus = 'INQ' | 'TEN' | 'DEF' | 'LOS';
+// TEN 은 2026-05-14 정책 변경으로 제거 — migrate.ts 에서 INQ 로 자동 변환.
+export type EventStatus =
+  | 'INQ'
+  | 'DEF'
+  | 'LOS'
+  | '상담취소'
+  | '미팅'
+  | '미팅취소'
+  | '시식';
 
 // ===== MICE 고객 =====
 // 한 업체(고객)는 여러 문의 건을 가질 수 있음 — inquiries[]로 모델링.
@@ -48,9 +56,12 @@ export interface MiceInquiry {
   call_date: string | null;
   inquiry_event_date_text: string;
   event_memo: string;
-  // 작성자: id+name 둘 다 보관해 사용자관리에서 이름 변경되어도 추적 가능
+  // 작성자: 최초 등록자 (변경 불가, 추적용)
   created_by_id: string;
   created_by_name: string;
+  // 담당자: 실제 고객을 관리하는 세일즈 (작성자와 별개. 작성자 = 담당자였던 옛 레코드는 created_by_* 값으로 fallback)
+  assigned_manager_id: string;
+  assigned_manager_name: string;
   created_at: string;
 }
 
@@ -70,6 +81,10 @@ export interface MiceCustomer {
   last_modified_by_id?: string;
   last_modified_by_name?: string;
   last_modified_at?: string;
+  // 휴지통 (soft delete) — null/미설정이면 활성. 값이 있으면 휴지통에 들어감.
+  deleted_at?: string | null;
+  deleted_by_id?: string | null;
+  deleted_by_name?: string | null;
 }
 
 // ===== WEDDING 고객 =====
@@ -132,6 +147,10 @@ export interface WeddingCustomer {
   last_modified_by_id?: string;
   last_modified_by_name?: string;
   last_modified_at?: string;
+  // 휴지통 (soft delete)
+  deleted_at?: string | null;
+  deleted_by_id?: string | null;
+  deleted_by_name?: string | null;
 }
 
 export type Customer = MiceCustomer | WeddingCustomer;
@@ -141,12 +160,21 @@ export type Customer = MiceCustomer | WeddingCustomer;
 export type ChangeLogEntityType = 'mice_customer' | 'wedding_customer' | 'event';
 export type ChangeLogAction = 'create' | 'update' | 'delete';
 
+export interface ChangeLogChange {
+  field: string; // 사람이 읽는 라벨 (예: '행사일자')
+  before: string;
+  after: string;
+}
+
 export interface ChangeLog {
   id: string;
   entity_type: ChangeLogEntityType;
   entity_id: string;
   action: ChangeLogAction;
   summary: string; // 예: "진행상황 INQ → TEN, 담당자 변경"
+  // 구조화된 변경 내역 — 펼치기 UI에서 before/after 카드를 만들 때 사용.
+  // 옛 레코드는 없을 수 있어 optional.
+  changes?: ChangeLogChange[];
   changed_by_id: string;
   changed_by_name: string;
   changed_at: string;
@@ -222,8 +250,19 @@ export interface Event {
   food_exp_contract: number | null;
   food_gtd_final: number | null;
   food_exp_final: number | null;
+  // 내부 운영 참고용 메모 (캘린더 상세에서 입력/수정).
+  memo: string;
+  // 담당자.
+  // MICE: 드롭다운으로 직접 선택. WEDDING: 연결된 WEDDING 고객의 담당지배인에서 자동 채움.
+  assigned_manager_id: string;
+  assigned_manager_name: string;
   created_at: string;
   updated_at: string;
+  // 휴지통 (soft delete) — 행사 부모만 soft delete. 자식(food_items/invoice/files 등)은 그대로 남고,
+  // 부모가 deleted_at 갖는 한 모든 list/detail 쿼리에서 보이지 않음. 영구삭제 시에만 cascade.
+  deleted_at?: string | null;
+  deleted_by_id?: string | null;
+  deleted_by_name?: string | null;
 }
 
 export interface Invoice {
@@ -268,6 +307,27 @@ export interface SalesTarget {
   created_by: string;
   created_at: string;
   updated_at: string;
+}
+
+// 외부 클라이언트용 API 키.
+// 발급 시 token 은 한 번만 평문으로 노출 (admin 화면에서 복사). 이후 마스킹.
+// scope 별 캘린더 접근 권한:
+//   all     — 모든 행사 + 전체 디테일 (event_name, hall, 담당자 등)
+//   summary — 전체 행사가 보이지만 디테일 가려짐 (event_type/status/시간만, 행사명·고객명 미노출)
+//   wedding — WEDDING 행사만 + 전체 디테일
+//   mice    — MICE 행사만 + 전체 디테일
+export type ApiKeyScope = 'all' | 'summary' | 'wedding' | 'mice';
+
+export interface ApiKey {
+  id: string;
+  label: string;
+  token: string;
+  scope: ApiKeyScope;
+  created_by_id: string;
+  created_by_name: string;
+  created_at: string;
+  last_used_at: string | null;
+  active: boolean;
 }
 
 // 외부 업체에 특정 월 캘린더만 공유하기 위한 토큰

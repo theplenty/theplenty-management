@@ -26,8 +26,13 @@ router.get('/eligible', (_req, res) => {
 });
 
 // 전체 리뷰 — 대시보드 매출 집계용. 활성 사용자 누구나 조회 가능 (조회만).
+// 휴지통(삭제된 행사)의 리뷰는 제외.
 router.get('/_all', (_req, res) => {
-  res.json({ reviews: store.event_reviews });
+  const deletedEventIds = new Set(
+    store.events.filter((e) => e.deleted_at).map((e) => e.id)
+  );
+  const reviews = store.event_reviews.filter((r) => !deletedEventIds.has(r.event_id));
+  res.json({ reviews });
 });
 
 // 일괄 upsert — 엑셀 import 용. event_id로 매칭, 있으면 update / 없으면 create.

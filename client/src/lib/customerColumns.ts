@@ -214,7 +214,7 @@ export function groupMiceFlatRows(
     }
 
     const customerInquiries = inquiryMap.get(groupKey)!;
-    let inq = customerInquiries.get(inquiryKey);
+    let inq: MiceInquiry | undefined = customerInquiries.get(inquiryKey);
     if (!inq) {
       inq = {
         id: nanoid(),
@@ -225,6 +225,9 @@ export function groupMiceFlatRows(
         event_memo: r.event_memo || '',
         created_by_id: '',
         created_by_name: r.created_by_name || fallbackAuthorName,
+        // 담당자 미지정 시 서버가 작성자에서 fallback — Excel import 단계에서는 비워둔다
+        assigned_manager_id: '',
+        assigned_manager_name: '',
         created_at: new Date().toISOString(),
       };
       if (inq.created_by_name === fallbackAuthorName) {

@@ -29,7 +29,10 @@ import CancellationTab, {
 } from './CancellationTab';
 import FilesTab from './FilesTab';
 import ReviewTab from './ReviewTab';
+import ChangeLogPanel from './ChangeLogPanel';
+import AutoExpandTextarea from './AutoExpandTextarea';
 import { useAuth } from '../auth/AuthContext';
+import { useActiveUsers } from '../lib/useActiveUsers';
 import { canCreateEvent, canWriteReview, isAdmin } from '../auth/permissions';
 import clsx from 'clsx';
 
@@ -67,6 +70,9 @@ interface FormState {
   food_exp_contract: number | null;
   food_gtd_final: number | null;
   food_exp_final: number | null;
+  memo: string;
+  assigned_manager_id: string;
+  assigned_manager_name: string;
 }
 
 type TabKey = 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review';
@@ -111,6 +117,9 @@ function emptyForm(allowed: CustomerType[], initialDate: string | null): FormSta
     food_exp_contract: null,
     food_gtd_final: null,
     food_exp_final: null,
+    memo: '',
+    assigned_manager_id: '',
+    assigned_manager_name: '',
   };
 }
 
@@ -139,6 +148,12 @@ export default function EventFormModal({
 }: Props) {
   const { user } = useAuth();
   const admin = isAdmin(user?.role);
+  const activeUsers = useActiveUsers();
+  // MICE 행사 담당자 드롭다운 — 기업세일즈 + 관리자만 노출
+  const miceManagerOptions = useMemo(
+    () => activeUsers.filter((u) => u.role === 'sales_mice' || u.role === 'admin'),
+    [activeUsers]
+  );
   const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState<FormState>(() => emptyForm(allowedTypes, initialDate || null));
   const [foods, setFoods] = useState<DraftFoodItem[]>([]);
@@ -168,6 +183,9 @@ export default function EventFormModal({
         food_exp_contract: initialEvent.food_exp_contract,
         food_gtd_final: initialEvent.food_gtd_final,
         food_exp_final: initialEvent.food_exp_final,
+        memo: initialEvent.memo || '',
+        assigned_manager_id: initialEvent.assigned_manager_id || '',
+        assigned_manager_name: initialEvent.assigned_manager_name || '',
       });
       setFoods(
         (initialFoodItems || []).map((f) => ({
@@ -248,6 +266,9 @@ export default function EventFormModal({
       food_exp_contract: form.food_exp_contract,
       food_gtd_final: form.food_gtd_final,
       food_exp_final: form.food_exp_final,
+      memo: form.memo,
+      assigned_manager_id: form.assigned_manager_id,
+      assigned_manager_name: form.assigned_manager_name,
       created_at: '',
       updated_at: '',
     };
@@ -291,7 +312,7 @@ export default function EventFormModal({
       const names = conflict.with.map((c) => c.event_name).join(', ');
       if (
         !confirm(
-          `같은 홀/시간에 DEF 또는 TEN 행사와 겹칩니다:\n  ${names}\n그래도 저장하시겠습니까?`
+          `같은 홀/시간에 DEF 행사와 겹칩니다:\n  ${names}\n그래도 저장하시겠습니까?`
         )
       )
         return;
@@ -312,6 +333,10 @@ export default function EventFormModal({
         food_exp_contract: form.food_exp_contract,
         food_gtd_final: form.food_gtd_final,
         food_exp_final: form.food_exp_final,
+        memo: form.memo,
+        // WEDDING 은 서버에서 연결된 고객의 담당지배인으로 덮어쓰므로 그대로 전송해도 무해.
+        assigned_manager_id: form.assigned_manager_id,
+        assigned_manager_name: form.assigned_manager_name,
         food_items: foods.map((f) => ({
           id: f.id.startsWith('tmp_') ? undefined : f.id,
           menu_name: f.menu_name,
@@ -350,6 +375,7 @@ export default function EventFormModal({
       }
       onSaved({ ...res.event, food_items: res.food_items }, res.customer_links);
       onClose();
+      alert('저장되었습니다.');
     } catch (e) {
       alert('저장 실패');
       console.error(e);
@@ -457,6 +483,7 @@ export default function EventFormModal({
           toggleHall={toggleHall}
           initialEvent={initialEvent || null}
           authorName={user?.name || ''}
+          managerOptions={miceManagerOptions}
         />
       )}
       {tab === 'customer' && (
@@ -484,6 +511,9 @@ export default function EventFormModal({
           eventStatus={form.status}
         />
       )}
+
+      {/* 수정 이력 — 모든 탭에서 모달 하단에 노출. 모달 닫고 다시 열 때 fresh fetch. */}
+      <ChangeLogPanel entityType="event" entityId={initialEvent?.id || null} />
     </Modal>
   );
 }
@@ -499,6 +529,7 @@ interface BasicProps {
   toggleHall: (h: Hall) => void;
   initialEvent: Event | null;
   authorName: string;
+  managerOptions: Array<{ id: string; name: string }>;
 }
 
 function fmtDateTime(iso: string | null | undefined): string {
@@ -520,11 +551,39 @@ function BasicInfoTab({
   toggleHall,
   initialEvent,
   authorName,
+  managerOptions,
 }: BasicProps) {
+  const isWedding = form.event_type === 'WEDDING';
+
+  // 이용시간 변경 시 — AD 선택하면 09:00~18:00 으로 시간만 자동 세팅 (날짜는 유지).
+  function changeUsageType(next: UsageType | '') {
+    if (next === 'AD' && form.start_datetime && form.end_datetime) {
+      const startDate = form.start_datetime.slice(0, 10);
+      const endDate = form.end_datetime.slice(0, 10) || startDate;
+      setForm({
+        ...form,
+        usage_type: next,
+        start_datetime: `${startDate}T09:00`,
+        end_datetime: `${endDate}T18:00`,
+      });
+      return;
+    }
+    setForm({ ...form, usage_type: next });
+  }
+
   return (
     <>
       <Section title="A. 행사 기본정보">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 메모 — 가장 먼저 확인할 수 있도록 상단 배치. 1줄에서 시작해 입력 길이에 따라 확장. */}
+          <Field label="메모 (내부 운영 참고용)" className="md:col-span-2">
+            <AutoExpandTextarea
+              className="input"
+              value={form.memo}
+              onChange={(e) => setForm({ ...form, memo: e.target.value })}
+              placeholder="여러 줄 입력 가능 — 내부 참고용 메모"
+            />
+          </Field>
           <Field label="구분" required>
             <select
               className="input"
@@ -556,9 +615,7 @@ function BasicInfoTab({
             <select
               className="input"
               value={form.usage_type}
-              onChange={(e) =>
-                setForm({ ...form, usage_type: (e.target.value as UsageType) || '' })
-              }
+              onChange={(e) => changeUsageType((e.target.value as UsageType) || '')}
             >
               <option value="">선택 안 함</option>
               {USAGE_TYPE_OPTIONS.map((u) => (
@@ -638,6 +695,54 @@ function BasicInfoTab({
               readOnly
               tabIndex={-1}
             />
+          </Field>
+          <Field
+            label={isWedding ? '담당자 (WEDDING 고객 연동)' : '담당자'}
+            className="md:col-span-2"
+          >
+            {isWedding ? (
+              <input
+                className="input bg-gray-50"
+                value={form.assigned_manager_name || '— 업체정보 탭에서 WEDDING 고객을 연결하면 자동 입력됩니다'}
+                readOnly
+                tabIndex={-1}
+              />
+            ) : (
+              <select
+                className="input"
+                value={form.assigned_manager_id || ''}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) {
+                    setForm({ ...form, assigned_manager_id: '', assigned_manager_name: '' });
+                    return;
+                  }
+                  const u = managerOptions.find((x) => x.id === id);
+                  if (u) {
+                    setForm({
+                      ...form,
+                      assigned_manager_id: u.id,
+                      assigned_manager_name: u.name,
+                    });
+                  }
+                }}
+              >
+                <option value="">선택...</option>
+                {/* 현재 담당자가 목록에 없으면 fallback 옵션 */}
+                {form.assigned_manager_id &&
+                  !managerOptions.find((x) => x.id === form.assigned_manager_id) &&
+                  form.assigned_manager_name && (
+                    <option value={form.assigned_manager_id}>
+                      {form.assigned_manager_name} (현재)
+                    </option>
+                  )}
+                {managerOptions.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </Field>
         </div>
       </Section>

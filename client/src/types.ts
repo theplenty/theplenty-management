@@ -24,7 +24,15 @@ export interface User {
 }
 
 export type CustomerType = 'MICE' | 'WEDDING';
-export type EventStatus = 'INQ' | 'TEN' | 'DEF' | 'LOS';
+// TEN 은 2026-05-14 정책 변경으로 제거 — 기존 TEN 데이터는 INQ 로 자동 마이그레이션.
+export type EventStatus =
+  | 'INQ'
+  | 'DEF'
+  | 'LOS'
+  | '상담취소'
+  | '미팅'
+  | '미팅취소'
+  | '시식';
 
 // ===== MICE 고객 (multi-inquiry) =====
 export type MiceCategory = '기업' | '학회' | '공공기관' | '학교' | '병원' | '대행사' | '기타';
@@ -44,8 +52,12 @@ export interface MiceInquiry {
   call_date: string | null;
   inquiry_event_date_text: string;
   event_memo: string;
+  // 작성자: 최초 등록자 (변경 불가)
   created_by_id: string;
   created_by_name: string;
+  // 담당자: 실제 고객을 관리하는 세일즈 (작성자와 별개)
+  assigned_manager_id: string;
+  assigned_manager_name: string;
   created_at: string;
 }
 
@@ -64,6 +76,10 @@ export interface MiceCustomer {
   last_modified_by_id?: string;
   last_modified_by_name?: string;
   last_modified_at?: string;
+  // 휴지통 (soft delete)
+  deleted_at?: string | null;
+  deleted_by_id?: string | null;
+  deleted_by_name?: string | null;
 }
 
 // ===== WEDDING 고객 =====
@@ -121,11 +137,44 @@ export interface WeddingCustomer {
   last_modified_by_id?: string;
   last_modified_by_name?: string;
   last_modified_at?: string;
+  // 휴지통 (soft delete)
+  deleted_at?: string | null;
+  deleted_by_id?: string | null;
+  deleted_by_name?: string | null;
 }
 
 // ===== 변경 이력 =====
 export type ChangeLogEntityType = 'mice_customer' | 'wedding_customer' | 'event';
 export type ChangeLogAction = 'create' | 'update' | 'delete';
+
+// ===== 외부 클라이언트용 API 키 =====
+export type ApiKeyScope = 'all' | 'summary' | 'wedding' | 'mice';
+
+export const API_KEY_SCOPE_DESC: Record<ApiKeyScope, string> = {
+  all: '전체 — 모든 행사 + 전체 디테일',
+  summary: '종류만 — 행사 종류·시간·홀만 (행사명/고객 미노출)',
+  wedding: 'WEDDING 만 + 전체 디테일',
+  mice: 'MICE 만 + 전체 디테일',
+};
+
+// 관리자 화면용 — 평문 token 은 발급 직후 한 번만 노출되므로 별도 필드.
+export interface ApiKeySafe {
+  id: string;
+  label: string;
+  masked_token: string;
+  scope: ApiKeyScope;
+  created_by_id: string;
+  created_by_name: string;
+  created_at: string;
+  last_used_at: string | null;
+  active: boolean;
+}
+
+export interface ChangeLogChange {
+  field: string;
+  before: string;
+  after: string;
+}
 
 export interface ChangeLog {
   id: string;
@@ -133,6 +182,8 @@ export interface ChangeLog {
   entity_id: string;
   action: ChangeLogAction;
   summary: string;
+  // 옛 레코드는 없을 수 있음 — 펼치기 UI에서 fallback 처리
+  changes?: ChangeLogChange[];
   changed_by_id: string;
   changed_by_name: string;
   changed_at: string;
@@ -158,10 +209,26 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 export const STATUS_DESC: Record<EventStatus, string> = {
   INQ: 'INQ — 문의/견적',
-  TEN: 'TEN — 계약 발송',
   DEF: 'DEF — 확정',
   LOS: 'LOS — 취소',
+  상담취소: '상담취소',
+  미팅: '미팅',
+  미팅취소: '미팅취소',
+  시식: '시식',
 };
+
+// 상담취소·미팅취소 — LOS 와 동일하게 줄긋기 + 흐림 처리.
+export const CANCELLED_STATUSES: EventStatus[] = ['LOS', '상담취소', '미팅취소'];
+export function isCancelledStatus(s: EventStatus): boolean {
+  return CANCELLED_STATUSES.includes(s);
+}
+
+// WEDDING 고객 진행상황 중 캘린더에 "취소" 로 반영되어야 하는 상태.
+// 상담취소 = 상담 자체 취소, LOS = 딜 자체 lost (역시 상담 진행 안 됨).
+export const CANCELLED_WEDDING_PROGRESS: WeddingProgressStatus[] = ['상담취소', 'LOS'];
+export function isCancelledWeddingProgress(s: WeddingProgressStatus): boolean {
+  return CANCELLED_WEDDING_PROGRESS.includes(s);
+}
 
 // MICE 문의 진행상황 (단순문의 추가)
 export const MICE_INQUIRY_STATUS_OPTIONS: MiceInquiryStatus[] = [
@@ -208,9 +275,12 @@ export const WEDDING_SOURCE_DETAIL_OPTIONS: WeddingSourceDetail[] = [
 
 export const STATUS_BG: Record<EventStatus, string> = {
   INQ: 'bg-status-inq text-white',
-  TEN: 'bg-status-ten text-gray-900',
   DEF: 'bg-status-def text-white',
   LOS: 'bg-status-los text-white',
+  상담취소: 'bg-status-los text-white',
+  미팅: 'bg-blue-500 text-white',
+  미팅취소: 'bg-status-los text-white',
+  시식: 'bg-orange-500 text-white',
 };
 
 export const MICE_CATEGORIES: MiceCategory[] = [
@@ -223,7 +293,15 @@ export const MICE_CATEGORIES: MiceCategory[] = [
   '기타',
 ];
 
-export const EVENT_STATUS_OPTIONS: EventStatus[] = ['INQ', 'TEN', 'DEF', 'LOS'];
+export const EVENT_STATUS_OPTIONS: EventStatus[] = [
+  'INQ',
+  'DEF',
+  'LOS',
+  '상담취소',
+  '미팅',
+  '미팅취소',
+  '시식',
+];
 
 // ===== 행사 도메인 =====
 
@@ -322,9 +400,37 @@ export interface Event {
   food_exp_contract: number | null;
   food_gtd_final: number | null;
   food_exp_final: number | null;
+  // 내부 운영 참고용 메모
+  memo: string;
+  // 담당자 — MICE: 직접 선택 / WEDDING: 연결된 고객에서 자동 채움
+  assigned_manager_id: string;
+  assigned_manager_name: string;
   created_at: string;
   updated_at: string;
+  // 휴지통 (soft delete) — 부모 행사만 soft delete. 자식은 그대로 남음.
+  deleted_at?: string | null;
+  deleted_by_id?: string | null;
+  deleted_by_name?: string | null;
 }
+
+// ===== 휴지통 =====
+export type TrashType = 'wedding' | 'mice' | 'event';
+
+export interface TrashItem {
+  type: TrashType;
+  id: string;
+  label: string;
+  detail: string;
+  deleted_at: string;
+  deleted_by_id: string | null;
+  deleted_by_name: string | null;
+}
+
+export const TRASH_TYPE_LABEL: Record<TrashType, string> = {
+  wedding: 'WEDDING 고객',
+  mice: 'MICE 고객',
+  event: '행사',
+};
 
 // 캘린더 목록 응답에 포함되는 확장 타입 (invoice는 대시보드 매출 집계용)
 export interface EventWithFood extends Event {
@@ -395,9 +501,12 @@ export interface Cancellation {
 
 export const STATUS_HEX: Record<EventStatus, string> = {
   INQ: '#9ca3af', // gray
-  TEN: '#facc15', // yellow
   DEF: '#22c55e', // green
   LOS: '#ef4444', // red
+  상담취소: '#ef4444', // LOS 동일 (취소표시는 클래스로 strikethrough)
+  미팅: '#3b82f6', // blue
+  미팅취소: '#ef4444', // LOS 동일
+  시식: '#f97316', // orange
 };
 
 // ===== 첨부파일 =====

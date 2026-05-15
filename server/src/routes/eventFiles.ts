@@ -172,9 +172,15 @@ router.delete('/:eventId/files/:fileId', async (req, res) => {
   res.json({ ok: true });
 });
 
-// 전체 첨부파일 목록 (관리 페이지용)
+// 전체 첨부파일 목록 (관리 페이지용) — 휴지통(삭제된 행사)의 파일은 제외.
 router.get('/_all', (_req, res) => {
-  res.json({ files: store.event_files.map(toClientFile) });
+  const deletedEventIds = new Set(
+    store.events.filter((e) => e.deleted_at).map((e) => e.id)
+  );
+  const files = store.event_files
+    .filter((f) => !deletedEventIds.has(f.event_id))
+    .map(toClientFile);
+  res.json({ files });
 });
 
 export default router;

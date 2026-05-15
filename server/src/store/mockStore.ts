@@ -15,6 +15,7 @@ import type {
   CalendarShare,
   ChangeLog,
   SalesTarget,
+  ApiKey,
 } from '../types.js';
 
 // 데이터 파일은 서버 루트의 data/ 폴더에 JSON으로 저장한다.
@@ -42,6 +43,7 @@ interface DB {
   calendar_shares: CalendarShare[];
   change_logs: ChangeLog[];
   sales_targets: SalesTarget[];
+  api_keys: ApiKey[];
 }
 
 const COLLECTIONS: (keyof DB)[] = [
@@ -58,6 +60,7 @@ const COLLECTIONS: (keyof DB)[] = [
   'calendar_shares',
   'change_logs',
   'sales_targets',
+  'api_keys',
 ];
 
 function safeReadJSON<T>(file: string): T | null {
@@ -164,6 +167,7 @@ const db: DB = {
   calendar_shares: loadCollection('calendar_shares'),
   change_logs: loadCollection('change_logs'),
   sales_targets: loadCollection('sales_targets'),
+  api_keys: loadCollection('api_keys'),
 };
 
 export function getCollection<K extends keyof DB>(name: K): DB[K] {
@@ -343,6 +347,84 @@ export function replaceMatching<K extends keyof DB>(
       void fsUpsert(coll, id);
     }
   }
+}
+
+// ===================================================================
+// 휴지통 (soft delete) — wedding_customers / mice_customers / events
+// ===================================================================
+// 정책:
+//   - softDelete: deleted_at/by 필드를 채우고 persist. 실제 row는 유지.
+//   - restoreSoft: 같은 필드를 null로 비우고 persist.
+//   - purgeHard: 실제 row 삭제 + (event의 경우) 자식 cascade.
+//   - 일반 list/get은 별도 헬퍼(filterActive) 또는 라우트에서 deleted_at 체크.
+export interface SoftDeleteUser {
+  id: string;
+  name: string;
+}
+
+const SOFT_DELETE_COLLECTIONS = ['mice_customers', 'wedding_customers', 'events'] as const;
+export type SoftDeleteCollection = (typeof SOFT_DELETE_COLLECTIONS)[number];
+
+export function softDelete<K extends SoftDeleteCollection>(coll: K, id: string, user: SoftDeleteUser): boolean {
+  const arr = db[coll] as unknown as Array<{
+    id: string;
+    deleted_at?: string | null;
+    deleted_by_id?: string | null;
+    deleted_by_name?: string | null;
+  }>;
+  const item = arr.find((d) => d.id === id);
+  if (!item) return false;
+  item.deleted_at = new Date().toISOString();
+  item.deleted_by_id = user.id;
+  item.deleted_by_name = user.name;
+  scheduleJsonWrite(coll);
+  void fsUpsert(coll, id);
+  return true;
+}
+
+export function restoreSoft<K extends SoftDeleteCollection>(coll: K, id: string): boolean {
+  const arr = db[coll] as unknown as Array<{
+    id: string;
+    deleted_at?: string | null;
+    deleted_by_id?: string | null;
+    deleted_by_name?: string | null;
+  }>;
+  const item = arr.find((d) => d.id === id);
+  if (!item) return false;
+  item.deleted_at = null;
+  item.deleted_by_id = null;
+  item.deleted_by_name = null;
+  scheduleJsonWrite(coll);
+  void fsUpsert(coll, id);
+  return true;
+}
+
+// 실제 row 삭제. events 의 경우 자식 cascade.
+export function purgeHard<K extends SoftDeleteCollection>(coll: K, id: string): boolean {
+  const arr = db[coll] as unknown as Array<{ id: string }>;
+  const idx = arr.findIndex((d) => d.id === id);
+  if (idx === -1) return false;
+  arr.splice(idx, 1);
+  scheduleJsonWrite(coll);
+  void fsDelete(coll, id);
+  if (coll === 'events') {
+    deleteMatching('event_food_items', (f) => f.event_id === id);
+    deleteMatching('event_customers', (l) => l.event_id === id);
+    deleteMatching('invoices', (i) => i.event_id === id);
+    deleteMatching('event_files', (f) => f.event_id === id);
+    deleteMatching('cancellations', (c) => c.event_id === id);
+    deleteMatching('event_reviews', (r) => r.event_id === id);
+  }
+  return true;
+}
+
+// 활성 row만 반환하는 헬퍼 — 라우트 GET에서 사용.
+export function activeRows<T extends { deleted_at?: string | null }>(rows: readonly T[]): T[] {
+  return rows.filter((r) => !r.deleted_at);
+}
+
+export function isDeleted<T extends { deleted_at?: string | null }>(row: T | undefined | null): boolean {
+  return !!(row && row.deleted_at);
 }
 
 // "특정 조건의 docs 모두 삭제" 패턴 (cascade delete 시)

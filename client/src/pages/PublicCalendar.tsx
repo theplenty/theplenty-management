@@ -64,7 +64,7 @@ export default function PublicCalendar() {
       end: ev.end_datetime,
       backgroundColor: STATUS_HEX[ev.status],
       borderColor: STATUS_HEX[ev.status],
-      textColor: ev.status === 'TEN' ? '#713f12' : '#ffffff',
+      textColor: ev.status === 'LOS' ? '#7f1d1d' : '#ffffff',
     }));
   }, [events]);
 
@@ -110,10 +110,10 @@ export default function PublicCalendar() {
               </h1>
               {share.label && <div className="text-xs text-gray-400 mt-0.5">{share.label}</div>}
             </div>
-            <div className="flex gap-2 text-xs">
+            <div className="flex gap-2 text-xs flex-wrap">
               <Legend label="INQ" color={STATUS_HEX.INQ} />
-              <Legend label="TEN" color={STATUS_HEX.TEN} />
               <Legend label="DEF" color={STATUS_HEX.DEF} />
+              <Legend label="LOS" color={STATUS_HEX.LOS} />
             </div>
           </div>
 

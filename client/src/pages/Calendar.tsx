@@ -12,9 +12,13 @@ import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { canCreateEvent, canShareCalendar, canSeeWedding } from '../auth/permissions';
 import { detectConflict } from '../lib/conflictCheck';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
+import { buildSearchEntry, fuzzyMatchEntry, type SearchEntry } from '../lib/koreanSearch';
 import {
   EVENT_STATUS_OPTIONS,
   STATUS_HEX,
+  isCancelledStatus,
+  isCancelledWeddingProgress,
   type Cancellation,
   type CustomerType,
   type Event,
@@ -27,12 +31,14 @@ import {
 } from '../types';
 import EventFormModal from '../components/EventFormModal';
 import ShareCalendarModal from '../components/ShareCalendarModal';
+import Modal from '../components/Modal';
 
 interface FetchResp {
   events: EventWithFood[];
 }
 
 const CONSULT_HEX = '#a855f7'; // 상담 — 보라
+const CONSULT_CANCELLED_HEX = '#ef4444'; // 상담취소·LOS — 빨강 (이벤트 취소 색과 동일)
 
 function toFcConsultation(c: WeddingCustomer): EventInput {
   const dt = c.desired_consultation_date!;
@@ -40,9 +46,12 @@ function toFcConsultation(c: WeddingCustomer): EventInput {
   const start = dt;
   const baseDate = hasTime ? new Date(dt) : new Date(`${dt}T00:00:00`);
   const end = hasTime ? new Date(baseDate.getTime() + 60 * 60 * 1000).toISOString() : undefined;
+  const cancelled = isCancelledWeddingProgress(c.progress_status);
+  const labelPrefix = cancelled ? c.progress_status : '상담'; // '상담취소' 또는 'LOS' 로 표기
+  const color = cancelled ? CONSULT_CANCELLED_HEX : CONSULT_HEX;
   return {
     id: `consult-${c.id}`,
-    title: `상담 — ${c.wedding_event_name || c.groom_name || c.bride_name || '(이름없음)'}`,
+    title: `${labelPrefix} — ${c.wedding_event_name || c.groom_name || c.bride_name || '(이름없음)'}`,
     start,
     end,
     allDay: !hasTime,
@@ -50,10 +59,15 @@ function toFcConsultation(c: WeddingCustomer): EventInput {
     // 시간 없는 상담은 기본적으로 색 블록(block)으로 표시되어 1월/2월 모양이 달라짐.
     // 모든 상담을 동일한 dot 스타일로 통일하기 위해 강제 list-item.
     display: 'list-item',
-    backgroundColor: CONSULT_HEX,
-    borderColor: CONSULT_HEX,
+    backgroundColor: color,
+    borderColor: color,
     textColor: '#ffffff',
-    classNames: ['fc-event-consultation'],
+    classNames: [
+      'fc-event-consultation',
+      // 취소 계열은 이벤트와 동일하게 줄긋기 + 흐림 처리.
+      cancelled ? 'fc-event-cancelled' : '',
+      cancelled ? 'opacity-40' : '',
+    ].filter(Boolean) as string[],
     extendedProps: {
       consultation: c,
     },
@@ -62,7 +76,8 @@ function toFcConsultation(c: WeddingCustomer): EventInput {
 
 function toFcEvent(ev: EventWithFood, faded: boolean, hardConflict: boolean): EventInput {
   const baseColor = STATUS_HEX[ev.status];
-  const textColor = ev.status === 'LOS' ? '#7f1d1d' : ev.status === 'TEN' ? '#713f12' : '#ffffff';
+  const textColor = ev.status === 'LOS' ? '#7f1d1d' : '#ffffff';
+  const cancelled = isCancelledStatus(ev.status);
   return {
     id: ev.id,
     title: ev.event_name || '(이름 없음)',
@@ -73,7 +88,8 @@ function toFcEvent(ev: EventWithFood, faded: boolean, hardConflict: boolean): Ev
     textColor,
     classNames: [
       faded ? 'opacity-40' : '',
-      ev.status === 'LOS' ? 'fc-event-los' : '',
+      // 취소 계열은 모두 streak through + 반투명. (LOS / 상담취소 / 미팅취소)
+      cancelled ? 'fc-event-cancelled' : '',
       hardConflict ? 'fc-event-conflict' : '',
     ].filter(Boolean) as string[],
     extendedProps: {
@@ -94,15 +110,16 @@ export default function Calendar() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 4가지 상태 각각에 대한 표시 여부 + 상담
-  const [statusVisible, setStatusVisible] = useState<Record<EventStatus, boolean>>({
-    INQ: true,
-    TEN: true,
-    DEF: true,
-    LOS: true,
+  // 상태별 표시 여부 (체크박스). 모든 상태 기본 ON.
+  const [statusVisible, setStatusVisible] = useState<Record<EventStatus, boolean>>(() => {
+    const init = {} as Record<EventStatus, boolean>;
+    for (const s of EVENT_STATUS_OPTIONS) init[s] = true;
+    return init;
   });
   const [showConsultations, setShowConsultations] = useState(true);
   const [filterType, setFilterType] = useState<'ALL' | 'MICE' | 'WEDDING'>('ALL');
+  const [query, setQuery] = useState('');
+  const debouncedQuery = useDebouncedValue(query, 200);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
@@ -113,6 +130,7 @@ export default function Calendar() {
   const [draftDate, setDraftDate] = useState<string | null>(null);
 
   const [shareOpen, setShareOpen] = useState(false);
+  const [conflictListOpen, setConflictListOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -151,23 +169,80 @@ export default function Calendar() {
     return [];
   }, [user]);
 
+  // 검색 인덱스 — 이벤트별 (행사명/상태/구분/홀/메모/담당자), 상담은 별도 인덱스
+  const eventSearchIndex = useMemo(() => {
+    const map = new Map<string, SearchEntry>();
+    for (const e of events) {
+      map.set(
+        e.id,
+        buildSearchEntry([
+          e.event_name,
+          e.event_type,
+          e.status,
+          e.assigned_manager_name,
+          e.memo,
+          ...e.halls,
+        ])
+      );
+    }
+    return map;
+  }, [events]);
+
+  const consultSearchIndex = useMemo(() => {
+    const map = new Map<string, SearchEntry>();
+    for (const c of weddingCustomers) {
+      map.set(
+        c.id,
+        buildSearchEntry([
+          c.wedding_event_name,
+          c.groom_name,
+          c.bride_name,
+          c.groom_phone,
+          c.bride_phone,
+          '상담',
+        ])
+      );
+    }
+    return map;
+  }, [weddingCustomers]);
+
   const fcEvents: EventInput[] = useMemo(() => {
+    const q = debouncedQuery.trim();
     const filtered = events.filter((e) => {
       if (filterType !== 'ALL' && e.event_type !== filterType) return false;
       if (!statusVisible[e.status]) return false;
+      if (q) {
+        const entry = eventSearchIndex.get(e.id);
+        if (!entry || !fuzzyMatchEntry(entry, q)) return false;
+      }
       return true;
     });
     const out = filtered.map((ev) => {
       const conflict = detectConflict(ev as Event, filtered as Event[]);
-      return toFcEvent(ev, ev.status === 'LOS', conflict.level === 'hard');
+      // 취소 계열은 모두 faded (LOS / 상담취소 / 미팅취소)
+      return toFcEvent(ev, isCancelledStatus(ev.status), conflict.level === 'hard');
     });
     if (showConsultations && (filterType === 'ALL' || filterType === 'WEDDING')) {
       for (const c of weddingCustomers) {
-        if (c.desired_consultation_date) out.push(toFcConsultation(c));
+        if (!c.desired_consultation_date) continue;
+        if (q) {
+          const entry = consultSearchIndex.get(c.id);
+          if (!entry || !fuzzyMatchEntry(entry, q)) continue;
+        }
+        out.push(toFcConsultation(c));
       }
     }
     return out;
-  }, [events, weddingCustomers, filterType, statusVisible, showConsultations]);
+  }, [
+    events,
+    weddingCustomers,
+    filterType,
+    statusVisible,
+    showConsultations,
+    debouncedQuery,
+    eventSearchIndex,
+    consultSearchIndex,
+  ]);
 
   function handleSelect(info: DateSelectArg) {
     if (!canCreateEvent(user?.role)) {
@@ -232,20 +307,59 @@ export default function Calendar() {
     });
   }
 
-  const conflictCount = useMemo(() => {
+  // 강한 충돌 쌍 목록 — 중복 제거 (A↔B = B↔A)
+  const hardConflictPairs = useMemo(() => {
     const arr = events as Event[];
-    let c = 0;
+    const byId = new Map(events.map((e) => [e.id, e]));
+    const seen = new Set<string>();
+    const pairs: Array<[EventWithFood, EventWithFood]> = [];
     for (const ev of arr) {
       const r = detectConflict(ev, arr);
-      if (r.level === 'hard') c++;
+      if (r.level !== 'hard') continue;
+      for (const other of r.with) {
+        const hardWithOther = ev.status === 'DEF' && other.status === 'DEF';
+        if (!hardWithOther) continue;
+        const k = [ev.id, other.id].sort().join('|');
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const a = byId.get(ev.id);
+        const b = byId.get(other.id);
+        if (a && b) pairs.push([a, b]);
+      }
     }
-    return Math.floor(c / 2);
+    pairs.sort((x, y) => x[0].start_datetime.localeCompare(y[0].start_datetime));
+    return pairs;
   }, [events]);
+
+  async function openEventFromList(evId: string) {
+    const target = events.find((e) => e.id === evId);
+    if (!target) return;
+    setEditingEvent(target);
+    setEditingFoods(target.food_items || []);
+    setDraftDate(null);
+    try {
+      const res = await api.get<{
+        customer_links: EventCustomerLink[];
+        invoice: Invoice | null;
+        cancellation: Cancellation | null;
+      }>(`/api/events/${target.id}`);
+      setEditingLinks(res.customer_links || []);
+      setEditingInvoice(res.invoice);
+      setEditingCancellation(res.cancellation);
+    } catch (e) {
+      console.error(e);
+      setEditingLinks([]);
+      setEditingInvoice(null);
+      setEditingCancellation(null);
+    }
+    setConflictListOpen(false);
+    setModalOpen(true);
+  }
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">행사정보 캘린더</h1>
+        <h1 className="text-xl md:text-2xl font-bold">행사정보 캘린더</h1>
         <div className="flex gap-2">
           {canShareCalendar(user?.role) && (
             <button onClick={() => setShareOpen(true)} className="btn-secondary">
@@ -286,7 +400,7 @@ export default function Calendar() {
               className="inline-block w-3 h-3 rounded-sm"
               style={{ background: STATUS_HEX[s] }}
             />
-            <span className={s === 'LOS' ? 'line-through text-gray-500' : ''}>{s}</span>
+            <span className={isCancelledStatus(s) ? 'line-through text-gray-500' : ''}>{s}</span>
           </label>
         ))}
         <label className="flex items-center gap-1.5 cursor-pointer select-none">
@@ -314,10 +428,23 @@ export default function Calendar() {
           <option value="WEDDING">WEDDING만</option>
         </select>
 
-        {conflictCount > 0 && (
-          <span className="ml-auto text-red-600">
-            ⚠️ 강한 충돌 {conflictCount}쌍 감지됨 (DEF·TEN 같은 홀/시간 겹침)
-          </span>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="검색: 행사명 / 담당자 / 구분 / 메모 / 홀 (초성 'ㅇ' 검색 가능)"
+          className="input !py-1 !text-xs flex-1 min-w-[12rem]"
+        />
+
+        {hardConflictPairs.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setConflictListOpen(true)}
+            className="ml-auto text-red-600 underline decoration-dotted hover:text-red-700 hover:decoration-solid focus:outline-none"
+            title="클릭하여 충돌 목록 보기"
+          >
+            ⚠️ 강한 충돌 {hardConflictPairs.length}쌍 감지됨 (DEF 같은 홀/시간 겹침)
+          </button>
         )}
       </div>
 
@@ -327,7 +454,7 @@ export default function Calendar() {
         </div>
       )}
 
-      <div className="bg-white border rounded-lg p-4 shadow-sm">
+      <div className="bg-white border rounded-lg p-2 md:p-4 shadow-sm overflow-x-auto">
         <FullCalendar
           ref={fcRef}
           plugins={[
@@ -337,7 +464,7 @@ export default function Calendar() {
             listPlugin,
             interactionPlugin,
           ]}
-          initialView="multiMonthYear"
+          initialView="dayGridMonth"
           locale={koLocale}
           headerToolbar={{
             left: 'prev,next today',
@@ -393,8 +520,66 @@ export default function Calendar() {
       />
 
       <ShareCalendarModal open={shareOpen} onClose={() => setShareOpen(false)} />
+
+      <Modal
+        open={conflictListOpen}
+        onClose={() => setConflictListOpen(false)}
+        title={`강한 충돌 ${hardConflictPairs.length}쌍 — DEF·TEN 같은 홀/시간 겹침`}
+        widthClass="max-w-4xl"
+      >
+        {hardConflictPairs.length === 0 ? (
+          <div className="text-sm text-gray-500">현재 충돌이 없습니다.</div>
+        ) : (
+          <ul className="divide-y">
+            {hardConflictPairs.map(([a, b], i) => (
+              <li key={`${a.id}|${b.id}`} className="py-3 text-sm">
+                <div className="text-xs text-gray-500 mb-1">#{i + 1}</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <ConflictRow ev={a} onOpen={() => openEventFromList(a.id)} />
+                  <ConflictRow ev={b} onOpen={() => openEventFromList(b.id)} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
     </div>
   );
+}
+
+function ConflictRow({ ev, onOpen }: { ev: EventWithFood; onOpen: () => void }) {
+  const halls = ev.halls.join(' / ') || '홀 미지정';
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="text-left w-full border rounded p-2 hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-300"
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span
+          className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold text-white"
+          style={{ background: STATUS_HEX[ev.status] }}
+        >
+          {ev.status}
+        </span>
+        <span className="font-medium truncate">{ev.event_name || '(이름 없음)'}</span>
+      </div>
+      <div className="text-xs text-gray-600">{halls}</div>
+      <div className="text-xs text-gray-500">
+        {formatRange(ev.start_datetime, ev.end_datetime)}
+      </div>
+    </button>
+  );
+}
+
+function formatRange(start: string, end: string): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmt = (s: string) => {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  return `${fmt(start)} ~ ${fmt(end)}`;
 }
 
 function formatLocalInput(d: Date): string {

@@ -115,7 +115,7 @@ export default function AdminUsers() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">사용자 관리</h1>
+        <h1 className="text-xl md:text-2xl font-bold">사용자 관리</h1>
         <button onClick={load} className="btn-secondary">
           새로고침
         </button>

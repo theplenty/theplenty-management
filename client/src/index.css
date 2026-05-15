@@ -14,14 +14,43 @@ body {
 }
 
 /* FullCalendar 보강 */
-.fc-event-los .fc-event-title {
+.fc-event-los .fc-event-title,
+.fc-event-cancelled .fc-event-title {
   text-decoration: line-through;
+}
+.fc-event-cancelled {
+  opacity: 0.5;
 }
 .fc-event-conflict {
   box-shadow: 0 0 0 2px #dc2626 inset;
 }
 .fc {
   font-size: 0.85rem;
+}
+/* 모바일에서 헤더 툴바가 한 줄을 못 채우면 자동 줄바꿈 + 작게. */
+@media (max-width: 640px) {
+  .fc .fc-toolbar.fc-header-toolbar {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+  .fc .fc-toolbar-chunk {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+  .fc .fc-toolbar-title {
+    font-size: 1rem !important;
+    text-align: center;
+  }
+  .fc .fc-button {
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.75rem !important;
+  }
+  .fc {
+    font-size: 0.75rem;
+  }
 }
 .fc .fc-button-primary {
   background-color: #1f2937;

@@ -68,6 +68,8 @@ function migrateMiceCustomers() {
         event_memo: (raw.lost_reason as string) || '',
         created_by_id: '',
         created_by_name: '시스템 마이그레이션',
+        assigned_manager_id: '',
+        assigned_manager_name: '',
         created_at: (raw.created_at as string) || new Date().toISOString(),
       };
 
@@ -229,12 +231,18 @@ function migrateEventReviews() {
 function migrateEvents() {
   let count = 0;
   let foodSplitCount = 0;
+  let tenCount = 0;
   const userById = new Map(store.users.map((u) => [u.id, u.name]));
   for (const e of store.events) {
     const raw = e as unknown as Record<string, unknown>;
     if (typeof raw.created_by_name !== 'string' || !raw.created_by_name) {
       raw.created_by_name = userById.get(e.created_by) || '';
       count++;
+    }
+    // TEN 폐기 (2026-05-14 정책 변경) → 모두 INQ 로 일괄 이전
+    if (raw.status === 'TEN') {
+      raw.status = 'INQ';
+      tenCount++;
     }
     // 기존 food_gtd / food_exp → food_gtd_contract / food_exp_contract 로 이전.
     // 최종확정 값은 사용자가 추후 입력하므로 null로 초기화.
@@ -255,11 +263,12 @@ function migrateEvents() {
       if (!('food_exp_final' in raw)) raw.food_exp_final = null;
     }
   }
-  if (count > 0 || foodSplitCount > 0) {
+  if (count > 0 || foodSplitCount > 0 || tenCount > 0) {
     persist('events');
     if (count > 0) console.log(`[migrate] events ${count}건 → created_by_name 필드 추가`);
     if (foodSplitCount > 0)
       console.log(`[migrate] events ${foodSplitCount}건 → 식음 GTD/EXP 계약·최종 분리`);
+    if (tenCount > 0) console.log(`[migrate] events ${tenCount}건 → TEN 상태를 INQ 로 이전`);
   }
 }
 

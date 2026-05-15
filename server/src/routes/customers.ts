@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { store, persistDoc, persistDelete } from '../store/mockStore.js';
+import { store, persistDoc, softDelete, activeRows, isDeleted } from '../store/mockStore.js';
 import { requireActiveRole } from '../middleware/auth.js';
-import { logChange, summarizeDiff, getLogsForEntity } from '../store/changeLog.js';
+import { logChange, computeDiff, getLogsForEntity } from '../store/changeLog.js';
 import type {
   MiceContact,
   MiceCustomer,
@@ -86,6 +86,9 @@ function normalizeMiceInquiries(
         },
       ];
     }
+    // 작성자: 한 번 정해지면 유지. 담당자: 미지정이면 작성자에서 fallback (옛 데이터 호환).
+    const createdById = o.created_by_id || fallbackUserId;
+    const createdByName = o.created_by_name || fallbackUserName;
     return {
       id: o.id || nanoid(10),
       progress_status: (o.progress_status as MiceInquiry['progress_status']) || 'INQ',
@@ -93,8 +96,10 @@ function normalizeMiceInquiries(
       call_date: o.call_date ?? null,
       inquiry_event_date_text: o.inquiry_event_date_text || '',
       event_memo: o.event_memo || o.lost_reason || '',
-      created_by_id: o.created_by_id || fallbackUserId,
-      created_by_name: o.created_by_name || fallbackUserName,
+      created_by_id: createdById,
+      created_by_name: createdByName,
+      assigned_manager_id: o.assigned_manager_id || createdById,
+      assigned_manager_name: o.assigned_manager_name || createdByName,
       created_at: o.created_at || new Date().toISOString(),
     };
   });
@@ -103,14 +108,14 @@ function normalizeMiceInquiries(
 router.get('/mice', (req, res) => {
   const { read } = canAccessType(req.user!.role, 'MICE');
   if (!read) return res.status(403).json({ error: 'forbidden' });
-  res.json({ customers: store.mice_customers });
+  res.json({ customers: activeRows(store.mice_customers) });
 });
 
 router.get('/mice/:id', (req, res) => {
   const { read } = canAccessType(req.user!.role, 'MICE');
   if (!read) return res.status(403).json({ error: 'forbidden' });
   const item = store.mice_customers.find((c) => c.id === req.params.id);
-  if (!item) return res.status(404).json({ error: 'not_found' });
+  if (!item || isDeleted(item)) return res.status(404).json({ error: 'not_found' });
   res.json({ customer: item });
 });
 
@@ -180,12 +185,13 @@ router.patch('/mice/:id', (req, res) => {
   item.last_modified_at = now;
 
   persistDoc('mice_customers', item.id);
-  const summary = summarizeDiff(before, item as unknown as Record<string, unknown>, MICE_FIELD_LABELS);
+  const diff = computeDiff(before, item as unknown as Record<string, unknown>, MICE_FIELD_LABELS);
   logChange({
     entity_type: 'mice_customer',
     entity_id: item.id,
     action: 'update',
-    summary,
+    summary: diff.summary,
+    changes: diff.changes,
     user: req.user!,
   });
   res.json({ customer: item });
@@ -193,19 +199,17 @@ router.patch('/mice/:id', (req, res) => {
 
 router.delete('/mice/:id', (req, res) => {
   if (req.user!.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
-  const idx = store.mice_customers.findIndex((c) => c.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'not_found' });
-  const removed = store.mice_customers[idx];
-  store.mice_customers.splice(idx, 1);
-  persistDelete('mice_customers', removed.id);
+  const item = store.mice_customers.find((c) => c.id === req.params.id);
+  if (!item || isDeleted(item)) return res.status(404).json({ error: 'not_found' });
+  softDelete('mice_customers', item.id, { id: req.user!.id, name: req.user!.name });
   logChange({
     entity_type: 'mice_customer',
-    entity_id: removed.id,
+    entity_id: item.id,
     action: 'delete',
-    summary: `[${removed.organization_name}] 삭제`,
+    summary: `[${item.organization_name}] 휴지통으로 이동`,
     user: req.user!,
   });
-  res.json({ ok: true });
+  res.json({ ok: true, trashed: true });
 });
 
 // ===== WEDDING =====
@@ -246,14 +250,14 @@ function normalizeWeddingInquiries(input: unknown, fallbackUserId: string, fallb
 router.get('/wedding', (req, res) => {
   const { read } = canAccessType(req.user!.role, 'WEDDING');
   if (!read) return res.status(403).json({ error: 'forbidden' });
-  res.json({ customers: store.wedding_customers });
+  res.json({ customers: activeRows(store.wedding_customers) });
 });
 
 router.get('/wedding/:id', (req, res) => {
   const { read } = canAccessType(req.user!.role, 'WEDDING');
   if (!read) return res.status(403).json({ error: 'forbidden' });
   const item = store.wedding_customers.find((c) => c.id === req.params.id);
-  if (!item) return res.status(404).json({ error: 'not_found' });
+  if (!item || isDeleted(item)) return res.status(404).json({ error: 'not_found' });
   res.json({ customer: item });
 });
 
@@ -349,12 +353,13 @@ router.patch('/wedding/:id', (req, res) => {
   item.last_modified_at = now;
 
   persistDoc('wedding_customers', item.id);
-  const summary = summarizeDiff(before, item as unknown as Record<string, unknown>, WEDDING_FIELD_LABELS);
+  const diff = computeDiff(before, item as unknown as Record<string, unknown>, WEDDING_FIELD_LABELS);
   logChange({
     entity_type: 'wedding_customer',
     entity_id: item.id,
     action: 'update',
-    summary,
+    summary: diff.summary,
+    changes: diff.changes,
     user: req.user!,
   });
   res.json({ customer: item });
@@ -362,19 +367,17 @@ router.patch('/wedding/:id', (req, res) => {
 
 router.delete('/wedding/:id', (req, res) => {
   if (req.user!.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
-  const idx = store.wedding_customers.findIndex((c) => c.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'not_found' });
-  const removed = store.wedding_customers[idx];
-  store.wedding_customers.splice(idx, 1);
-  persistDelete('wedding_customers', removed.id);
+  const item = store.wedding_customers.find((c) => c.id === req.params.id);
+  if (!item || isDeleted(item)) return res.status(404).json({ error: 'not_found' });
+  softDelete('wedding_customers', item.id, { id: req.user!.id, name: req.user!.name });
   logChange({
     entity_type: 'wedding_customer',
-    entity_id: removed.id,
+    entity_id: item.id,
     action: 'delete',
-    summary: `[${removed.wedding_event_name}] 삭제`,
+    summary: `[${item.wedding_event_name}] 휴지통으로 이동`,
     user: req.user!,
   });
-  res.json({ ok: true });
+  res.json({ ok: true, trashed: true });
 });
 
 // ===== 일괄 upsert (엑셀 import) =====
@@ -407,13 +410,13 @@ router.post('/mice/_bulk-upsert', (req, res) => {
       errors.push({ row: i + 1, reason: '업체명이 비어있습니다' });
       continue;
     }
-    // 1차: id로 매칭. 2차: 정규화된 organization_name으로.
+    // 1차: id로 매칭. 2차: 정규화된 organization_name으로. 휴지통 row는 매칭 대상에서 제외.
     let existing: MiceCustomer | undefined;
-    if (r.id) existing = store.mice_customers.find((c) => c.id === r.id);
+    if (r.id) existing = store.mice_customers.find((c) => c.id === r.id && !c.deleted_at);
     if (!existing) {
       const norm = orgName.toLowerCase();
       existing = store.mice_customers.find(
-        (c) => c.organization_name.trim().toLowerCase() === norm
+        (c) => !c.deleted_at && c.organization_name.trim().toLowerCase() === norm
       );
     }
 
@@ -442,7 +445,7 @@ router.post('/mice/_bulk-upsert', (req, res) => {
       existing.last_modified_by_name = req.user!.name;
       existing.last_modified_at = now;
       persistDoc('mice_customers', existing.id);
-      const summary = summarizeDiff(
+      const diff = computeDiff(
         before,
         existing as unknown as Record<string, unknown>,
         MICE_FIELD_LABELS
@@ -451,7 +454,8 @@ router.post('/mice/_bulk-upsert', (req, res) => {
         entity_type: 'mice_customer',
         entity_id: existing.id,
         action: 'update',
-        summary: `[엑셀 업데이트] ${summary}`,
+        summary: `[엑셀 업데이트] ${diff.summary}`,
+        changes: diff.changes,
         user: req.user!,
       });
       updated++;
@@ -535,12 +539,13 @@ router.post('/wedding/_bulk-upsert', (req, res) => {
       errors.push({ row: i + 1, reason: '행사명이 비어있습니다' });
       continue;
     }
+    // 휴지통 row는 매칭 대상에서 제외.
     let existing: WeddingCustomer | undefined;
-    if (r.id) existing = store.wedding_customers.find((c) => c.id === r.id);
+    if (r.id) existing = store.wedding_customers.find((c) => c.id === r.id && !c.deleted_at);
     if (!existing) {
       const norm = name.toLowerCase();
       existing = store.wedding_customers.find(
-        (c) => c.wedding_event_name.trim().toLowerCase() === norm
+        (c) => !c.deleted_at && c.wedding_event_name.trim().toLowerCase() === norm
       );
     }
 
@@ -568,7 +573,7 @@ router.post('/wedding/_bulk-upsert', (req, res) => {
       existing.last_modified_by_name = req.user!.name;
       existing.last_modified_at = now;
       persistDoc('wedding_customers', existing.id);
-      const summary = summarizeDiff(
+      const diff = computeDiff(
         before,
         existing as unknown as Record<string, unknown>,
         WEDDING_FIELD_LABELS
@@ -577,7 +582,8 @@ router.post('/wedding/_bulk-upsert', (req, res) => {
         entity_type: 'wedding_customer',
         entity_id: existing.id,
         action: 'update',
-        summary: `[엑셀 업데이트] ${summary}`,
+        summary: `[엑셀 업데이트] ${diff.summary}`,
+        changes: diff.changes,
         user: req.user!,
       });
       updated++;

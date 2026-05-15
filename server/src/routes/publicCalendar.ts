@@ -18,6 +18,8 @@ router.get('/calendar/:token', (req, res) => {
 
   const events = store.events
     .filter((e) => {
+      // 휴지통의 행사는 공유 링크에서도 제외.
+      if (e.deleted_at) return false;
       const evStart = new Date(e.start_datetime).getTime();
       const evEnd = new Date(e.end_datetime).getTime();
       // 시작/종료가 해당 월과 조금이라도 겹치면 노출

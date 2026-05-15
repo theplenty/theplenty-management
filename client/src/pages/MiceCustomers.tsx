@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
-import { fuzzyMatch, matchesAnyField } from '../lib/koreanSearch';
+import { fuzzyMatch, buildSearchEntry, fuzzyMatchEntry, type SearchEntry } from '../lib/koreanSearch';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { useAuth } from '../auth/AuthContext';
 import { useActiveUsers } from '../lib/useActiveUsers';
@@ -20,6 +20,7 @@ import { Field, StatusBadge } from '../components/Field';
 import ExcelButtons from '../components/ExcelButtons';
 import ChangeLogPanel from '../components/ChangeLogPanel';
 import TableColumnMenu from '../components/TableColumnMenu';
+import Pagination, { usePaginated, PAGE_SIZE } from '../components/Pagination';
 import { useTableControls, compareSortValues } from '../lib/useTableControls';
 import {
   buildMiceFlatRows,
@@ -168,6 +169,9 @@ function emptyInquiry(authorId: string, authorName: string): MiceInquiry {
     event_memo: '',
     created_by_id: authorId,
     created_by_name: authorName,
+    // 신규 문의의 담당자 기본값 = 작성자 (사용자가 드롭다운에서 바꿀 수 있음)
+    assigned_manager_id: authorId,
+    assigned_manager_name: authorName,
     created_at: new Date().toISOString(),
   };
 }
@@ -189,6 +193,11 @@ export default function MiceCustomers() {
   const authorName = user?.name || '';
   const authorId = user?.id || '';
   const activeUsers = useActiveUsers();
+  // MICE 담당자 드롭다운 — 기업세일즈 + 관리자만 노출
+  const miceManagerOptions = useMemo(
+    () => activeUsers.filter((u) => u.role === 'sales_mice' || u.role === 'admin'),
+    [activeUsers]
+  );
 
   const [items, setItems] = useState<MiceCustomer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -220,31 +229,34 @@ export default function MiceCustomers() {
     load();
   }, []);
 
+  // items 가 바뀔 때만 검색 인덱스를 재계산. 키 입력마다는 includes() 만 돌도록.
+  const searchIndex = useMemo(() => {
+    const map = new Map<string, SearchEntry>();
+    for (const c of items) {
+      const parts: Array<string | null | undefined> = [
+        c.organization_name,
+        c.official_phone,
+        c.official_email,
+        c.memo,
+      ];
+      for (const i of c.inquiries) {
+        parts.push(i.progress_status, i.inquiry_event_date_text);
+        for (const ct of i.contacts) {
+          parts.push(ct.name, ct.email, ct.phone);
+        }
+      }
+      map.set(c.id, buildSearchEntry(parts));
+    }
+    return map;
+  }, [items]);
+
   const filtered = useMemo(() => {
     if (!debouncedQuery.trim()) return items;
     return items.filter((c) => {
-      const flat: Record<string, unknown> = {
-        organization_name: c.organization_name,
-        official_phone: c.official_phone,
-        official_email: c.official_email,
-        memo: c.memo,
-        _inq:
-          c.inquiries
-            .map((i) => {
-              const contactsText = i.contacts
-                .map((ct) => `${ct.name} ${ct.email} ${ct.phone}`)
-                .join(' ');
-              return `${i.progress_status} ${contactsText} ${i.inquiry_event_date_text}`;
-            })
-            .join(' ') || '',
-      };
-      return matchesAnyField(
-        flat,
-        ['organization_name', 'official_phone', 'official_email', 'memo', '_inq'],
-        debouncedQuery
-      );
+      const e = searchIndex.get(c.id);
+      return e ? fuzzyMatchEntry(e, debouncedQuery) : false;
     });
-  }, [items, debouncedQuery]);
+  }, [items, debouncedQuery, searchIndex]);
 
   const suggestions = useMemo(
     () => (debouncedQuery.trim() ? filtered.slice(0, 6) : []),
@@ -357,6 +369,7 @@ export default function MiceCustomers() {
         setEditingId(res.customer.id); // 등록 직후 수정 모드로 전환되어 로그 패널이 보이도록
         setLogRefresh((n) => n + 1);
       }
+      alert('저장되었습니다.');
     } catch (e) {
       alert('저장 실패');
       console.error(e);
@@ -391,11 +404,18 @@ export default function MiceCustomers() {
     return [...filtered].sort((a, b) => compareSortValues(col.sortValue!(a), col.sortValue!(b), tc.sort.dir));
   }, [filtered, tc.sort]);
 
+  // 페이지네이션 — 20개씩
+  const { page, setPage, pageItems } = usePaginated(sortedFiltered, [
+    debouncedQuery,
+    tc.sort.key,
+    tc.sort.dir,
+  ]);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-baseline gap-3 flex-wrap">
-          <h1 className="text-2xl font-bold">MICE 고객정보</h1>
+          <h1 className="text-xl md:text-2xl font-bold">MICE 고객정보</h1>
           <span className="text-sm text-gray-500">
             전체 <span className="font-semibold text-gray-900">{items.length.toLocaleString()}</span>건
             {filtered.length !== items.length && (
@@ -483,11 +503,74 @@ export default function MiceCustomers() {
         </div>
       )}
 
-      <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
+      {/* 모바일 카드 뷰 — md 미만 */}
+      <div className="md:hidden space-y-2">
+        {loading ? (
+          <div className="text-center text-gray-400 py-8 bg-white border rounded-lg">불러오는 중...</div>
+        ) : sortedFiltered.length === 0 ? (
+          <div className="text-center text-gray-400 py-8 bg-white border rounded-lg">
+            {query ? '검색 결과가 없습니다.' : '등록된 고객이 없습니다.'}
+          </div>
+        ) : (
+          pageItems.map((c, i) => {
+            const last = lastInquiryOf(c);
+            const contacts = lastContactsLabel(c);
+            const rowNo = page * PAGE_SIZE + i + 1;
+            return (
+              <div
+                key={c.id}
+                onClick={() => openEdit(c)}
+                className="bg-white border rounded-lg p-3 shadow-sm active:bg-blue-50 cursor-pointer"
+              >
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <span className="font-semibold text-gray-900 truncate">
+                    <span className="text-gray-400 font-normal mr-1.5">#{rowNo}</span>
+                    {c.organization_name || '(이름 없음)'}
+                  </span>
+                  <span className="badge bg-gray-100 text-gray-700 shrink-0">{c.mice_category}</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap mb-1">
+                  <span>문의 {c.inquiries.length}건</span>
+                  {last && (
+                    <>
+                      <span>·</span>
+                      <StatusBadge value={last.progress_status} variant={last.progress_status} />
+                    </>
+                  )}
+                </div>
+                {c.official_phone && (
+                  <div className="text-xs text-gray-600 truncate">📞 {c.official_phone}</div>
+                )}
+                {contacts && (
+                  <div className="text-xs text-gray-600 truncate">담당 {contacts}</div>
+                )}
+                {c.memo && (
+                  <div className="text-xs text-gray-400 truncate mt-1">{c.memo}</div>
+                )}
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      remove(c);
+                    }}
+                    className="text-xs text-red-600"
+                  >
+                    삭제
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* 데스크탑 테이블 — md 이상 */}
+      <div className="hidden md:block bg-white border rounded-lg overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm whitespace-nowrap">
+          <table className="w-full text-sm table-auto [&_th]:whitespace-nowrap">
             <thead className="bg-gray-50 text-gray-700">
               <tr>
+                <th className="text-right px-2 py-2 font-semibold border-b w-12 text-gray-400">#</th>
                 {visibleColumns.map((col) => {
                   const sortable = !!col.sortValue;
                   const active = tc.sort.key === col.key;
@@ -513,23 +596,26 @@ export default function MiceCustomers() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={visibleColumns.length + 1} className="text-center text-gray-400 py-8">
+                  <td colSpan={visibleColumns.length + 2} className="text-center text-gray-400 py-8">
                     불러오는 중...
                   </td>
                 </tr>
               ) : sortedFiltered.length === 0 ? (
                 <tr>
-                  <td colSpan={visibleColumns.length + 1} className="text-center text-gray-400 py-8">
+                  <td colSpan={visibleColumns.length + 2} className="text-center text-gray-400 py-8">
                     {query ? '검색 결과가 없습니다.' : '등록된 고객이 없습니다.'}
                   </td>
                 </tr>
               ) : (
-                sortedFiltered.map((c) => (
+                pageItems.map((c, i) => (
                   <tr
                     key={c.id}
                     onClick={() => openEdit(c)}
                     className="border-t hover:bg-blue-50 cursor-pointer"
                   >
+                    <td className="px-2 py-2 text-right text-xs text-gray-400 tabular-nums">
+                      {page * PAGE_SIZE + i + 1}
+                    </td>
                     {visibleColumns.map((col) => (
                       <td key={col.key} className={`px-3 py-2 ${col.tdClassName || ''}`}>
                         {col.render(c)}
@@ -550,6 +636,8 @@ export default function MiceCustomers() {
           </table>
         </div>
       </div>
+
+      <Pagination total={sortedFiltered.length} page={page} onChange={setPage} />
 
       <Modal
         open={open}
@@ -721,6 +809,44 @@ export default function MiceCustomers() {
                           </option>
                         )}
                       {activeUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="담당자">
+                    <select
+                      className="input"
+                      value={inq.assigned_manager_id || ''}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        if (!id) {
+                          updateInquiry(inq.id, {
+                            assigned_manager_id: '',
+                            assigned_manager_name: '',
+                          });
+                          return;
+                        }
+                        const u = miceManagerOptions.find((x) => x.id === id);
+                        if (u) {
+                          updateInquiry(inq.id, {
+                            assigned_manager_id: u.id,
+                            assigned_manager_name: u.name,
+                          });
+                        }
+                      }}
+                    >
+                      <option value="">선택...</option>
+                      {/* 현재 담당자가 목록에 없으면 fallback 옵션 유지 */}
+                      {inq.assigned_manager_id &&
+                        !miceManagerOptions.find((x) => x.id === inq.assigned_manager_id) &&
+                        inq.assigned_manager_name && (
+                          <option value={inq.assigned_manager_id}>
+                            {inq.assigned_manager_name} (현재)
+                          </option>
+                        )}
+                      {miceManagerOptions.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.name}
                         </option>

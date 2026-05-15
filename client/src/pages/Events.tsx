@@ -3,7 +3,10 @@ import { api } from '../lib/api';
 import { canCreateEvent, isAdmin } from '../auth/permissions';
 import { useAuth } from '../auth/AuthContext';
 import {
+  EVENT_STATUS_OPTIONS,
   MENU_OPTIONS,
+  STATUS_HEX,
+  isCancelledStatus,
   type Cancellation,
   type Event,
   type EventCustomerLink,
@@ -18,6 +21,7 @@ import { StatusBadge } from '../components/Field';
 import ExcelButtons from '../components/ExcelButtons';
 import EventFormModal from '../components/EventFormModal';
 import TableColumnMenu from '../components/TableColumnMenu';
+import Pagination, { usePaginated, PAGE_SIZE } from '../components/Pagination';
 import { useTableControls, compareSortValues } from '../lib/useTableControls';
 import { fuzzyMatch } from '../lib/koreanSearch';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
@@ -89,7 +93,12 @@ const EVENT_TABLE_COLUMNS: EventCol[] = [
   {
     key: 'event_name',
     label: '행사명',
-    render: (e) => <span className="font-medium text-gray-900">{e.event_name}</span>,
+    render: (e) => (
+      <span className="font-medium text-gray-900">
+        {e.event_name}
+        {isRecentlyUpdated(e.updated_at) && <NewBadge />}
+      </span>
+    ),
     sortValue: (e) => e.event_name,
   },
   {
@@ -231,11 +240,14 @@ const EVENT_COLUMNS: ColumnDef<EventWithFood>[] = [
   {
     header: '상태',
     key: 'status',
-    width: 8,
-    // INQ/TEN/DEF/LOS만 허용. 다른 값은 INQ로 fallback.
+    width: 10,
+    // INQ/DEF/LOS/상담취소/미팅/미팅취소/시식 만 허용. TEN/기타값은 INQ 로 fallback.
     parse: (v) => {
-      const s = asText(v).toUpperCase();
-      return s === 'TEN' || s === 'DEF' || s === 'LOS' ? s : 'INQ';
+      const s = asText(v).trim();
+      const upper = s.toUpperCase();
+      if (upper === 'DEF' || upper === 'LOS') return upper;
+      if (s === '상담취소' || s === '미팅' || s === '미팅취소' || s === '시식') return s;
+      return 'INQ';
     },
   },
   {
@@ -457,12 +469,15 @@ export default function Events() {
       });
   }, [events, filterType, filterStatus, filterYear, debouncedQuery]);
 
-  // 검색·필터 통과 후 사용자가 선택한 컬럼으로 정렬 (선택 없으면 시작일시 오름차순)
+  // 검색·필터 통과 후 사용자가 선택한 컬럼으로 정렬
+  // (선택 없으면 최근 수정/등록 순 — 가장 최근에 손댄 행사가 최상단)
   const sortedFiltered = useMemo(() => {
     if (!tc.sort.key) {
-      return [...filtered].sort((a, b) =>
-        a.start_datetime < b.start_datetime ? -1 : 1
-      );
+      return [...filtered].sort((a, b) => {
+        const ka = a.updated_at || a.created_at;
+        const kb = b.updated_at || b.created_at;
+        return ka < kb ? 1 : ka > kb ? -1 : 0;
+      });
     }
     const col = EVENT_TABLE_COLUMNS.find((c) => c.key === tc.sort.key);
     if (!col?.sortValue) return filtered;
@@ -470,6 +485,16 @@ export default function Events() {
       compareSortValues(col.sortValue!(a), col.sortValue!(b), tc.sort.dir)
     );
   }, [filtered, tc.sort]);
+
+  // 페이지네이션 — 20개씩. 검색/필터/정렬 변경 시 page 0 으로 리셋.
+  const { page, setPage, pageItems } = usePaginated(sortedFiltered, [
+    debouncedQuery,
+    filterType,
+    filterStatus,
+    filterYear,
+    tc.sort.key,
+    tc.sort.dir,
+  ]);
 
   // 필터 드롭다운용 사용 가능한 연도 목록 — 행사 데이터에서 추출 (내림차순)
   const availableYears = useMemo(() => {
@@ -496,7 +521,7 @@ export default function Events() {
     <div>
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-baseline gap-3 flex-wrap">
-          <h1 className="text-2xl font-bold">행사 목록</h1>
+          <h1 className="text-xl md:text-2xl font-bold">행사 목록</h1>
           <span className="text-sm text-gray-500">
             전체{' '}
             <span className="font-semibold text-gray-900">
@@ -625,10 +650,11 @@ export default function Events() {
           onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
         >
           <option value="ALL">전체 상태</option>
-          <option value="INQ">INQ</option>
-          <option value="TEN">TEN</option>
-          <option value="DEF">DEF</option>
-          <option value="LOS">LOS</option>
+          {EVENT_STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
         </select>
         <select
           className="input !py-1 !text-xs !w-auto"
@@ -652,11 +678,86 @@ export default function Events() {
         </div>
       )}
 
-      <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
+      {/* 모바일 카드 뷰 — md 미만 */}
+      <div className="md:hidden space-y-2">
+        {loading ? (
+          <div className="text-center text-gray-400 py-8 bg-white border rounded-lg">불러오는 중...</div>
+        ) : sortedFiltered.length === 0 ? (
+          <div className="text-center text-gray-400 py-8 bg-white border rounded-lg">
+            {query ? '검색 결과가 없습니다.' : '등록된 행사가 없습니다.'}
+          </div>
+        ) : (
+          pageItems.map((e, i) => {
+            const halls = e.halls.join(' / ');
+            const startFmt = fmtRange(e.start_datetime, e.end_datetime);
+            const foodSummary = (e.food_items || []).map((f) => f.menu_name).join(', ');
+            const rowNo = page * PAGE_SIZE + i + 1;
+            return (
+              <div
+                key={e.id}
+                onClick={async () => {
+                  setEditing(e);
+                  setModalOpen(true);
+                  try {
+                    const r = await api.get<{
+                      customer_links: EventCustomerLink[];
+                      invoice: Invoice | null;
+                      cancellation: Cancellation | null;
+                    }>(`/api/events/${e.id}`);
+                    setEditingLinks(r.customer_links || []);
+                    setEditingInvoice(r.invoice);
+                    setEditingCancellation(r.cancellation);
+                  } catch (err) {
+                    console.error(err);
+                    setEditingLinks([]);
+                    setEditingInvoice(null);
+                    setEditingCancellation(null);
+                  }
+                }}
+                className="bg-white border rounded-lg p-3 shadow-sm active:bg-blue-50 cursor-pointer"
+              >
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <span className="font-semibold text-gray-900 truncate">
+                    <span className="text-gray-400 font-normal mr-1.5">#{rowNo}</span>
+                    {e.event_name || '(이름 없음)'}
+                    {isRecentlyUpdated(e.updated_at) && <NewBadge />}
+                  </span>
+                  <span
+                    className="badge shrink-0 text-white"
+                    style={{ background: STATUS_HEX[e.status] }}
+                  >
+                    {e.status}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-500 flex flex-wrap gap-x-2 gap-y-0.5 mb-1">
+                  <span>{e.event_type}</span>
+                  {halls && (
+                    <>
+                      <span>·</span>
+                      <span className="truncate">{halls}</span>
+                    </>
+                  )}
+                </div>
+                <div className="text-xs text-gray-700">{startFmt}</div>
+                {e.assigned_manager_name && (
+                  <div className="text-xs text-gray-500 truncate">담당 {e.assigned_manager_name}</div>
+                )}
+                {foodSummary && (
+                  <div className="text-xs text-gray-400 truncate mt-0.5">{foodSummary}</div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* 데스크탑 테이블 — md 이상 */}
+      <div className="hidden md:block bg-white border rounded-lg overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm whitespace-nowrap">
+          <table className="w-full text-sm table-auto [&_th]:whitespace-nowrap">
             <thead className="bg-gray-50 text-gray-700">
               <tr>
+                <th className="text-right px-2 py-2 font-semibold border-b w-12 text-gray-400">#</th>
                 {visibleColumns.map((col) => {
                   const sortable = !!col.sortValue;
                   const active = tc.sort.key === col.key;
@@ -683,7 +784,7 @@ export default function Events() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={visibleColumns.length + (admin ? 1 : 0)}
+                    colSpan={visibleColumns.length + 1 + (admin ? 1 : 0)}
                     className="text-center text-gray-400 py-8"
                   >
                     불러오는 중...
@@ -692,14 +793,14 @@ export default function Events() {
               ) : sortedFiltered.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={visibleColumns.length + (admin ? 1 : 0)}
+                    colSpan={visibleColumns.length + 1 + (admin ? 1 : 0)}
                     className="text-center text-gray-400 py-8"
                   >
                     {query ? '검색 결과가 없습니다.' : '등록된 행사가 없습니다.'}
                   </td>
                 </tr>
               ) : (
-                sortedFiltered.map((e) => (
+                pageItems.map((e, i) => (
                   <tr
                     key={e.id}
                     onClick={async () => {
@@ -723,6 +824,9 @@ export default function Events() {
                     }}
                     className="border-t hover:bg-blue-50 cursor-pointer"
                   >
+                    <td className="px-2 py-2 text-right text-xs text-gray-400 tabular-nums">
+                      {page * PAGE_SIZE + i + 1}
+                    </td>
                     {visibleColumns.map((col) => (
                       <td key={col.key} className="px-3 py-2">
                         {col.render(e)}
@@ -747,6 +851,8 @@ export default function Events() {
         </div>
       </div>
 
+      <Pagination total={sortedFiltered.length} page={page} onChange={setPage} />
+
       <EventFormModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -759,6 +865,8 @@ export default function Events() {
         allowedTypes={allowedTypes.length ? allowedTypes : ['MICE']}
         otherEvents={events as Event[]}
         onSaved={(saved) => {
+          // 신규/수정 모두 saved 의 updated_at 이 최신이므로 기본 정렬(updated_at desc)이
+          // 자동으로 최상단으로 올려준다.
           setEvents((prev) => {
             const idx = prev.findIndex((p) => p.id === saved.id);
             if (idx === -1) return [saved, ...prev];
@@ -799,4 +907,39 @@ function fmt(s: string): string {
   if (isNaN(d.getTime())) return s;
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// 수정·등록 시점이 최근 24시간 이내면 New 표시.
+function isRecentlyUpdated(updatedAt: string | null | undefined): boolean {
+  if (!updatedAt) return false;
+  const t = new Date(updatedAt).getTime();
+  if (!Number.isFinite(t)) return false;
+  return Date.now() - t < 24 * 60 * 60 * 1000;
+}
+
+function NewBadge() {
+  return (
+    <span className="ml-1 inline-flex items-center px-1.5 py-0 rounded text-[10px] font-bold bg-red-500 text-white align-middle">
+      NEW
+    </span>
+  );
+}
+
+// 모바일 카드용 — 같은 날 행사는 "MM-DD HH:MM ~ HH:MM", 다른 날은 풀 표기
+function fmtRange(start: string, end: string): string {
+  if (!start) return '-';
+  const s = new Date(start);
+  const e = end ? new Date(end) : null;
+  if (isNaN(s.getTime())) return start;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const sStr = `${s.getFullYear()}-${pad(s.getMonth() + 1)}-${pad(s.getDate())} ${pad(s.getHours())}:${pad(s.getMinutes())}`;
+  if (!e || isNaN(e.getTime())) return sStr;
+  const sameDay =
+    s.getFullYear() === e.getFullYear() &&
+    s.getMonth() === e.getMonth() &&
+    s.getDate() === e.getDate();
+  const eStr = sameDay
+    ? `${pad(e.getHours())}:${pad(e.getMinutes())}`
+    : `${e.getFullYear()}-${pad(e.getMonth() + 1)}-${pad(e.getDate())} ${pad(e.getHours())}:${pad(e.getMinutes())}`;
+  return `${sStr} ~ ${eStr}`;
 }

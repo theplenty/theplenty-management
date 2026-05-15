@@ -83,3 +83,45 @@ export function matchesAnyField(item: Record<string, unknown>, fields: string[],
   }
   return false;
 }
+
+// 검색 인덱스 — 한 레코드의 모든 검색 대상 필드를 미리 normalize 해둔다.
+// items 가 바뀔 때 한 번 계산되고, 키 입력마다 includes() 만 돌게 해서
+// 1,600+ 건 데이터셋에서 검색 응답을 즉각화하는 데 사용한다.
+export interface SearchEntry {
+  text: string; // lowercase 합본
+  choseong: string; // text 의 초성
+  digits: string; // text 에서 숫자만
+}
+
+export function buildSearchEntry(parts: Array<string | number | null | undefined>): SearchEntry {
+  let joined = '';
+  for (const p of parts) {
+    if (p == null) continue;
+    const s = typeof p === 'number' ? String(p) : p;
+    if (!s) continue;
+    joined += joined ? ' ' + s : s;
+  }
+  const text = joined.toLowerCase();
+  return {
+    text,
+    choseong: toChoseong(text),
+    digits: text.replace(/\D/g, ''),
+  };
+}
+
+export function fuzzyMatchEntry(entry: SearchEntry, query: string): boolean {
+  if (!query) return true;
+  const q = query.trim();
+  if (!q) return true;
+
+  if (isOnlyJamo(q)) {
+    return entry.choseong.includes(q.replace(/\s/g, ''));
+  }
+
+  const lower = q.toLowerCase();
+  if (entry.text.includes(lower)) return true;
+
+  if (isOnlyDigits(q) && entry.digits.includes(q)) return true;
+
+  return false;
+}

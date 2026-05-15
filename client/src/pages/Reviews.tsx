@@ -180,7 +180,7 @@ export default function Reviews() {
     <div>
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">연회팀 행사리뷰</h1>
+          <h1 className="text-xl md:text-2xl font-bold">연회팀 행사리뷰</h1>
           {!writable && <span className="badge bg-gray-100 text-gray-600">조회 전용</span>}
         </div>
         {writable && (
@@ -257,6 +257,7 @@ export default function Reviews() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-700">
             <tr>
+              <th className="text-right px-2 py-2 font-semibold w-12 text-gray-400">#</th>
               <th className="text-left px-3 py-2 font-semibold">구분</th>
               <th className="text-left px-3 py-2 font-semibold">행사명</th>
               <th className="text-left px-3 py-2 font-semibold">시작일시</th>
@@ -268,23 +269,26 @@ export default function Reviews() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="text-center text-gray-400 py-8">
+                <td colSpan={7} className="text-center text-gray-400 py-8">
                   불러오는 중...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center text-gray-400 py-8">
+                <td colSpan={7} className="text-center text-gray-400 py-8">
                   대상 행사가 없습니다. (DEF 상태 + 종료된 행사만 표시)
                 </td>
               </tr>
             ) : (
-              filtered.map((e) => (
+              filtered.map((e, i) => (
                 <tr
                   key={e.id}
                   onClick={() => openEvent(e)}
                   className="border-t hover:bg-blue-50 cursor-pointer"
                 >
+                  <td className="px-2 py-2 text-right text-xs text-gray-400 tabular-nums">
+                    {i + 1}
+                  </td>
                   <td className="px-3 py-2">{e.event_type}</td>
                   <td className="px-3 py-2 font-medium text-gray-900">{e.event_name}</td>
                   <td className="px-3 py-2 text-gray-600">{fmt(e.start_datetime)}</td>
