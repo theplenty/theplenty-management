@@ -141,6 +141,13 @@ const EVENT_TABLE_COLUMNS: EventCol[] = [
     ),
     sortValue: (e) => e.food_items.map((f) => f.menu_name).join(', '),
   },
+  // 최근수정 — 'NEW' 배지가 붙는 기준. 기본 정렬키. 기본 숨김 (컬럼 설정에서 표시 가능).
+  {
+    key: 'updated_at',
+    label: '최근수정',
+    render: (e) => fmt(e.updated_at || e.created_at),
+    sortValue: (e) => e.updated_at || e.created_at || '',
+  },
 ];
 
 // 엑셀 셀 → 문자열 (richText·숫자·날짜 무엇이든 안전하게 trim)
@@ -356,7 +363,13 @@ export default function Events() {
   const debouncedQuery = useDebouncedValue(query, 200);
 
   // 컬럼 표시/숨김 + 정렬 — localStorage에 페이지별로 보존
-  const tc = useTableControls({ storageKey: 'events_table' });
+  const tc = useTableControls({
+    storageKey: 'events_table',
+    // 최근수정 컬럼은 기본 숨김 — 정렬키로만 사용. 사용자가 컬럼 설정에서 표시 가능.
+    defaultHidden: ['updated_at'],
+    // 첫 방문 시 'NEW' 배지가 붙는 시간순(최근 수정 내림차순)으로 자동 정렬.
+    defaultSort: { key: 'updated_at', dir: 'desc' },
+  });
   const visibleColumns = useMemo(
     () => EVENT_TABLE_COLUMNS.filter((col) => !tc.isHidden(col.key)),
     [tc]
@@ -386,12 +399,14 @@ export default function Events() {
   }, []);
 
   const admin = isAdmin(user?.role);
+  // 삭제는 휴지통 안전망 덕에 모든 활성 사용자에게 허용. 전체비우기(clearAllEvents)는 admin 유지.
+  const canDelete = !!user;
 
   async function deleteEvent(e: EventWithFood, ev: React.MouseEvent) {
     ev.stopPropagation();
     if (
       !confirm(
-        `[${e.event_name}] 행사를 삭제하시겠습니까?\n식음 메뉴, 업체 연결, 가톨릭대관료, 첨부파일, 행사리뷰가 모두 함께 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.`
+        `[${e.event_name}] 행사를 휴지통으로 이동합니다.\n식음 메뉴, 업체 연결, INVOICE, 첨부파일, 행사리뷰는 그대로 보존되며 복구 시 모두 함께 돌아옵니다.\n관리자가 /admin/trash 에서 복구하거나 영구 삭제할 수 있습니다.\n계속하시겠습니까?`
       )
     )
       return;
@@ -777,14 +792,14 @@ export default function Events() {
                     </th>
                   );
                 })}
-                {admin && <th className="text-left px-3 py-2 font-semibold border-b w-12" />}
+                {canDelete && <th className="text-left px-3 py-2 font-semibold border-b w-12" />}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
                   <td
-                    colSpan={visibleColumns.length + 1 + (admin ? 1 : 0)}
+                    colSpan={visibleColumns.length + 1 + (canDelete ? 1 : 0)}
                     className="text-center text-gray-400 py-8"
                   >
                     불러오는 중...
@@ -793,7 +808,7 @@ export default function Events() {
               ) : sortedFiltered.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={visibleColumns.length + 1 + (admin ? 1 : 0)}
+                    colSpan={visibleColumns.length + 1 + (canDelete ? 1 : 0)}
                     className="text-center text-gray-400 py-8"
                   >
                     {query ? '검색 결과가 없습니다.' : '등록된 행사가 없습니다.'}
@@ -832,12 +847,12 @@ export default function Events() {
                         {col.render(e)}
                       </td>
                     ))}
-                    {admin && (
+                    {canDelete && (
                       <td className="px-3 py-2">
                         <button
                           onClick={(ev) => deleteEvent(e, ev)}
                           className="text-xs text-red-600 hover:underline"
-                          title="관리자 전용 — 행사 삭제"
+                          title="휴지통으로 이동 (복구 가능)"
                         >
                           삭제
                         </button>

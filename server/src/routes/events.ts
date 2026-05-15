@@ -490,8 +490,8 @@ router.patch('/:id', (req, res) => {
 // 행사 삭제 — 휴지통으로 이동 (soft delete).
 // 자식(food_items/links/invoice/files/cancellation/review)은 그대로 유지.
 // 부모가 deleted_at 갖는 한 list/detail에서 안 보임. 영구삭제 시에만 자식 cascade.
+// 휴지통 안전망 있으므로 활성 사용자 전체에게 삭제 권한 (admin/sales/banquet/kitchen).
 router.delete('/:id', (req, res) => {
-  if (req.user!.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   const ev = store.events.find((e) => e.id === req.params.id);
   if (!ev || isDeleted(ev)) return res.status(404).json({ error: 'not_found' });
   softDelete('events', ev.id, { id: req.user!.id, name: req.user!.name });

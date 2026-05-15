@@ -198,7 +198,8 @@ router.patch('/mice/:id', (req, res) => {
 });
 
 router.delete('/mice/:id', (req, res) => {
-  if (req.user!.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  // 휴지통 안전망이 있으므로 활성 사용자 전체에게 삭제 권한 (admin/sales/banquet/kitchen).
+  // 잘못 삭제해도 /admin/trash 에서 복구 가능.
   const item = store.mice_customers.find((c) => c.id === req.params.id);
   if (!item || isDeleted(item)) return res.status(404).json({ error: 'not_found' });
   softDelete('mice_customers', item.id, { id: req.user!.id, name: req.user!.name });
@@ -366,7 +367,7 @@ router.patch('/wedding/:id', (req, res) => {
 });
 
 router.delete('/wedding/:id', (req, res) => {
-  if (req.user!.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  // 휴지통 안전망 있으므로 활성 사용자 전체에게 삭제 권한.
   const item = store.wedding_customers.find((c) => c.id === req.params.id);
   if (!item || isDeleted(item)) return res.status(404).json({ error: 'not_found' });
   softDelete('wedding_customers', item.id, { id: req.user!.id, name: req.user!.name });

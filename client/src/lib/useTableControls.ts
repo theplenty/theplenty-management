@@ -13,6 +13,8 @@ export interface SortState {
 interface Options {
   storageKey: string;
   defaultHidden?: string[];
+  // localStorage에 저장된 정렬이 없을 때 사용할 초기 정렬. 미지정이면 정렬 없음(서버 순서).
+  defaultSort?: SortState;
 }
 
 export interface TableControls {
@@ -34,7 +36,7 @@ function readHidden(storageKey: string, fallback: string[]): Set<string> {
   return new Set(fallback);
 }
 
-function readSort(storageKey: string): SortState {
+function readSort(storageKey: string, fallback: SortState): SortState {
   try {
     const raw = localStorage.getItem(`${storageKey}.sort`);
     if (raw) {
@@ -44,12 +46,16 @@ function readSort(storageKey: string): SortState {
   } catch {
     /* ignore */
   }
-  return { key: null, dir: 'asc' };
+  return fallback;
 }
 
-export function useTableControls({ storageKey, defaultHidden = [] }: Options): TableControls {
+export function useTableControls({
+  storageKey,
+  defaultHidden = [],
+  defaultSort = { key: null, dir: 'asc' },
+}: Options): TableControls {
   const [hidden, setHidden] = useState<Set<string>>(() => readHidden(storageKey, defaultHidden));
-  const [sort, setSort] = useState<SortState>(() => readSort(storageKey));
+  const [sort, setSort] = useState<SortState>(() => readSort(storageKey, defaultSort));
 
   const persistHidden = useCallback(
     (s: Set<string>) => {

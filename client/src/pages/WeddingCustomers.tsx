@@ -403,12 +403,17 @@ export default function WeddingCustomers() {
   }
 
   async function remove(c: WeddingCustomer) {
-    if (!confirm(`[${c.wedding_event_name}] 고객을 삭제하시겠습니까? (관리자만 가능)`)) return;
+    if (
+      !confirm(
+        `[${c.wedding_event_name}] 고객을 휴지통으로 이동합니다.\n관리자가 /admin/trash 에서 복구하거나 영구 삭제할 수 있습니다.\n계속하시겠습니까?`
+      )
+    )
+      return;
     try {
       await api.delete(`/api/customers/wedding/${c.id}`);
       setItems((prev) => prev.filter((x) => x.id !== c.id));
     } catch (e) {
-      alert('삭제 실패 (관리자 권한이 필요합니다)');
+      alert('삭제 실패');
       console.error(e);
     }
   }

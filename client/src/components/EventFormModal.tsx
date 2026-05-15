@@ -388,7 +388,7 @@ export default function EventFormModal({
     if (!initialEvent || !onDeleted) return;
     if (
       !confirm(
-        `[${initialEvent.event_name}] 행사를 삭제하시겠습니까?\n식음 메뉴, 업체 연결, 가톨릭대관료, 첨부파일, 행사리뷰가 모두 함께 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.`
+        `[${initialEvent.event_name}] 행사를 휴지통으로 이동합니다.\n식음 메뉴, 업체 연결, INVOICE, 첨부파일, 행사리뷰는 그대로 보존되며 복구 시 모두 함께 돌아옵니다.\n관리자가 /admin/trash 에서 복구하거나 영구 삭제할 수 있습니다.\n계속하시겠습니까?`
       )
     )
       return;
@@ -415,12 +415,13 @@ export default function EventFormModal({
       widthClass="max-w-5xl"
       footer={
         <>
-          {/* 관리자 + 수정 모드 + onDeleted 콜백 제공 시에만 노출 */}
-          {admin && isEdit && onDeleted && (
+          {/* 수정 모드 + onDeleted 콜백 제공 시 — 모든 활성 사용자에게 노출 (휴지통 안전망) */}
+          {isEdit && onDeleted && (
             <button
               onClick={deleteEvent}
               disabled={deleting || saving}
               className="btn-danger mr-auto"
+              title="휴지통으로 이동 (복구 가능)"
             >
               {deleting ? '삭제중...' : '🗑 행사 삭제'}
             </button>
