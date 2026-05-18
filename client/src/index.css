@@ -102,3 +102,42 @@ tr.fc-event-cancelled {
     @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold;
   }
 }
+
+/* ===== 인쇄용 — 캘린더 요약 (CalendarSummary) ===== */
+@media print {
+  /* 인쇄 시 헤더·사이드바·헤더툴바·버튼 등은 숨김 */
+  header,
+  aside,
+  nav,
+  .no-print,
+  button {
+    display: none !important;
+  }
+  /* 상단 헤더가 fixed/sticky 였다면 영향 제거 */
+  body {
+    background: white !important;
+  }
+  /* 메인 콘텐츠 영역의 패딩·overflow 정리 */
+  main {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  /* CalendarSummary 의 print-footer 보이게 */
+  .print-footer {
+    display: block !important;
+  }
+  /* 카드 내부 줄바꿈 방지 — 행사 카드가 페이지 중간에 잘리지 않게 */
+  .print\:break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* 월 섹션 사이 페이지 나눔 */
+  .page-break-after {
+    page-break-after: always;
+  }
+  /* 인쇄 시 텍스트 색·border 강제 (Chrome 인쇄 색 보존) */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

@@ -11,6 +11,7 @@ import type { DateSelectArg, EventClickArg, EventInput } from '@fullcalendar/cor
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { canCreateEvent, canShareCalendar, canSeeWedding } from '../auth/permissions';
+import { useIsMobile } from '../lib/useIsMobile';
 import { detectConflict } from '../lib/conflictCheck';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { buildSearchEntry, fuzzyMatchEntry, type SearchEntry } from '../lib/koreanSearch';
@@ -132,6 +133,9 @@ export default function Calendar() {
   const [shareOpen, setShareOpen] = useState(false);
   const [conflictListOpen, setConflictListOpen] = useState(false);
   const [dupListOpen, setDupListOpen] = useState(false);
+  // 모바일 — 셀당 행사 2건만 표시, 선택한 날짜의 전체 행사를 하단 리스트로
+  const isMobile = useIsMobile();
+  const [selectedDate, setSelectedDate] = useState<string | null>(null); // YYYY-MM-DD
 
   async function load() {
     setLoading(true);
@@ -415,6 +419,13 @@ export default function Calendar() {
               🔗 월별 공유 링크
             </button>
           )}
+          <button
+            onClick={() => navigate('/calendar/summary')}
+            className="btn-secondary"
+            title="월별 행사 요약 보기"
+          >
+            📊 캘린더 요약
+          </button>
           {canCreateEvent(user?.role) && (
             <button
               onClick={() => {
@@ -560,9 +571,13 @@ export default function Calendar() {
           selectable={canCreateEvent(user?.role)}
           selectMirror
           select={handleSelect}
-          // dayMaxEvents=false — 한 날짜에 행사가 여러 건이어도 모두 표시 (중복·다중 행사 누락 방지).
-          // 셀이 길어지는 단점은 있지만 사용자가 모든 일정을 한눈에 볼 수 있게 우선.
-          dayMaxEvents={false}
+          // 모바일: 셀당 2건까지만 표시 (그 이상은 +more, 하단 리스트로 확인 가능)
+          // PC: 모든 행사 표시 (셀 자동 확장)
+          dayMaxEvents={isMobile ? 2 : false}
+          // 모바일에서 날짜 셀 탭 → 하단 리스트가 해당 날짜로 갱신
+          dateClick={(info) => {
+            if (isMobile) setSelectedDate(info.dateStr);
+          }}
           events={fcEvents}
           eventClick={handleEventClick}
           eventDidMount={(arg) => {
@@ -584,6 +599,30 @@ export default function Calendar() {
         />
         {loading && <div className="text-xs text-gray-400 mt-2">불러오는 중...</div>}
       </div>
+
+      {/* 모바일 전용 — 선택한 날짜의 전체 행사·상담을 리스트로. 셀당 2건 제한으로 안 보이는 일정도 여기서 확인. */}
+      {isMobile && (
+        <SelectedDayList
+          date={selectedDate}
+          events={events}
+          consultations={weddingCustomers}
+          onEventClick={(ev) => {
+            const fakeArg = { event: { extendedProps: { event: ev } } } as unknown as Parameters<
+              typeof handleEventClick
+            >[0];
+            handleEventClick(fakeArg);
+          }}
+          onConsultClick={(c) => {
+            if (canSeeWedding(user?.role)) {
+              navigate(`/customers/wedding#consult-${c.id}`);
+            } else {
+              alert(
+                `[상담]\n행사명: ${c.wedding_event_name}\n신랑: ${c.groom_name} ${c.groom_phone}\n신부: ${c.bride_name} ${c.bride_phone}\n희망상담일자: ${c.desired_consultation_date}`
+              );
+            }
+          }}
+        />
+      )}
 
       <EventFormModal
         open={modalOpen}
@@ -712,4 +751,108 @@ function sumField(
   if (any) return String(sum);
   const legacy = (ev as unknown as Record<string, number | null>)[`food_${field}`];
   return legacy != null ? String(legacy) : '-';
+}
+
+// ===== 모바일 전용: 선택한 날짜의 행사·상담 리스트 =====
+// 캘린더 셀에서 2건 제한 때문에 안 보이는 일정을 여기서 확인.
+function SelectedDayList({
+  date,
+  events,
+  consultations,
+  onEventClick,
+  onConsultClick,
+}: {
+  date: string | null;
+  events: EventWithFood[];
+  consultations: WeddingCustomer[];
+  onEventClick: (ev: EventWithFood) => void;
+  onConsultClick: (c: WeddingCustomer) => void;
+}) {
+  if (!date) {
+    return (
+      <div className="mt-3 bg-white border rounded-lg p-4 text-center text-xs text-gray-400">
+        날짜를 탭하면 해당일의 모든 일정을 여기서 확인할 수 있어요.
+      </div>
+    );
+  }
+  // 행사 — 시작일이 해당 날짜인 것 + 시작 시간순
+  const dayEvents = events
+    .filter((e) => (e.start_datetime || '').slice(0, 10) === date)
+    .sort((a, b) => (a.start_datetime < b.start_datetime ? -1 : 1));
+  // 상담 — desired_consultation_date 가 해당 날짜인 것
+  const dayConsults = consultations.filter(
+    (c) => (c.desired_consultation_date || '').slice(0, 10) === date
+  );
+
+  const dayLabel = (() => {
+    const d = new Date(date + 'T00:00');
+    const days = ['일', '월', '화', '수', '목', '금', '토'];
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} (${days[d.getDay()]})`;
+  })();
+
+  return (
+    <div className="mt-3 bg-white border rounded-lg p-3">
+      <div className="text-sm font-semibold text-gray-900 mb-2">
+        📅 {dayLabel} — 총 {dayEvents.length + dayConsults.length}건
+      </div>
+      {dayEvents.length === 0 && dayConsults.length === 0 ? (
+        <div className="text-xs text-gray-400 text-center py-3">이 날짜에 등록된 일정이 없습니다.</div>
+      ) : (
+        <ul className="space-y-1.5">
+          {dayEvents.map((ev) => {
+            const color = STATUS_HEX[ev.status] || '#6b7280';
+            return (
+              <li key={ev.id}>
+                <button
+                  type="button"
+                  onClick={() => onEventClick(ev)}
+                  className="w-full text-left border rounded p-2.5 hover:bg-blue-50 active:bg-blue-100"
+                >
+                  <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                    <span className="badge bg-gray-100 text-gray-700 text-[10px]">
+                      {ev.event_type}
+                    </span>
+                    <span className="badge text-white text-[10px]" style={{ background: color }}>
+                      {ev.status}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {ev.start_datetime.slice(11, 16)} ~ {ev.end_datetime.slice(11, 16)}
+                    </span>
+                  </div>
+                  <div className="text-sm font-semibold text-gray-900 truncate">
+                    {ev.event_name || '(이름 없음)'}
+                  </div>
+                  <div className="text-[11px] text-gray-600 mt-0.5">
+                    {(ev.halls || []).join(' / ') || '홀 미지정'}
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+          {dayConsults.map((c) => (
+            <li key={`c-${c.id}`}>
+              <button
+                type="button"
+                onClick={() => onConsultClick(c)}
+                className="w-full text-left border rounded p-2.5 hover:bg-purple-50 active:bg-purple-100"
+              >
+                <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                  <span className="badge bg-purple-100 text-purple-800 text-[10px]">상담</span>
+                  <span className="badge bg-gray-100 text-gray-700 text-[10px]">
+                    {c.progress_status}
+                  </span>
+                </div>
+                <div className="text-sm font-semibold text-gray-900 truncate">
+                  {c.wedding_event_name || `${c.groom_name} ♥ ${c.bride_name}` || '(이름 없음)'}
+                </div>
+                <div className="text-[11px] text-gray-600 mt-0.5">
+                  {c.groom_phone || c.bride_phone || ''}
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
