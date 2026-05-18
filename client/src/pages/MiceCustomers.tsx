@@ -166,6 +166,7 @@ function emptyInquiry(authorId: string, authorName: string): MiceInquiry {
   return {
     id: nanoid(),
     progress_status: 'INQ',
+    inquiry_channel: 'INCALL', // 신규 문의 기본값 — 사용자가 OUTCALL 로 변경 가능
     contacts: [emptyContact()],
     call_date: null,
     inquiry_event_date_text: '',
@@ -813,6 +814,34 @@ export default function MiceCustomers() {
                   )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Field label="유입 채널" required>
+                    <div className="flex gap-3 mt-1 text-sm">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`channel-${inq.id}`}
+                          value="INCALL"
+                          checked={inq.inquiry_channel === 'INCALL'}
+                          onChange={() =>
+                            updateInquiry(inq.id, { inquiry_channel: 'INCALL' })
+                          }
+                        />
+                        <span>📞 인콜 <span className="text-xs text-gray-500">(고객 문의)</span></span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`channel-${inq.id}`}
+                          value="OUTCALL"
+                          checked={inq.inquiry_channel === 'OUTCALL'}
+                          onChange={() =>
+                            updateInquiry(inq.id, { inquiry_channel: 'OUTCALL' })
+                          }
+                        />
+                        <span>📤 아웃콜 <span className="text-xs text-gray-500">(영업 제안)</span></span>
+                      </label>
+                    </div>
+                  </Field>
                   <Field label="진행상황" required>
                     <select
                       className="input"

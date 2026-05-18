@@ -53,9 +53,17 @@ export interface MiceContact {
   phone: string;
 }
 
+// 유입 채널 — 인콜(고객이 먼저 문의) vs 아웃콜(우리가 먼저 제안)
+export type MiceInquiryChannel = 'INCALL' | 'OUTCALL';
+export const MICE_INQUIRY_CHANNEL_LABEL: Record<MiceInquiryChannel, string> = {
+  INCALL: '인콜 (고객 문의)',
+  OUTCALL: '아웃콜 (영업 제안)',
+};
+
 export interface MiceInquiry {
   id: string;
   progress_status: MiceInquiryStatus;
+  inquiry_channel: MiceInquiryChannel;
   contacts: MiceContact[];
   call_date: string | null;
   inquiry_event_date_text: string;

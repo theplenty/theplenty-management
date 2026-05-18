@@ -219,6 +219,7 @@ export function groupMiceFlatRows(
       inq = {
         id: nanoid(),
         progress_status: ((r.progress_status as MiceInquiryStatus) || 'INQ') as MiceInquiryStatus,
+        inquiry_channel: 'INCALL', // 엑셀 임포트 기본값 — admin 이 추후 재분류
         contacts: [],
         call_date: r.call_date || null,
         inquiry_event_date_text: r.inquiry_event_date_text || '',

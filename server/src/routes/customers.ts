@@ -341,9 +341,13 @@ function normalizeMiceInquiries(
     // 작성자: 한 번 정해지면 유지. 담당자: 미지정이면 작성자에서 fallback (옛 데이터 호환).
     const createdById = o.created_by_id || fallbackUserId;
     const createdByName = o.created_by_name || fallbackUserName;
+    // 유입 채널 — 없으면 'INCALL' 로 기본값 (기존 데이터 호환)
+    const channel: MiceInquiry['inquiry_channel'] =
+      o.inquiry_channel === 'OUTCALL' ? 'OUTCALL' : 'INCALL';
     return {
       id: o.id || nanoid(10),
       progress_status: (o.progress_status as MiceInquiry['progress_status']) || 'INQ',
+      inquiry_channel: channel,
       contacts,
       call_date: o.call_date ?? null,
       inquiry_event_date_text: o.inquiry_event_date_text || '',

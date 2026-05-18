@@ -13,6 +13,8 @@ import {
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { isAdmin } from '../auth/permissions';
+import { useActiveUsers } from '../lib/useActiveUsers';
+import SalesDashboard from '../components/SalesDashboard';
 import { formatKoreanCommas } from '../lib/numberFormat';
 import {
   buildTargetTable,
@@ -111,6 +113,7 @@ interface InflowFilter {
 export default function Dashboard() {
   const { user } = useAuth();
   const admin = isAdmin(user?.role);
+  const activeUsers = useActiveUsers();
 
   const [mice, setMice] = useState<MiceCustomer[]>([]);
   const [wedding, setWedding] = useState<WeddingCustomer[]>([]);
@@ -278,6 +281,16 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ===== Sections 1+2: 세일즈 중심 대시보드 (유입→전환 추적) ===== */}
+      <SalesDashboard
+        miceCustomers={mice}
+        weddingCustomers={wedding}
+        activeUsers={activeUsers}
+      />
+
+      {/* ===== Section 1 (LEGACY): MICE 신규 유입 현황 ===== */}
+      {false && (
+      <>
       {/* ===== Section 1: MICE 신규 유입 현황 ===== */}
       <Section eyebrow="01 / Inflow" title="MICE 신규 유입 현황" subtitle="통화일자 또는 생성일시 기준">
         {miceSummary.today === 0 && <DangerBanner>오늘 MICE 신규유입이 <strong>0건</strong>입니다. 영업 활동을 점검해주세요.</DangerBanner>}
@@ -406,6 +419,8 @@ export default function Dashboard() {
           <RateCard label="월간 LOS 전환율" value={weddingSummary.monthLosRate} accent={NV.error} />
         </div>
       </Section>
+      </>
+      )}
 
       {/* ===== Section 3: WEDDING 유입경로 현황 ===== */}
       <Section

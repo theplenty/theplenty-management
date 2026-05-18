@@ -61,6 +61,7 @@ function migrateMiceCustomers() {
       const inquiry: MiceInquiry = {
         id: nanoid(10),
         progress_status: status,
+        inquiry_channel: 'INCALL', // 기존 데이터 일괄 INCALL 분류
         contacts: [buildContactFromLegacy(raw)],
         call_date: (raw.call_date as string) || null,
         inquiry_event_date_text:
@@ -102,6 +103,11 @@ function migrateMiceCustomers() {
       }
       if (!('created_by_id' in inq)) {
         inq.created_by_id = '';
+        dirty = true;
+      }
+      // 유입 채널 필드 추가 — 기존 데이터는 모두 INCALL 로 일괄 분류. admin 이 추후 OUTCALL 재분류.
+      if (!('inquiry_channel' in inq)) {
+        inq.inquiry_channel = 'INCALL';
         dirty = true;
       }
       // contacts[] 없는 경우 → 기존 contact_name/email/phone를 한 명의 담당자로 변환

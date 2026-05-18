@@ -57,9 +57,15 @@ export interface MiceContact {
   phone: string;
 }
 
+// 인콜(고객이 먼저 문의) vs 아웃콜(우리가 먼저 영업) — 영업 액션 추적용.
+// 기존 데이터는 마이그레이션에서 'INCALL' 로 일괄 채움.
+export type MiceInquiryChannel = 'INCALL' | 'OUTCALL';
+
 export interface MiceInquiry {
   id: string;
   progress_status: MiceInquiryStatus;
+  // 유입 채널 — 신규 문의 등록 시 필수. 기존 데이터는 INCALL 로 일괄 마이그레이션.
+  inquiry_channel: MiceInquiryChannel;
   contacts: MiceContact[];
   call_date: string | null;
   inquiry_event_date_text: string;
