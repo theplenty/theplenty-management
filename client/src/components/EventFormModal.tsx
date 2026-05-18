@@ -19,6 +19,7 @@ import {
   type UsageType,
 } from '../types';
 import Modal from './Modal';
+import ErrorBoundary from './ErrorBoundary';
 import { Field } from './Field';
 import FoodMenuInput from './FoodMenuInput';
 import EventCustomerLinks from './EventCustomerLinks';
@@ -477,50 +478,63 @@ export default function EventFormModal({
         ))}
       </div>
 
-      {/* 탭 본문 */}
+      {/* 탭 본문 — 각 탭을 ErrorBoundary 로 격리해 어느 탭이 깨지는지 진단 + 다른 탭은 보존 */}
       {tab === 'basic' && (
-        <BasicInfoTab
-          form={form}
-          setForm={setForm}
-          foods={foods}
-          setFoods={setFoods}
-          isEdit={isEdit}
-          allowedTypes={allowedTypes}
-          changeEventType={changeEventType}
-          toggleHall={toggleHall}
-          initialEvent={initialEvent || null}
-          authorName={user?.name || ''}
-          managerOptions={miceManagerOptions}
-        />
+        <ErrorBoundary title="행사정보 탭에서 오류가 발생했습니다">
+          <BasicInfoTab
+            form={form}
+            setForm={setForm}
+            foods={foods}
+            setFoods={setFoods}
+            isEdit={isEdit}
+            allowedTypes={allowedTypes}
+            changeEventType={changeEventType}
+            toggleHall={toggleHall}
+            initialEvent={initialEvent || null}
+            authorName={user?.name || ''}
+            managerOptions={miceManagerOptions}
+          />
+        </ErrorBoundary>
       )}
       {tab === 'customer' && (
-        <EventCustomerLinks
-          eventType={form.event_type}
-          links={links}
-          onChange={setLinks}
-        />
+        <ErrorBoundary title="업체정보 탭에서 오류가 발생했습니다">
+          <EventCustomerLinks
+            eventType={form.event_type}
+            links={links}
+            onChange={setLinks}
+          />
+        </ErrorBoundary>
       )}
-      {tab === 'invoice' && <InvoiceTab draft={invoice} onChange={setInvoice} />}
+      {tab === 'invoice' && (
+        <ErrorBoundary title="INVOICE 탭에서 오류가 발생했습니다">
+          <InvoiceTab draft={invoice} onChange={setInvoice} />
+        </ErrorBoundary>
+      )}
       {tab === 'files' && (
-        <FilesTab
-          eventId={initialEvent?.id || null}
-          canWrite={canCreateEvent(user?.role)}
-        />
+        <ErrorBoundary title="첨부파일 탭에서 오류가 발생했습니다">
+          <FilesTab eventId={initialEvent?.id || null} canWrite={canCreateEvent(user?.role)} />
+        </ErrorBoundary>
       )}
       {tab === 'cancel' && form.status === 'LOS' && (
-        <CancellationTab draft={cancellation} onChange={setCancellation} />
+        <ErrorBoundary title="취소정보 탭에서 오류가 발생했습니다">
+          <CancellationTab draft={cancellation} onChange={setCancellation} />
+        </ErrorBoundary>
       )}
       {tab === 'review' && (
-        <ReviewTab
-          eventId={initialEvent?.id || null}
-          canWrite={canWriteReview(user?.role)}
-          eventEndDatetime={initialEvent?.end_datetime || form.end_datetime}
-          eventStatus={form.status}
-        />
+        <ErrorBoundary title="행사리뷰 탭에서 오류가 발생했습니다">
+          <ReviewTab
+            eventId={initialEvent?.id || null}
+            canWrite={canWriteReview(user?.role)}
+            eventEndDatetime={initialEvent?.end_datetime || form.end_datetime}
+            eventStatus={form.status}
+          />
+        </ErrorBoundary>
       )}
 
       {/* 수정 이력 — 모든 탭에서 모달 하단에 노출. 모달 닫고 다시 열 때 fresh fetch. */}
-      <ChangeLogPanel entityType="event" entityId={initialEvent?.id || null} />
+      <ErrorBoundary title="수정 이력 패널에서 오류가 발생했습니다">
+        <ChangeLogPanel entityType="event" entityId={initialEvent?.id || null} />
+      </ErrorBoundary>
 
       {/* 중복안내·강한충돌 클릭 시 노출되는 충돌 행사 상세 모달 */}
       <Modal

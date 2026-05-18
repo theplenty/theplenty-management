@@ -167,11 +167,12 @@ export default function Reviews() {
       }>(`/api/events/${e.id}`);
       console.log('[리뷰] 행사 데이터 OK', {
         id: res.event?.id,
-        files_count: undefined,
         food_items_count: res.food_items?.length,
         invoice: !!res.invoice,
         cancellation: !!res.cancellation,
       });
+      // 데이터 raw 덤프 — 어느 필드가 React #31 을 유발하는지 식별용
+      console.log('[리뷰] 데이터 raw', JSON.parse(JSON.stringify(res)));
       if (!res.event) {
         alert('서버에서 행사 데이터를 받지 못했습니다. 행사 ID: ' + e.id);
         return;
