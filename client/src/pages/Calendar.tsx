@@ -131,6 +131,7 @@ export default function Calendar() {
 
   const [shareOpen, setShareOpen] = useState(false);
   const [conflictListOpen, setConflictListOpen] = useState(false);
+  const [dupListOpen, setDupListOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -206,6 +207,40 @@ export default function Calendar() {
     return map;
   }, [weddingCustomers]);
 
+  // === 중복 행사 감지 — 별도 useMemo 로 분리해서 배너/모달에서도 재사용 ===
+  const dupAnalysis = useMemo(() => {
+    const normDt = (s: string | null | undefined) => (s || '').slice(0, 16);
+    const dupKeyOf = (e: EventWithFood) =>
+      `${(e.event_name || '').trim().toLowerCase()}|${normDt(e.start_datetime)}`;
+    const groups = new Map<string, EventWithFood[]>();
+    for (const e of events) {
+      if (!e.event_name) continue;
+      const k = dupKeyOf(e);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push(e);
+    }
+    const seqOf = new Map<string, { idx: number; total: number }>();
+    const dupGroups: EventWithFood[][] = [];
+    for (const [, arr] of groups) {
+      if (arr.length > 1) {
+        arr.sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+        arr.forEach((ev, i) => seqOf.set(ev.id, { idx: i + 1, total: arr.length }));
+        dupGroups.push(arr);
+      }
+    }
+    if (seqOf.size > 0 && typeof window !== 'undefined') {
+      console.log(
+        '[캘린더] 중복 행사 감지',
+        seqOf.size,
+        '건 /',
+        dupGroups.length,
+        '그룹',
+        dupGroups
+      );
+    }
+    return { seqOf, dupGroups, totalDupEvents: seqOf.size };
+  }, [events]);
+
   const fcEvents: EventInput[] = useMemo(() => {
     const q = debouncedQuery.trim();
     const filtered = events.filter((e) => {
@@ -217,36 +252,11 @@ export default function Calendar() {
       }
       return true;
     });
-    // === 중복 행사 감지 ===
-    // 같은 시작시간 + 행사명(대소문자/공백 무시) 이면 중복으로 간주 — 사용자가 실수로 두 번
-    // 등록한 케이스를 잡기 위해 키를 느슨하게. 홀이나 종료시간이 살짝 달라도 묶임.
-    // 표시용 id 에 시퀀스 suffix + 제목 앞에 [중복 N/M] 라벨을 붙여 시각적으로 분리.
-    const dupKeyOf = (e: EventWithFood) =>
-      `${(e.event_name || '').trim().toLowerCase()}|${e.start_datetime}`;
-    const dupGroups = new Map<string, EventWithFood[]>();
-    for (const e of filtered) {
-      if (!e.event_name) continue; // 이름 없는 행사는 중복 검출 대상 외
-      const k = dupKeyOf(e);
-      if (!dupGroups.has(k)) dupGroups.set(k, []);
-      dupGroups.get(k)!.push(e);
-    }
-    const dupSeqOf = new Map<string, { idx: number; total: number }>();
-    for (const [, arr] of dupGroups) {
-      if (arr.length > 1) {
-        // 생성 시간 오래된 순으로 정렬하여 #1 이 가장 먼저 만든 행사가 되도록.
-        arr.sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
-        arr.forEach((ev, i) => dupSeqOf.set(ev.id, { idx: i + 1, total: arr.length }));
-      }
-    }
-    if (dupSeqOf.size > 0 && typeof window !== 'undefined') {
-      // 디버그용 — DevTools 콘솔에서 중복 검출 결과를 사용자가 확인 가능
-      console.log('[캘린더] 중복 행사 감지', dupSeqOf.size, '건', Array.from(dupSeqOf.entries()));
-    }
     const out = filtered.map((ev) => {
       const conflict = detectConflict(ev as Event, filtered as Event[]);
       // 취소 계열은 모두 faded (LOS / 상담취소 / 미팅취소)
       const fcEv = toFcEvent(ev, isCancelledStatus(ev.status), conflict.level === 'hard');
-      const dup = dupSeqOf.get(ev.id);
+      const dup = dupAnalysis.seqOf.get(ev.id);
       if (dup) {
         // 내부 식별자도 분리 — FullCalendar 가 동일 id를 자동 dedupe 하더라도 안전하게.
         // 실제 클릭 시에는 extendedProps.event.id 로 원본 행사를 식별하므로 영향 없음.
@@ -254,6 +264,8 @@ export default function Calendar() {
         fcEv.title = `🔴 [중복 ${dup.idx}/${dup.total}] ${fcEv.title}`;
         // 색상도 강제로 빨강 계열 — 시각적 강조
         fcEv.borderColor = '#dc2626';
+        fcEv.backgroundColor = '#fee2e2';
+        fcEv.textColor = '#991b1b';
       }
       return fcEv;
     });
@@ -277,6 +289,7 @@ export default function Calendar() {
     debouncedQuery,
     eventSearchIndex,
     consultSearchIndex,
+    dupAnalysis,
   ]);
 
   function handleSelect(info: DateSelectArg) {
@@ -388,6 +401,7 @@ export default function Calendar() {
       setEditingCancellation(null);
     }
     setConflictListOpen(false);
+    setDupListOpen(false);
     setModalOpen(true);
   }
 
@@ -488,11 +502,24 @@ export default function Calendar() {
           className="input !py-1 !text-xs flex-1 min-w-[12rem]"
         />
 
+        {dupAnalysis.dupGroups.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setDupListOpen(true)}
+            className="ml-auto text-red-700 bg-red-50 border border-red-200 rounded px-2 py-0.5 hover:bg-red-100 focus:outline-none"
+            title="클릭하여 중복 행사 목록 보기"
+          >
+            🔴 중복 행사 {dupAnalysis.totalDupEvents}건 / {dupAnalysis.dupGroups.length}쌍 (같은 시간·이름)
+          </button>
+        )}
         {hardConflictPairs.length > 0 && (
           <button
             type="button"
             onClick={() => setConflictListOpen(true)}
-            className="ml-auto text-red-600 underline decoration-dotted hover:text-red-700 hover:decoration-solid focus:outline-none"
+            className={
+              (dupAnalysis.dupGroups.length > 0 ? '' : 'ml-auto ') +
+              'text-red-600 underline decoration-dotted hover:text-red-700 hover:decoration-solid focus:outline-none'
+            }
             title="클릭하여 충돌 목록 보기"
           >
             ⚠️ 강한 충돌 {hardConflictPairs.length}쌍 감지됨 (DEF 같은 홀/시간 겹침)
@@ -591,6 +618,33 @@ export default function Calendar() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <ConflictRow ev={a} onOpen={() => openEventFromList(a.id)} />
                   <ConflictRow ev={b} onOpen={() => openEventFromList(b.id)} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
+
+      {/* 중복 행사 목록 모달 — 같은 이름·시작시간으로 둘 이상 등록된 행사들 */}
+      <Modal
+        open={dupListOpen}
+        onClose={() => setDupListOpen(false)}
+        title={`🔴 중복 행사 ${dupAnalysis.dupGroups.length}쌍 — 클릭하면 해당 행사 수정 화면으로`}
+        widthClass="max-w-4xl"
+      >
+        {dupAnalysis.dupGroups.length === 0 ? (
+          <div className="text-sm text-gray-500">중복 행사가 없습니다.</div>
+        ) : (
+          <ul className="divide-y">
+            {dupAnalysis.dupGroups.map((grp, i) => (
+              <li key={grp.map((g) => g.id).join('|')} className="py-3 text-sm">
+                <div className="text-xs text-gray-500 mb-2">
+                  #{i + 1} · {grp[0].event_name} · {grp[0].start_datetime} ({grp.length}건)
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {grp.map((ev) => (
+                    <ConflictRow key={ev.id} ev={ev} onOpen={() => openEventFromList(ev.id)} />
+                  ))}
                 </div>
               </li>
             ))}
