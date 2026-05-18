@@ -17,6 +17,7 @@ import {
 } from '../types';
 import Modal from '../components/Modal';
 import SimilarOrgWarning from '../components/SimilarOrgWarning';
+import LinkedEventsSection from '../components/LinkedEventsSection';
 import { Field, StatusBadge } from '../components/Field';
 import ExcelButtons from '../components/ExcelButtons';
 import ChangeLogPanel from '../components/ChangeLogPanel';
@@ -1008,6 +1009,17 @@ export default function MiceCustomers() {
             onChange={(e) => setForm({ ...form, memo: e.target.value })}
           />
         </Section>
+
+        {/* 플렌티에서 진행한 행사 — 수정 모달에서도 보이도록 (프로필 페이지와 동일 데이터) */}
+        {editingId && (
+          <Section title="플렌티에서 진행한 행사">
+            <LinkedEventsSection
+              customerType="mice"
+              customerId={editingId}
+              showProfileLink
+            />
+          </Section>
+        )}
 
         {/* 수정 이력 */}
         <ChangeLogPanel
