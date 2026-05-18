@@ -60,6 +60,28 @@ function describeEvent(ev: Event): { label: string; subtitle: string } {
 }
 
 // 한 고객/이벤트가 검색어와 매칭되는지 + 어느 필드에서 매칭됐는지 반환
+// 한 WEDDING 고객의 모든 텍스트 필드를 join 후 digits-only 추출.
+// WeddingCustomers 페이지의 fuzzyMatchEntry 와 동일한 범위로 통일.
+function buildWeddingDigits(c: WeddingCustomer): string {
+  const parts = [
+    c.wedding_event_name,
+    c.groom_phone,
+    c.bride_phone,
+    c.groom_email,
+    c.bride_email,
+    c.desired_budget,
+    c.competing_venues,
+    c.memo,
+    c.first_inform_comment,
+    c.inquiry_date,
+    c.desired_consultation_date,
+  ];
+  for (const i of c.event_inquiries || []) {
+    parts.push(i.wedding_datetime, i.estimate_amount, i.estimate_detail, i.visit_consultation_comment);
+  }
+  return parts.filter(Boolean).join(' ').replace(/\D/g, '');
+}
+
 function matchWedding(c: WeddingCustomer, q: ReturnType<typeof parseQuery>): string[] | null {
   if (c.deleted_at) return null;
   const matched: string[] = [];
@@ -67,14 +89,37 @@ function matchWedding(c: WeddingCustomer, q: ReturnType<typeof parseQuery>): str
   if (softIncludes(c.groom_name, q.text)) matched.push('groom_name');
   if (softIncludes(c.bride_name, q.text)) matched.push('bride_name');
   if (q.phoneNumeric) {
-    if (normalizePhone(c.groom_phone).includes(q.phoneNumeric)) matched.push('groom_phone');
-    if (normalizePhone(c.bride_phone).includes(q.phoneNumeric)) matched.push('bride_phone');
+    const groomDigits = normalizePhone(c.groom_phone);
+    const brideDigits = normalizePhone(c.bride_phone);
+    if (groomDigits.includes(q.phoneNumeric)) matched.push('groom_phone');
+    if (brideDigits.includes(q.phoneNumeric)) matched.push('bride_phone');
+    // 전화로 매칭 안 됐을 때 — 다른 필드(견적금액·메모·견적세부 등)의 digit 도 확인
+    if (!matched.some((m) => m === 'groom_phone' || m === 'bride_phone')) {
+      if (buildWeddingDigits(c).includes(q.phoneNumeric)) matched.push('digits');
+    }
   }
   if (q.emailLocal) {
     if ((c.groom_email || '').toLowerCase().includes(q.emailLocal)) matched.push('groom_email');
     if ((c.bride_email || '').toLowerCase().includes(q.emailLocal)) matched.push('bride_email');
   }
   return matched.length ? matched : null;
+}
+
+function buildMiceDigits(c: MiceCustomer): string {
+  const parts: Array<string | null | undefined> = [
+    c.organization_name,
+    c.official_phone,
+    c.official_email,
+    c.official_website,
+    c.memo,
+  ];
+  for (const inq of c.inquiries || []) {
+    parts.push(inq.inquiry_event_date_text, inq.event_memo, inq.call_date);
+    for (const ct of inq.contacts || []) {
+      parts.push(ct.name, ct.phone, ct.email);
+    }
+  }
+  return parts.filter(Boolean).join(' ').replace(/\D/g, '');
 }
 
 function matchMice(c: MiceCustomer, q: ReturnType<typeof parseQuery>): string[] | null {
@@ -103,6 +148,10 @@ function matchMice(c: MiceCustomer, q: ReturnType<typeof parseQuery>): string[] 
         break;
       }
     }
+  }
+  // 전화/연락처 모두 안 맞았으면 — 다른 텍스트 필드의 digits 확인 (메모·견적·금액 등)
+  if (q.phoneNumeric && !matched.some((m) => m.includes('phone'))) {
+    if (buildMiceDigits(c).includes(q.phoneNumeric)) matched.push('digits');
   }
   return matched.length ? matched : null;
 }
