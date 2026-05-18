@@ -76,7 +76,8 @@ function toFcConsultation(c: WeddingCustomer): EventInput {
 }
 
 function toFcEvent(ev: EventWithFood, faded: boolean, hardConflict: boolean): EventInput {
-  const baseColor = STATUS_HEX[ev.status];
+  // 알 수 없는 상태값(레거시 TEN 등)에 대비해 회색 fallback
+  const baseColor = STATUS_HEX[ev.status] || '#6b7280';
   const textColor = ev.status === 'LOS' ? '#7f1d1d' : '#ffffff';
   const cancelled = isCancelledStatus(ev.status);
   return {
@@ -247,15 +248,30 @@ export default function Calendar() {
 
   const fcEvents: EventInput[] = useMemo(() => {
     const q = debouncedQuery.trim();
+    // 알려진 상태(체크박스가 있는 상태)와 알 수 없는 상태(레거시 TEN, 오타 등)를 분리.
+    // 알 수 없는 상태는 체크박스가 없으니까 무조건 표시 (안 그러면 데이터에 있는데 캘린더에서 사라짐).
+    const unknownStatuses = new Set<string>();
     const filtered = events.filter((e) => {
       if (filterType !== 'ALL' && e.event_type !== filterType) return false;
-      if (!statusVisible[e.status]) return false;
+      const statusIsKnown = (e.status as string) in statusVisible;
+      if (statusIsKnown) {
+        if (!statusVisible[e.status]) return false;
+      } else {
+        unknownStatuses.add(String(e.status));
+        // 알 수 없는 상태 — 일단 표시 (체크박스 없이 무조건 표시)
+      }
       if (q) {
         const entry = eventSearchIndex.get(e.id);
         if (!entry || !fuzzyMatchEntry(entry, q)) return false;
       }
       return true;
     });
+    if (unknownStatuses.size > 0 && typeof window !== 'undefined') {
+      console.warn(
+        '[캘린더] 알 수 없는 상태값 행사 감지 — 체크박스 없이 무조건 표시 중. 정책상 폐기된 status 또는 오타일 가능성:',
+        Array.from(unknownStatuses)
+      );
+    }
     const out = filtered.map((ev) => {
       const conflict = detectConflict(ev as Event, filtered as Event[]);
       // 취소 계열은 모두 faded (LOS / 상담취소 / 미팅취소)
