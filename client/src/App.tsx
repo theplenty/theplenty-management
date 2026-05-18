@@ -16,6 +16,7 @@ import Trash from './pages/Trash';
 import WeddingProfile from './pages/WeddingProfile';
 import MiceProfile from './pages/MiceProfile';
 import CalendarSummary from './pages/CalendarSummary';
+import ActivityLog from './pages/ActivityLog';
 import ErrorBoundary from './components/ErrorBoundary';
 import Dashboard from './pages/Dashboard';
 import PublicCalendar from './pages/PublicCalendar';
@@ -155,6 +156,14 @@ function ProtectedRoutes() {
           element={
             <ProtectedRoute allow={['admin']}>
               <Trash />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/activity-log"
+          element={
+            <ProtectedRoute allow={['admin']}>
+              <ActivityLog />
             </ProtectedRoute>
           }
         />

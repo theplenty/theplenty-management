@@ -66,9 +66,10 @@ export default function Layout() {
       visible: !!user && canSeeReviews(role),
     },
     { to: '/files', label: '첨부파일 관리', visible: !!user },
-    // 관리자 전용 탭 — admin role 만 노출. canManageUsers/ApiKeys/Trash 는 isAdmin alias.
+    // 관리자 전용 탭 — admin role 만 노출.
     { to: '/admin/users', label: '사용자 관리', visible: !!user && canManageUsers(role) },
     { to: '/admin/api-keys', label: '외부 API 키', visible: !!user && canManageApiKeys(role) },
+    { to: '/admin/activity-log', label: '📜 활동 로그', visible: !!user && canManageUsers(role) },
     { to: '/admin/trash', label: '🗑️ 휴지통', visible: !!user && canManageTrash(role) },
   ];
 
