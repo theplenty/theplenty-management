@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { canWriteReview } from '../auth/permissions';
 import EventFormModal from '../components/EventFormModal';
 import ExcelButtons from '../components/ExcelButtons';
+import { useTableControls, compareSortValues } from '../lib/useTableControls';
 import {
   type Event,
   type EventCustomerLink,
@@ -71,6 +72,29 @@ function fmt(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// 테이블 헤더 클릭 정렬용 — key별 sortValue 매핑. has_review 는 boolean → number 로 변환.
+const REVIEW_SORTERS: Record<string, ((e: EligibleEvent) => string | number) | undefined> = {
+  event_type: (e) => e.event_type,
+  event_name: (e) => e.event_name,
+  start_datetime: (e) => e.start_datetime,
+  end_datetime: (e) => e.end_datetime,
+  halls: (e) => e.halls.join(' / '),
+  has_review: (e) => (e.has_review ? 1 : 0),
+};
+
+interface ReviewHeader {
+  key: string;
+  label: string;
+}
+const REVIEW_HEADERS: ReviewHeader[] = [
+  { key: 'event_type', label: '구분' },
+  { key: 'event_name', label: '행사명' },
+  { key: 'start_datetime', label: '시작일시' },
+  { key: 'end_datetime', label: '종료일시' },
+  { key: 'halls', label: '사용홀' },
+  { key: 'has_review', label: '리뷰 상태' },
+];
+
 export default function Reviews() {
   const { user } = useAuth();
   const writable = canWriteReview(user?.role);
@@ -111,15 +135,25 @@ export default function Reviews() {
     load();
   }, []);
 
+  // 컬럼 클릭 정렬 — 기본은 종료일시 내림차순 (최근 종료 행사가 위에).
+  const tc = useTableControls({
+    storageKey: 'reviews_table',
+    defaultSort: { key: 'end_datetime', dir: 'desc' },
+  });
+
   const filtered = useMemo(() => {
-    return list
-      .filter((e) => {
-        if (filter === 'WAITING') return !e.has_review;
-        if (filter === 'WRITTEN') return e.has_review;
-        return true;
-      })
-      .sort((a, b) => (a.end_datetime < b.end_datetime ? 1 : -1));
-  }, [list, filter]);
+    const base = list.filter((e) => {
+      if (filter === 'WAITING') return !e.has_review;
+      if (filter === 'WRITTEN') return e.has_review;
+      return true;
+    });
+    const sortFn = REVIEW_SORTERS[tc.sort.key || ''];
+    if (!sortFn) {
+      // 기본 정렬 fallback — 종료일시 desc
+      return [...base].sort((a, b) => (a.end_datetime < b.end_datetime ? 1 : -1));
+    }
+    return [...base].sort((a, b) => compareSortValues(sortFn(a), sortFn(b), tc.sort.dir));
+  }, [list, filter, tc.sort]);
 
   async function openEvent(e: EligibleEvent) {
     try {
@@ -258,12 +292,21 @@ export default function Reviews() {
           <thead className="bg-gray-50 text-gray-700">
             <tr>
               <th className="text-right px-2 py-2 font-semibold w-12 text-gray-400">#</th>
-              <th className="text-left px-3 py-2 font-semibold">구분</th>
-              <th className="text-left px-3 py-2 font-semibold">행사명</th>
-              <th className="text-left px-3 py-2 font-semibold">시작일시</th>
-              <th className="text-left px-3 py-2 font-semibold">종료일시</th>
-              <th className="text-left px-3 py-2 font-semibold">사용홀</th>
-              <th className="text-left px-3 py-2 font-semibold">리뷰 상태</th>
+              {REVIEW_HEADERS.map((h) => {
+                const active = tc.sort.key === h.key;
+                const arrow = !active ? '' : tc.sort.dir === 'asc' ? ' ▲' : ' ▼';
+                return (
+                  <th
+                    key={h.key}
+                    onClick={() => tc.toggleSort(h.key)}
+                    className="text-left px-3 py-2 font-semibold select-none cursor-pointer hover:bg-gray-100"
+                    title="클릭하여 정렬"
+                  >
+                    {h.label}
+                    <span className={active ? 'text-blue-600' : 'text-gray-300'}>{arrow}</span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
