@@ -217,10 +217,36 @@ export default function Calendar() {
       }
       return true;
     });
+    // === 중복 행사 감지 ===
+    // 같은 구분·홀·시작·종료·이름의 행사가 여러 개면 캘린더상 정확히 같은 위치에 그려져 시각적으로
+    // 하나처럼 보임 (FullCalendar는 동일한 props의 이벤트를 dedupe 하지는 않지만 완전 겹침은 분간 불가).
+    // 표시용 id 에 시퀀스 suffix + 제목 앞에 [중복 N/M] 라벨을 붙여 각각 분리되어 보이도록.
+    const dupKeyOf = (e: EventWithFood) =>
+      `${e.event_type}|${(e.halls || []).join('/')}|${e.start_datetime}|${e.end_datetime}|${(e.event_name || '').trim()}`;
+    const dupGroups = new Map<string, EventWithFood[]>();
+    for (const e of filtered) {
+      const k = dupKeyOf(e);
+      if (!dupGroups.has(k)) dupGroups.set(k, []);
+      dupGroups.get(k)!.push(e);
+    }
+    const dupSeqOf = new Map<string, { idx: number; total: number }>();
+    for (const [, arr] of dupGroups) {
+      if (arr.length > 1) {
+        arr.forEach((ev, i) => dupSeqOf.set(ev.id, { idx: i + 1, total: arr.length }));
+      }
+    }
     const out = filtered.map((ev) => {
       const conflict = detectConflict(ev as Event, filtered as Event[]);
       // 취소 계열은 모두 faded (LOS / 상담취소 / 미팅취소)
-      return toFcEvent(ev, isCancelledStatus(ev.status), conflict.level === 'hard');
+      const fcEv = toFcEvent(ev, isCancelledStatus(ev.status), conflict.level === 'hard');
+      const dup = dupSeqOf.get(ev.id);
+      if (dup) {
+        // 내부 식별자도 분리 — FullCalendar 가 동일 id를 자동 dedupe 하더라도 안전하게.
+        // 실제 클릭 시에는 extendedProps.event.id 로 원본 행사를 식별하므로 영향 없음.
+        fcEv.id = `${ev.id}__dup${dup.idx}`;
+        fcEv.title = `[중복 ${dup.idx}/${dup.total}] ${fcEv.title}`;
+      }
+      return fcEv;
     });
     if (showConsultations && (filterType === 'ALL' || filterType === 'WEDDING')) {
       for (const c of weddingCustomers) {
