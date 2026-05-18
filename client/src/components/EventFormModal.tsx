@@ -623,7 +623,47 @@ function BasicInfoTab({
     <>
       <Section title="A. 행사 기본정보">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 메모 — 가장 먼저 확인할 수 있도록 상단 배치. 1줄에서 시작해 입력 길이에 따라 확장. */}
+          {/* 1) 행사명 */}
+          <Field label="행사명" required className="md:col-span-2">
+            <input
+              className="input"
+              value={form.event_name}
+              onChange={(e) => setForm({ ...form, event_name: e.target.value })}
+            />
+          </Field>
+          {/* 2) 행사 시작일시 — 우선 입력 항목이라 col-span-2 로 단독 행 차지 */}
+          <Field label="행사 시작일시" required className="md:col-span-2">
+            <input
+              type="datetime-local"
+              className="input"
+              value={form.start_datetime}
+              onChange={(e) => setForm({ ...form, start_datetime: e.target.value })}
+            />
+          </Field>
+          {/* 3) 사용홀 */}
+          <Field label="사용홀 (중복 선택)" className="md:col-span-2">
+            <div className="flex flex-wrap gap-1.5">
+              {HALL_OPTIONS.map((h) => {
+                const on = form.halls.includes(h);
+                return (
+                  <button
+                    type="button"
+                    key={h}
+                    onClick={() => toggleHall(h)}
+                    className={
+                      'px-2.5 py-1 rounded-full border text-xs transition ' +
+                      (on
+                        ? 'bg-blue-600 border-blue-600 text-white'
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50')
+                    }
+                  >
+                    {h}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+          {/* 4) 메모 */}
           <Field label="메모 (내부 운영 참고용)" className="md:col-span-2">
             <AutoExpandTextarea
               className="input"
@@ -632,6 +672,7 @@ function BasicInfoTab({
               placeholder="여러 줄 입력 가능 — 내부 참고용 메모"
             />
           </Field>
+          {/* 5) 이하는 기존 순서 유지 — 구분 / 상태 / 이용시간 / 좌석수 / 행사 종료일시 / 작성일자 / 작성자 / 담당자 */}
           <Field label="구분" required>
             <select
               className="input"
@@ -683,49 +724,12 @@ function BasicInfoTab({
               }
             />
           </Field>
-          <Field label="사용홀 (중복 선택)" className="md:col-span-2">
-            <div className="flex flex-wrap gap-1.5">
-              {HALL_OPTIONS.map((h) => {
-                const on = form.halls.includes(h);
-                return (
-                  <button
-                    type="button"
-                    key={h}
-                    onClick={() => toggleHall(h)}
-                    className={
-                      'px-2.5 py-1 rounded-full border text-xs transition ' +
-                      (on
-                        ? 'bg-blue-600 border-blue-600 text-white'
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50')
-                    }
-                  >
-                    {h}
-                  </button>
-                );
-              })}
-            </div>
-          </Field>
-          <Field label="행사 시작일시" required>
-            <input
-              type="datetime-local"
-              className="input"
-              value={form.start_datetime}
-              onChange={(e) => setForm({ ...form, start_datetime: e.target.value })}
-            />
-          </Field>
-          <Field label="행사 종료일시" required>
+          <Field label="행사 종료일시" required className="md:col-span-2">
             <input
               type="datetime-local"
               className="input"
               value={form.end_datetime}
               onChange={(e) => setForm({ ...form, end_datetime: e.target.value })}
-            />
-          </Field>
-          <Field label="행사명" required className="md:col-span-2">
-            <input
-              className="input"
-              value={form.event_name}
-              onChange={(e) => setForm({ ...form, event_name: e.target.value })}
             />
           </Field>
           <Field label="작성일자">

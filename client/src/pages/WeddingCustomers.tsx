@@ -45,6 +45,8 @@ function nextWeddingDatetime(c: WeddingCustomer): string {
   return '';
 }
 
+// 사용자 요청 순서: 번호 / 행사명 / 진행단계 / 신규문의일자 / 희망상담일자 / 예식일자 /
+// 유입경로 / 희망예산 / 견적비용 / 담당. ('번호' 열은 테이블에서 별도 # 컬럼으로 렌더 — 여기엔 빠짐)
 const WEDDING_COLUMNS: WedCol[] = [
   {
     key: 'wedding_event_name',
@@ -71,47 +73,8 @@ const WEDDING_COLUMNS: WedCol[] = [
     sortValue: (c) => c.desired_consultation_date || '',
   },
   {
-    key: 'groom',
-    label: '신랑',
-    render: (c) => (
-      <>
-        {c.groom_name || '-'}
-        {c.groom_phone && <span className="ml-1 text-xs text-gray-500">{c.groom_phone}</span>}
-      </>
-    ),
-    sortValue: (c) => c.groom_name,
-  },
-  {
-    key: 'bride',
-    label: '신부',
-    render: (c) => (
-      <>
-        {c.bride_name || '-'}
-        {c.bride_phone && <span className="ml-1 text-xs text-gray-500">{c.bride_phone}</span>}
-      </>
-    ),
-    sortValue: (c) => c.bride_name,
-  },
-  {
-    key: 'source',
-    label: '유입경로',
-    render: (c) => (
-      <>
-        {c.source || '-'}
-        {c.source_detail && <span className="ml-1 text-xs text-gray-500">/ {c.source_detail}</span>}
-      </>
-    ),
-    sortValue: (c) => c.source,
-  },
-  {
-    key: 'desired_budget',
-    label: '희망예산',
-    render: (c) => c.desired_budget || '-',
-    sortValue: (c) => c.desired_budget,
-  },
-  {
     key: 'event_candidates',
-    label: '예식 후보 일정',
+    label: '예식일자',
     render: (c) => (
       <span className="text-xs">
         {c.event_inquiries
@@ -131,30 +94,51 @@ const WEDDING_COLUMNS: WedCol[] = [
     sortValue: (c) => nextWeddingDatetime(c),
   },
   {
-    key: 'last_modified',
-    label: '최종 수정',
+    key: 'source',
+    label: '유입경로',
     render: (c) => (
-      <span className="text-xs text-gray-500">
-        {c.last_modified_by_name ? (
-          <>
-            {c.last_modified_by_name}
-            <br />
-            <span className="text-gray-400">
-              {c.last_modified_at &&
-                new Date(c.last_modified_at).toLocaleString('ko-KR', {
-                  month: '2-digit',
-                  day: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-            </span>
-          </>
-        ) : (
-          '-'
-        )}
+      <>
+        {c.source || '-'}
+        {c.source_detail && <span className="ml-1 text-xs text-gray-500">/ {c.source_detail}</span>}
+      </>
+    ),
+    sortValue: (c) => c.source,
+  },
+  {
+    key: 'desired_budget',
+    label: '희망예산',
+    render: (c) => c.desired_budget || '-',
+    sortValue: (c) => c.desired_budget,
+  },
+  {
+    key: 'estimate_amount',
+    label: '견적비용',
+    render: (c) => (
+      <span className="text-xs">
+        {c.event_inquiries.map((i) => i.estimate_amount).filter(Boolean).join(' / ') || '-'}
       </span>
     ),
-    sortValue: (c) => c.last_modified_at || '',
+    // 정렬용: 첫 번째 비어있지 않은 견적의 숫자만 추출
+    sortValue: (c) => {
+      const v = c.event_inquiries.map((i) => i.estimate_amount).find((x) => x);
+      if (!v) return 0;
+      const n = Number(String(v).replace(/[^\d.-]/g, ''));
+      return Number.isFinite(n) ? n : 0;
+    },
+  },
+  {
+    key: 'assigned_manager',
+    label: '담당',
+    render: (c) => (
+      <span className="text-xs">
+        {c.event_inquiries
+          .map((i) => i.assigned_manager_name)
+          .filter(Boolean)
+          .filter((v, idx, arr) => arr.indexOf(v) === idx)
+          .join(' / ') || '-'}
+      </span>
+    ),
+    sortValue: (c) => c.event_inquiries.find((i) => i.assigned_manager_name)?.assigned_manager_name || '',
   },
 ];
 
