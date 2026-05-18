@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { buildSearchEntry, fuzzyMatchEntry, type SearchEntry } from '../lib/koreanSearch';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { useAuth } from '../auth/AuthContext';
+import { canWriteWedding } from '../auth/permissions';
 import { useActiveUsers } from '../lib/useActiveUsers';
 import { nanoid } from '../lib/clientId';
 import { formatKoreanCommas } from '../lib/numberFormat';
@@ -506,9 +507,11 @@ export default function WeddingCustomers() {
               return res;
             }}
           />
-          <button onClick={openNew} className="btn-primary">
-            + 신규 등록
-          </button>
+          {canWriteWedding(user?.role) && (
+            <button onClick={openNew} className="btn-primary">
+              + 신규 등록
+            </button>
+          )}
         </div>
       </div>
 
@@ -656,12 +659,14 @@ export default function WeddingCustomers() {
                       </td>
                     ))}
                     <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => remove(c)}
-                        className="text-xs text-red-600 hover:underline"
-                      >
-                        삭제
-                      </button>
+                      {canWriteWedding(user?.role) && (
+                        <button
+                          onClick={() => remove(c)}
+                          className="text-xs text-red-600 hover:underline"
+                        >
+                          삭제
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))

@@ -6,10 +6,18 @@ export type Role =
   | 'sales_wedding'
   | 'banquet'
   | 'kitchen'
+  | 'h_kitchen' // 에이치키친 — 뷰어, 고객 DB 접근 불가
   | 'pending'
   | 'disabled';
 
-export type Team = 'sales_mice' | 'sales_wedding' | 'banquet' | 'kitchen' | 'admin' | null;
+export type Team =
+  | 'sales_mice'
+  | 'sales_wedding'
+  | 'banquet'
+  | 'kitchen'
+  | 'h_kitchen'
+  | 'admin'
+  | null;
 
 export interface User {
   id: string;

@@ -16,20 +16,21 @@ import type {
 const router = Router();
 
 // 정책:
-// - READ: 모든 활성 사용자 (행사-고객 연결을 위해 양 팀에서 양쪽 고객 검색 필요)
-// - WRITE: admin 또는 매칭 팀만
+// - READ: admin / sales / banquet / kitchen — h_kitchen 은 고객 DB 접근 불가 (스펙)
+// - WRITE: admin 또는 매칭 팀 (sales_mice → MICE, sales_wedding → WEDDING)
 function canAccessType(role: string, type: CustomerType): { read: boolean; write: boolean } {
-  const isActive =
+  const read =
     role === 'admin' ||
     role === 'sales_mice' ||
     role === 'sales_wedding' ||
     role === 'banquet' ||
     role === 'kitchen';
+  // h_kitchen 은 명시적으로 false — 고객 DB 접근 불가
   const write =
     role === 'admin' ||
     (role === 'sales_mice' && type === 'MICE') ||
     (role === 'sales_wedding' && type === 'WEDDING');
-  return { read: isActive, write };
+  return { read, write };
 }
 
 router.use(requireActiveRole);
@@ -450,8 +451,9 @@ router.patch('/mice/:id', (req, res) => {
 });
 
 router.delete('/mice/:id', (req, res) => {
-  // 휴지통 안전망이 있으므로 활성 사용자 전체에게 삭제 권한 (admin/sales/banquet/kitchen).
-  // 잘못 삭제해도 /admin/trash 에서 복구 가능.
+  // 새 권한 정책: MICE write 권한자(admin + sales_mice)만 삭제 가능. 뷰어 제외.
+  const { write } = canAccessType(req.user!.role, 'MICE');
+  if (!write) return res.status(403).json({ error: 'forbidden' });
   const item = store.mice_customers.find((c) => c.id === req.params.id);
   if (!item || isDeleted(item)) return res.status(404).json({ error: 'not_found' });
   softDelete('mice_customers', item.id, { id: req.user!.id, name: req.user!.name });
@@ -619,7 +621,9 @@ router.patch('/wedding/:id', (req, res) => {
 });
 
 router.delete('/wedding/:id', (req, res) => {
-  // 휴지통 안전망 있으므로 활성 사용자 전체에게 삭제 권한.
+  // 새 권한 정책: WEDDING write 권한자(admin + sales_wedding)만 삭제 가능. 뷰어 제외.
+  const { write } = canAccessType(req.user!.role, 'WEDDING');
+  if (!write) return res.status(403).json({ error: 'forbidden' });
   const item = store.wedding_customers.find((c) => c.id === req.params.id);
   if (!item || isDeleted(item)) return res.status(404).json({ error: 'not_found' });
   softDelete('wedding_customers', item.id, { id: req.user!.id, name: req.user!.name });

@@ -418,8 +418,8 @@ export default function EventFormModal({
       widthClass="max-w-5xl"
       footer={
         <>
-          {/* 수정 모드 + onDeleted 콜백 제공 시 — 모든 활성 사용자에게 노출 (휴지통 안전망) */}
-          {isEdit && onDeleted && (
+          {/* 수정 모드 + onDeleted 콜백 + 작성 권한자만 노출. 뷰어(banquet/kitchen/h_kitchen) 제외. */}
+          {isEdit && onDeleted && canCreateEvent(user?.role) && (
             <button
               onClick={deleteEvent}
               disabled={deleting || saving}

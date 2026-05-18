@@ -65,16 +65,19 @@ router.use(requireActiveRole);
 // - admin / sales_*: 모든 행사 쓰기 가능 (등록/수정)
 // - banquet / kitchen: 읽기만
 function canReadType(role: string, _type: CustomerType): boolean {
+  // 모든 활성 사용자 — h_kitchen 도 행사 조회 가능 (스펙: 뷰어. 고객 DB만 제한)
   return (
     role === 'admin' ||
     role === 'banquet' ||
     role === 'kitchen' ||
+    role === 'h_kitchen' ||
     role === 'sales_mice' ||
     role === 'sales_wedding'
   );
 }
 
 function canWriteType(role: string, _type: CustomerType): boolean {
+  // 작성/수정은 admin + sales 만. banquet/kitchen/h_kitchen 은 뷰어.
   return role === 'admin' || role === 'sales_mice' || role === 'sales_wedding';
 }
 
@@ -490,8 +493,11 @@ router.patch('/:id', (req, res) => {
 // 행사 삭제 — 휴지통으로 이동 (soft delete).
 // 자식(food_items/links/invoice/files/cancellation/review)은 그대로 유지.
 // 부모가 deleted_at 갖는 한 list/detail에서 안 보임. 영구삭제 시에만 자식 cascade.
-// 휴지통 안전망 있으므로 활성 사용자 전체에게 삭제 권한 (admin/sales/banquet/kitchen).
+// 새 권한 정책: 작성·수정·삭제 가능자(admin + sales)만 행사 삭제 가능. 뷰어 제외.
 router.delete('/:id', (req, res) => {
+  if (!canWriteType(req.user!.role, 'MICE')) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
   const ev = store.events.find((e) => e.id === req.params.id);
   if (!ev || isDeleted(ev)) return res.status(404).json({ error: 'not_found' });
   softDelete('events', ev.id, { id: req.user!.id, name: req.user!.name });

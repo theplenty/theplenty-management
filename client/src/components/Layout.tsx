@@ -5,9 +5,11 @@ import { ROLE_LABEL } from '../types';
 import {
   canSeeMice,
   canSeeWedding,
-  isAdmin,
   canSeeReviews,
   canSeeDashboard,
+  canManageUsers,
+  canManageApiKeys,
+  canManageTrash,
 } from '../auth/permissions';
 import clsx from 'clsx';
 import GlobalSearch from './GlobalSearch';
@@ -64,9 +66,10 @@ export default function Layout() {
       visible: !!user && canSeeReviews(role),
     },
     { to: '/files', label: '첨부파일 관리', visible: !!user },
-    { to: '/admin/users', label: '사용자 관리', visible: !!user && isAdmin(role) },
-    { to: '/admin/api-keys', label: '외부 API 키', visible: !!user && isAdmin(role) },
-    { to: '/admin/trash', label: '🗑️ 휴지통', visible: !!user && isAdmin(role) },
+    // 관리자 전용 탭 — admin role 만 노출. canManageUsers/ApiKeys/Trash 는 isAdmin alias.
+    { to: '/admin/users', label: '사용자 관리', visible: !!user && canManageUsers(role) },
+    { to: '/admin/api-keys', label: '외부 API 키', visible: !!user && canManageApiKeys(role) },
+    { to: '/admin/trash', label: '🗑️ 휴지통', visible: !!user && canManageTrash(role) },
   ];
 
   async function handleLogout() {

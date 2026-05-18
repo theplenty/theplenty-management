@@ -9,6 +9,7 @@ const ROLE_OPTIONS: Role[] = [
   'sales_wedding',
   'banquet',
   'kitchen',
+  'h_kitchen', // 에이치키친 — 뷰어, 고객 DB 접근 불가
   'admin',
   'disabled',
 ];
@@ -19,6 +20,7 @@ const TEAM_BY_ROLE: Record<Role, Team> = {
   sales_wedding: 'sales_wedding',
   banquet: 'banquet',
   kitchen: 'kitchen',
+  h_kitchen: 'h_kitchen',
   pending: null,
   disabled: null,
 };

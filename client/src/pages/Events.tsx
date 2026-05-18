@@ -424,8 +424,8 @@ export default function Events() {
   }, [events]);
 
   const admin = isAdmin(user?.role);
-  // 삭제는 휴지통 안전망 덕에 모든 활성 사용자에게 허용. 전체비우기(clearAllEvents)는 admin 유지.
-  const canDelete = !!user;
+  // 새 권한 정책: 삭제는 작성 권한자(admin + sales)만. 뷰어(banquet/kitchen/h_kitchen) 제외.
+  const canDelete = canCreateEvent(user?.role);
 
   async function deleteEvent(e: EventWithFood, ev: React.MouseEvent) {
     ev.stopPropagation();

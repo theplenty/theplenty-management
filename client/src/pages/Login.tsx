@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
-// 카카오톡/네이버/페북 등 in-app 브라우저는 sessionStorage가 격리되어 있어 Firebase signInWithPopup/Redirect
-// 가 "missing initial state" 오류를 발생시킴. 외부 브라우저로 열도록 유도해야 함.
+// Google 로그인 전용 — 데모/모킹 로그인은 운영 보안상 제거됨.
+// 인앱 브라우저(카카오톡/네이버 등)는 sessionStorage 격리로 signInWithPopup 가 실패하므로
+// 감지 후 외부 브라우저로 열도록 안내.
+
 function detectInAppBrowser(): { name: string; isIOS: boolean } | null {
   if (typeof navigator === 'undefined') return null;
   const ua = navigator.userAgent || '';
@@ -18,12 +20,10 @@ function detectInAppBrowser(): { name: string; isIOS: boolean } | null {
 }
 
 function openExternalBrowser(currentUrl: string, inApp: { name: string; isIOS: boolean }) {
-  // 카카오톡: kakaotalk://web/openExternal — Android에서 잘 동작. iOS는 동작 제한적이라 안내만.
   if (inApp.name === '카카오톡' && !inApp.isIOS) {
     window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(currentUrl)}`;
     return true;
   }
-  // 네이버 앱: naversearchapp://inappbrowser/close
   if (inApp.name === '네이버 앱') {
     window.location.href =
       'naversearchapp://inappbrowser/close?target=' + encodeURIComponent(currentUrl);
@@ -32,48 +32,16 @@ function openExternalBrowser(currentUrl: string, inApp: { name: string; isIOS: b
   return false;
 }
 
-// 모킹 로그인 화면.
-// 실 빌드에서는 Google 로그인 버튼만 노출하고,
-// 데모용 quick-login은 NODE_ENV=development일 때만 보이게 한다.
-
-// 데모 계정 — Public repo 노출 방지를 위해 코드에는 generic 이메일만.
-// 실제 super admin 이메일은 .env의 VITE_SUPER_ADMIN_EMAIL로 주입 (gitignored).
-const ADMIN_EMAIL = import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'admin@example.com';
-const DEMO_ACCOUNTS = [
-  { email: ADMIN_EMAIL, name: '관리자', role: '관리자' },
-  { email: 'mice.demo@plenty.test', name: '데모 MICE 세일즈', role: '기업세일즈(MICE)' },
-  { email: 'wedding.demo@plenty.test', name: '데모 WEDDING 세일즈', role: '웨딩세일즈(WEDDING)' },
-  { email: 'banquet.demo@plenty.test', name: '데모 연회팀', role: '연회팀' },
-  { email: 'kitchen.demo@plenty.test', name: '데모 주방팀', role: '주방팀' },
-  { email: 'pending.demo@plenty.test', name: '권한대기 사용자', role: '권한대기' },
-];
-
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { loginMock, loginWithGoogle, firebaseConfigured } = useAuth();
+  const { loginWithGoogle, firebaseConfigured } = useAuth();
   const navigate = useNavigate();
   const inApp = useMemo(detectInAppBrowser, []);
 
   function postLoginNavigate(role: string) {
     if (role === 'pending' || role === 'disabled') navigate('/pending');
     else navigate('/calendar');
-  }
-
-  async function doMockLogin(targetEmail: string, targetName?: string) {
-    setError(null);
-    setBusy(true);
-    try {
-      const u = await loginMock(targetEmail, targetName);
-      postLoginNavigate(u.role);
-    } catch (e) {
-      setError('로그인 실패. 서버가 켜져있는지 확인해주세요.');
-      console.error(e);
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function doGoogleLogin() {
@@ -96,29 +64,27 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 px-4">
       <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">플렌티컨벤션</h1>
           <p className="text-sm text-gray-500 mt-1">운영 통합관리 시스템</p>
         </div>
 
-        {/* 인앱 브라우저(카카오톡/네이버/페북 등) 감지 시 안내 — Google 로그인은 sessionStorage 격리로 실패함 */}
+        {/* 인앱 브라우저(카카오톡/네이버/페북 등) 안내 */}
         {inApp && (
           <div className="mb-4 p-3 rounded-md border border-amber-300 bg-amber-50 text-xs text-amber-900">
             <div className="font-semibold mb-1">
               ⚠️ {inApp.name} 인앱 브라우저로 접속 중입니다.
             </div>
             <p className="leading-relaxed">
-              인앱 브라우저는 보안상 Google 로그인이 동작하지 않습니다.
-              아래 버튼으로 외부 브라우저(Safari/Chrome)에서 열어주세요.
+              인앱 브라우저는 보안상 Google 로그인이 동작하지 않습니다. 아래 버튼으로 외부 브라우저(Safari/Chrome)에서 열어주세요.
             </p>
             <button
               type="button"
               onClick={() => {
                 const url = window.location.href;
                 if (!openExternalBrowser(url, inApp)) {
-                  // 자동 외부 열기가 안 되는 경우 (iOS 등) — 안내 모달 대신 URL 복사 폴백
                   navigator.clipboard?.writeText(url).catch(() => {});
                   alert(
                     'URL이 클립보드에 복사되었습니다.\nSafari 또는 Chrome 을 열어 주소창에 붙여넣고 접속해주세요.'
@@ -132,13 +98,13 @@ export default function Login() {
           </div>
         )}
 
-        {/* Google 로그인 — Firebase config 있을 때만 활성. 인앱 브라우저면 비활성. */}
+        {/* Google 로그인 */}
         <button
           onClick={doGoogleLogin}
           disabled={busy || !firebaseConfigured || !!inApp}
           className={
-            'w-full flex items-center justify-center gap-2 border rounded-md py-2.5 text-sm transition ' +
-            (firebaseConfigured
+            'w-full flex items-center justify-center gap-2 border rounded-md py-3 text-sm transition ' +
+            (firebaseConfigured && !inApp
               ? 'border-gray-300 hover:bg-gray-50 text-gray-700'
               : 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed')
           }
@@ -168,47 +134,8 @@ export default function Login() {
               d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 9 0 9 9 0 0 0 .96 4.97l3.01 2.32C4.68 5.16 6.66 3.58 9 3.58z"
             />
           </svg>
-          {firebaseConfigured ? 'Google로 로그인' : 'Google 로그인 (Firebase 미설정)'}
+          {busy ? '로그인 중...' : firebaseConfigured ? 'Google로 로그인' : 'Google 로그인 (Firebase 미설정)'}
         </button>
-
-        <div className="my-6 flex items-center gap-3 text-xs text-gray-400">
-          <div className="flex-1 h-px bg-gray-200" />
-          <span>모킹 로그인</span>
-          <div className="flex-1 h-px bg-gray-200" />
-        </div>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (email.trim()) doMockLogin(email.trim(), name.trim() || undefined);
-          }}
-          className="space-y-3"
-        >
-          <div>
-            <label className="label">이메일</label>
-            <input
-              type="email"
-              className="input"
-              placeholder="user@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="label">이름 (신규 가입 시)</label>
-            <input
-              type="text"
-              className="input"
-              placeholder="홍길동"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <button type="submit" disabled={busy} className="btn-primary w-full">
-            {busy ? '로그인 중...' : '로그인 / 가입'}
-          </button>
-        </form>
 
         {error && (
           <div className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
@@ -216,21 +143,10 @@ export default function Login() {
           </div>
         )}
 
-        <div className="mt-6 pt-5 border-t">
-          <div className="text-xs font-semibold text-gray-500 mb-2">빠른 데모 로그인</div>
-          <div className="grid grid-cols-1 gap-1.5">
-            {DEMO_ACCOUNTS.map((acc) => (
-              <button
-                key={acc.email}
-                onClick={() => doMockLogin(acc.email, acc.name)}
-                disabled={busy}
-                className="text-left px-3 py-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sm disabled:opacity-50"
-              >
-                <div className="font-medium text-gray-800">{acc.role}</div>
-                <div className="text-xs text-gray-500">{acc.email}</div>
-              </button>
-            ))}
-          </div>
+        <div className="mt-6 pt-5 border-t text-center">
+          <p className="text-xs text-gray-500">
+            관리자에게 계정 등록을 요청한 후 Google 계정으로 로그인하세요.
+          </p>
         </div>
       </div>
     </div>

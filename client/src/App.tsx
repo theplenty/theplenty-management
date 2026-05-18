@@ -71,28 +71,31 @@ function ProtectedRoutes() {
         />
 
         <Route path="/customers" element={<Navigate to="/customers/mice" replace />} />
+        {/* MICE 고객 DB: admin + sales_mice(쓰기) + banquet/kitchen(뷰어). h_kitchen 제외. */}
         <Route
           path="/customers/mice"
           element={
-            <ProtectedRoute allow={['admin', 'sales_mice']}>
+            <ProtectedRoute allow={['admin', 'sales_mice', 'banquet', 'kitchen']}>
               <MiceCustomers />
             </ProtectedRoute>
           }
         />
+        {/* WEDDING 고객 DB: admin + sales_wedding(쓰기) + banquet/kitchen(뷰어). h_kitchen 제외. */}
         <Route
           path="/customers/wedding"
           element={
-            <ProtectedRoute allow={['admin', 'sales_wedding']}>
+            <ProtectedRoute allow={['admin', 'sales_wedding', 'banquet', 'kitchen']}>
               <WeddingCustomers />
             </ProtectedRoute>
           }
         />
 
         <Route path="/calendar" element={<Calendar />} />
+        {/* 캘린더 요약 — 뷰어 포함 모든 활성 사용자 접근 (h_kitchen 도 가능) */}
         <Route path="/calendar/summary" element={<CalendarSummary />} />
         <Route path="/events" element={<Events />} />
 
-        {/* 통합 고객 프로필 — 검색 결과나 다른 화면에서 진입. 풀스크린 읽기 뷰. */}
+        {/* 통합 고객 프로필 — 해당 고객 DB 권한자만. */}
         <Route
           path="/customer/wedding/:id"
           element={
@@ -110,10 +113,13 @@ function ProtectedRoutes() {
           }
         />
 
+        {/* 연회팀 행사리뷰 — 뷰어 포함 모든 활성 사용자 조회. 작성은 admin/banquet 만 (Reviews 페이지 내부 게이트) */}
         <Route
           path="/reviews"
           element={
-            <ProtectedRoute allow={['admin', 'banquet', 'sales_mice', 'sales_wedding']}>
+            <ProtectedRoute
+              allow={['admin', 'banquet', 'sales_mice', 'sales_wedding', 'kitchen', 'h_kitchen']}
+            >
               <Reviews />
             </ProtectedRoute>
           }
