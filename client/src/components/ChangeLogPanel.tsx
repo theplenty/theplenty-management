@@ -27,6 +27,19 @@ function fmt(ts: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// before/after 가 객체/배열인 경우 — JSX 에 그대로 박으면 React error #31 ("Objects are not valid
+// as a React child") 로 페이지 전체가 백지가 됨. 안전하게 문자열화.
+function toDisplay(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
 // 요약 라벨 — 우선 changes[] 에서 field 만 추출, 없으면 summary 그대로.
 function shortSummary(l: ChangeLog): string {
   if (l.changes && l.changes.length > 0) {
@@ -136,12 +149,12 @@ export default function ChangeLogPanel({ entityType, entityId, refreshKey }: Pro
                               <div className="col-span-3 font-medium text-gray-700 truncate">
                                 {c.field}
                               </div>
-                              <div className="col-span-4 bg-red-50 border border-red-100 rounded px-1.5 py-1 text-red-800 break-words">
-                                {c.before}
+                              <div className="col-span-4 bg-red-50 border border-red-100 rounded px-1.5 py-1 text-red-800 break-words font-mono whitespace-pre-wrap">
+                                {toDisplay(c.before)}
                               </div>
                               <div className="col-span-1 text-center text-gray-400 pt-1">→</div>
-                              <div className="col-span-4 bg-green-50 border border-green-100 rounded px-1.5 py-1 text-green-800 break-words">
-                                {c.after}
+                              <div className="col-span-4 bg-green-50 border border-green-100 rounded px-1.5 py-1 text-green-800 break-words font-mono whitespace-pre-wrap">
+                                {toDisplay(c.after)}
                               </div>
                             </li>
                           ))}

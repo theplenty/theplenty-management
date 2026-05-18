@@ -13,6 +13,7 @@ import Files from './pages/Files';
 import AdminUsers from './pages/AdminUsers';
 import AdminApiKeys from './pages/AdminApiKeys';
 import Trash from './pages/Trash';
+import ErrorBoundary from './components/ErrorBoundary';
 import Dashboard from './pages/Dashboard';
 import PublicCalendar from './pages/PublicCalendar';
 import ApiDocs from './pages/ApiDocs';
@@ -26,12 +27,15 @@ export default function App() {
         {/* 공개 — API 문서 (외부 개발자용) */}
         <Route path="/api-docs" element={<ApiDocs />} />
 
-        {/* 그 외에는 AuthProvider로 감싼 보호된 영역 */}
+        {/* 그 외에는 AuthProvider + ErrorBoundary 로 감싼 보호된 영역.
+            렌더링 에러가 나도 페이지 전체가 백지가 되지 않고 친절한 안내가 표시됨. */}
         <Route
           path="*"
           element={
             <AuthProvider>
-              <ProtectedRoutes />
+              <ErrorBoundary>
+                <ProtectedRoutes />
+              </ErrorBoundary>
             </AuthProvider>
           }
         />
