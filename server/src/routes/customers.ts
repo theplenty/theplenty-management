@@ -34,6 +34,138 @@ function canAccessType(role: string, type: CustomerType): { read: boolean; write
 
 router.use(requireActiveRole);
 
+// ===== 고객 통합 프로필 — 한 고객의 모든 연결 행사 + 변경 이력 묶음 =====
+// /api/customers/{wedding|mice}/:id/full
+// 응답: { customer, linked_events: [...], change_logs: [...] }
+//   - linked_events: event_customers 링크로 연결된 행사 + 휴지통 제외 + 시간 desc 정렬
+//   - change_logs: 이 고객의 logs + 연결된 행사들의 logs 모두 합쳐 시간 desc
+
+function buildFullProfile(
+  type: 'mice' | 'wedding',
+  id: string
+): { customer: MiceCustomer | WeddingCustomer; linked_events: unknown[]; change_logs: unknown[] } | null {
+  const coll = type === 'mice' ? store.mice_customers : store.wedding_customers;
+  const item = coll.find((c) => c.id === id);
+  if (!item || isDeleted(item)) return null;
+
+  // 1) 연결 행사 — event_customers 링크 → events (휴지통 제외)
+  const linkRows = store.event_customers.filter((l) => l.customer_id === id);
+  const eventIds = new Set(linkRows.map((l) => l.event_id));
+  const linked_events = store.events
+    .filter((e) => eventIds.has(e.id) && !e.deleted_at)
+    .map((e) => {
+      const invoice = store.invoices.find((i) => i.event_id === e.id) || null;
+      const cancellation = store.cancellations.find((c) => c.event_id === e.id) || null;
+      const review = store.event_reviews.find((r) => r.event_id === e.id) || null;
+      const link = linkRows.find((l) => l.event_id === e.id);
+      return {
+        ...e,
+        customer_role: link?.customer_role || null,
+        is_contact_point: link?.is_contact_point || false,
+        invoice_payment_status: invoice?.payment_status || null,
+        cancellation: cancellation ? { reason: cancellation.cancel_reason } : null,
+        has_review: !!review,
+      };
+    })
+    .sort((a, b) => (a.start_datetime < b.start_datetime ? 1 : -1));
+
+  // 2) 변경 이력 — 이 고객 logs + 연결 행사들 logs
+  const entityType = type === 'mice' ? 'mice_customer' : 'wedding_customer';
+  const customerLogs = getLogsForEntity(entityType, id);
+  const eventLogs: typeof customerLogs = [];
+  for (const ev of linked_events) {
+    eventLogs.push(...getLogsForEntity('event', (ev as { id: string }).id));
+  }
+  const change_logs = [...customerLogs, ...eventLogs].sort((a, b) =>
+    a.changed_at < b.changed_at ? 1 : -1
+  );
+
+  return { customer: item, linked_events, change_logs };
+}
+
+router.get('/mice/:id/full', (req, res) => {
+  const { read } = canAccessType(req.user!.role, 'MICE');
+  if (!read) return res.status(403).json({ error: 'forbidden' });
+  const out = buildFullProfile('mice', req.params.id);
+  if (!out) return res.status(404).json({ error: 'not_found' });
+  res.json(out);
+});
+
+router.get('/wedding/:id/full', (req, res) => {
+  const { read } = canAccessType(req.user!.role, 'WEDDING');
+  if (!read) return res.status(403).json({ error: 'forbidden' });
+  const out = buildFullProfile('wedding', req.params.id);
+  if (!out) return res.status(404).json({ error: 'not_found' });
+  res.json(out);
+});
+
+// ===== WEDDING 전화번호 중복 추정 (신규 등록 시 inline 경고용) =====
+// 신랑/신부 전화번호 정규화(숫자만) — 완전 일치 시 즉시 빨강 경고.
+router.get('/wedding/_similar-phone', (req, res) => {
+  const { read } = canAccessType(req.user!.role, 'WEDDING');
+  if (!read) return res.status(403).json({ error: 'forbidden' });
+  const raw = typeof req.query.phone === 'string' ? req.query.phone : '';
+  const limit = Math.min(
+    20,
+    Math.max(1, parseInt(String(req.query.limit || 5), 10) || 5)
+  );
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length < 4) {
+    return res.json({ input: digits, similar: [] });
+  }
+
+  // 행사 카운트 인덱스
+  const activeEventIds = new Set<string>();
+  for (const ev of store.events) if (!ev.deleted_at) activeEventIds.add(ev.id);
+  const eventCountByCustomer = new Map<string, number>();
+  for (const link of store.event_customers) {
+    if (!activeEventIds.has(link.event_id)) continue;
+    eventCountByCustomer.set(
+      link.customer_id,
+      (eventCountByCustomer.get(link.customer_id) || 0) + 1
+    );
+  }
+
+  interface Match {
+    id: string;
+    wedding_event_name: string;
+    groom_name: string;
+    bride_name: string;
+    matched_party: 'groom' | 'bride';
+    matched_phone: string;
+    event_count: number;
+  }
+  const matches: Match[] = [];
+  for (const c of store.wedding_customers) {
+    if (c.deleted_at) continue;
+    const g = (c.groom_phone || '').replace(/\D/g, '');
+    const b = (c.bride_phone || '').replace(/\D/g, '');
+    if (g && g.includes(digits)) {
+      matches.push({
+        id: c.id,
+        wedding_event_name: c.wedding_event_name,
+        groom_name: c.groom_name,
+        bride_name: c.bride_name,
+        matched_party: 'groom',
+        matched_phone: c.groom_phone,
+        event_count: eventCountByCustomer.get(c.id) || 0,
+      });
+    } else if (b && b.includes(digits)) {
+      matches.push({
+        id: c.id,
+        wedding_event_name: c.wedding_event_name,
+        groom_name: c.groom_name,
+        bride_name: c.bride_name,
+        matched_party: 'bride',
+        matched_phone: c.bride_phone,
+        event_count: eventCountByCustomer.get(c.id) || 0,
+      });
+    }
+    if (matches.length >= limit) break;
+  }
+  res.json({ input: digits, similar: matches });
+});
+
 // ===== MICE 업체명 중복 추정 (신규 등록 시 inline 경고용) =====
 // normalizeOrgName 으로 키 정규화한 뒤:
 //   1) 완전 일치 → exact_after_normalize, score 1.0

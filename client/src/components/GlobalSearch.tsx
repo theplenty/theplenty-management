@@ -35,8 +35,10 @@ interface GroupDef {
 }
 
 const GROUP_DEFS: GroupDef[] = [
-  { key: 'wedding', label: 'WEDDING 고객', icon: '💍', href: (id) => `/customers/wedding?focus=${id}` },
-  { key: 'mice', label: 'MICE 고객', icon: '🏢', href: (id) => `/customers/mice?focus=${id}` },
+  // 고객 검색 결과 → 통합 프로필 페이지 (풀스크린 읽기 뷰 + 연결 행사 + 활동 타임라인)
+  { key: 'wedding', label: 'WEDDING 고객', icon: '💍', href: (id) => `/customer/wedding/${id}` },
+  { key: 'mice', label: 'MICE 고객', icon: '🏢', href: (id) => `/customer/mice/${id}` },
+  // 행사 검색 결과 → 행사목록에서 해당 행사 모달 자동 오픈
   { key: 'events', label: '행사', icon: '📅', href: (id) => `/events?focus=${id}` },
 ];
 

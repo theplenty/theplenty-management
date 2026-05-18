@@ -17,6 +17,7 @@ import {
   type WeddingSourceDetail,
 } from '../types';
 import Modal from '../components/Modal';
+import SimilarPhoneWarning from '../components/SimilarPhoneWarning';
 import { Field, StatusBadge } from '../components/Field';
 import ExcelButtons from '../components/ExcelButtons';
 import ChangeLogPanel from '../components/ChangeLogPanel';
@@ -849,6 +850,19 @@ export default function WeddingCustomers() {
                     value={form.groom_phone}
                     onChange={(e) => setForm({ ...form, groom_phone: e.target.value })}
                   />
+                  <SimilarPhoneWarning
+                    phone={form.groom_phone}
+                    party="신랑"
+                    editingId={editingId}
+                    onPickExisting={(id) => {
+                      const target = items.find((c) => c.id === id);
+                      if (!target) return;
+                      if (!confirm(
+                        `[${target.wedding_event_name}] 기존 고객으로 이동합니다.\n현재 입력 내용이 사라집니다. 계속할까요?`
+                      )) return;
+                      openEdit(target);
+                    }}
+                  />
                 </Field>
                 <Field label="이메일">
                   <input
@@ -875,6 +889,19 @@ export default function WeddingCustomers() {
                     className="input"
                     value={form.bride_phone}
                     onChange={(e) => setForm({ ...form, bride_phone: e.target.value })}
+                  />
+                  <SimilarPhoneWarning
+                    phone={form.bride_phone}
+                    party="신부"
+                    editingId={editingId}
+                    onPickExisting={(id) => {
+                      const target = items.find((c) => c.id === id);
+                      if (!target) return;
+                      if (!confirm(
+                        `[${target.wedding_event_name}] 기존 고객으로 이동합니다.\n현재 입력 내용이 사라집니다. 계속할까요?`
+                      )) return;
+                      openEdit(target);
+                    }}
                   />
                 </Field>
                 <Field label="이메일">

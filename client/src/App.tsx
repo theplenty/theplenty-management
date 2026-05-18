@@ -13,6 +13,8 @@ import Files from './pages/Files';
 import AdminUsers from './pages/AdminUsers';
 import AdminApiKeys from './pages/AdminApiKeys';
 import Trash from './pages/Trash';
+import WeddingProfile from './pages/WeddingProfile';
+import MiceProfile from './pages/MiceProfile';
 import ErrorBoundary from './components/ErrorBoundary';
 import Dashboard from './pages/Dashboard';
 import PublicCalendar from './pages/PublicCalendar';
@@ -87,6 +89,24 @@ function ProtectedRoutes() {
 
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/events" element={<Events />} />
+
+        {/* 통합 고객 프로필 — 검색 결과나 다른 화면에서 진입. 풀스크린 읽기 뷰. */}
+        <Route
+          path="/customer/wedding/:id"
+          element={
+            <ProtectedRoute allow={['admin', 'sales_wedding', 'banquet', 'kitchen']}>
+              <WeddingProfile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/customer/mice/:id"
+          element={
+            <ProtectedRoute allow={['admin', 'sales_mice', 'banquet', 'kitchen']}>
+              <MiceProfile />
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/reviews"
