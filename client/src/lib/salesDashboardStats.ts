@@ -268,6 +268,95 @@ export function findCancelledConsultations(customers: WeddingCustomer[]): Weddin
     .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
 }
 
+// ===== 드릴다운 (KPI 카드 클릭) 헬퍼 =====
+// 카드 클릭 시 실제로 어떤 건들이 카운트됐는지 리스트로 보여주기 위한 필터.
+
+export type MiceStatusGroup =
+  | 'all'
+  | 'unprocessed' // 단순문의
+  | 'inq' // INQ + TEN
+  | 'def'
+  | 'los'
+  | 'converted'; // INQ + DEF + LOS (=전환)
+
+export function filterMiceForDrill(
+  flat: InquiryWithCustomer[],
+  channel: 'INCALL' | 'OUTCALL' | null,
+  statusGroup: MiceStatusGroup,
+  range: DateRange | null,
+  managerId: string | null
+): InquiryWithCustomer[] {
+  return flat
+    .filter((f) => {
+      if (channel && f.inquiry.inquiry_channel !== channel) return false;
+      if (range && !inRange(f.inquiry.created_at, range)) return false;
+      if (managerId && f.inquiry.assigned_manager_id !== managerId) return false;
+      const s = f.inquiry.progress_status;
+      if (statusGroup === 'all') return true;
+      if (statusGroup === 'unprocessed') return MICE_UNPROCESSED_STATUSES.has(s);
+      if (statusGroup === 'inq') return MICE_INQ_STATUSES.has(s);
+      if (statusGroup === 'def') return MICE_DEF_STATUSES.has(s);
+      if (statusGroup === 'los') return MICE_LOS_STATUSES.has(s);
+      if (statusGroup === 'converted') {
+        return (
+          MICE_INQ_STATUSES.has(s) || MICE_DEF_STATUSES.has(s) || MICE_LOS_STATUSES.has(s)
+        );
+      }
+      return true;
+    })
+    .sort((a, b) => (a.inquiry.created_at < b.inquiry.created_at ? 1 : -1));
+}
+
+export type WeddingStatusGroup =
+  | 'all'
+  | 'newOnly' // 신규문의 방치
+  | 'consult' // 상담 예약
+  | 'consultCancelled'
+  | 'inq'
+  | 'def'
+  | 'los'
+  | 'advancedPastConsult'; // 상담 + INQ + DEF + LOS (= 상담 전환)
+
+export function filterWeddingForDrill(
+  customers: WeddingCustomer[],
+  statusGroup: WeddingStatusGroup,
+  range: DateRange | null,
+  managerId: string | null
+): WeddingCustomer[] {
+  return customers
+    .filter((c) => {
+      if (c.deleted_at) return false;
+      if (managerId) {
+        const mgr = c.event_inquiries[0]?.assigned_manager_id;
+        if (mgr !== managerId) return false;
+      }
+      const inflowIso = c.inquiry_date || c.created_at;
+      if (range && !inRange(inflowIso, range)) return false;
+      const s = c.progress_status;
+      if (statusGroup === 'all') return true;
+      if (statusGroup === 'newOnly') return WEDDING_INFLOW_STATUSES.has(s);
+      if (statusGroup === 'consult') return WEDDING_CONSULT_STATUSES.has(s);
+      if (statusGroup === 'consultCancelled') return WEDDING_CONSULT_CANCELLED.has(s);
+      if (statusGroup === 'inq') return WEDDING_INQ_STATUSES.has(s);
+      if (statusGroup === 'def') return WEDDING_DEF_STATUSES.has(s);
+      if (statusGroup === 'los') return WEDDING_LOS_STATUSES.has(s);
+      if (statusGroup === 'advancedPastConsult') {
+        return (
+          WEDDING_CONSULT_STATUSES.has(s) ||
+          WEDDING_INQ_STATUSES.has(s) ||
+          WEDDING_DEF_STATUSES.has(s) ||
+          WEDDING_LOS_STATUSES.has(s)
+        );
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const ad = a.inquiry_date || a.created_at;
+      const bd = b.inquiry_date || b.created_at;
+      return ad < bd ? 1 : -1;
+    });
+}
+
 // 장기 미전환 = 신규문의 또는 상담 상태로 N일 이상 방치
 export function findStaleWedding(
   customers: WeddingCustomer[],

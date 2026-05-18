@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  type ActiveUserOption,
   type MiceCustomer,
   type WeddingCustomer,
 } from '../types';
@@ -11,6 +12,8 @@ import {
   computeWeddingMetrics,
   customRange,
   type DateRange,
+  filterMiceForDrill,
+  filterWeddingForDrill,
   findStaleIncalls,
   findRecentOutcalls,
   flattenMiceInquiries,
@@ -18,18 +21,43 @@ import {
   findScheduledConsultations,
   findCancelledConsultations,
   findStaleWedding,
+  type InquiryWithCustomer,
+  type MiceStatusGroup,
   thisMonthRange,
   thisWeekRange,
   todayRange,
+  type WeddingStatusGroup,
 } from '../lib/salesDashboardStats';
+import Modal from './Modal';
 
 type Period = 'today' | 'week' | 'month' | 'custom';
+
+// 담당자 드롭다운에 표시할 역할 (영업 담당자만)
+const MANAGER_ROLES = new Set<ActiveUserOption['role']>([
+  'admin',
+  'sales_mice',
+  'sales_wedding',
+]);
 
 interface Props {
   miceCustomers: MiceCustomer[];
   weddingCustomers: WeddingCustomer[];
-  activeUsers: Array<{ id: string; name: string }>;
+  activeUsers: ActiveUserOption[];
 }
+
+type MiceDrill = {
+  open: true;
+  kind: 'mice';
+  title: string;
+  items: InquiryWithCustomer[];
+};
+type WeddingDrill = {
+  open: true;
+  kind: 'wedding';
+  title: string;
+  items: WeddingCustomer[];
+};
+type DrillState = { open: false } | MiceDrill | WeddingDrill;
 
 export default function SalesDashboard({
   miceCustomers,
@@ -40,6 +68,13 @@ export default function SalesDashboard({
   const [customFrom, setCustomFrom] = useState<string>('');
   const [customTo, setCustomTo] = useState<string>('');
   const [managerId, setManagerId] = useState<string>('');
+  const [drill, setDrill] = useState<DrillState>({ open: false });
+
+  // 영업 담당자만 (admin/sales_mice/sales_wedding) — 담당자 드롭다운에 표시
+  const salesManagers = useMemo(
+    () => activeUsers.filter((u) => MANAGER_ROLES.has(u.role)),
+    [activeUsers]
+  );
 
   const range = useMemo<DateRange | null>(() => {
     if (period === 'today') return todayRange();
@@ -49,19 +84,20 @@ export default function SalesDashboard({
     return null;
   }, [period, customFrom, customTo]);
 
-  // 주간/월간 KPI 는 항상 표시 (기간 필터와 별개)
-  const week = useMemo(() => thisWeekRange(), []);
-  const month = useMemo(() => thisMonthRange(), []);
+  const periodLabel =
+    period === 'today'
+      ? '오늘'
+      : period === 'week'
+        ? '금주'
+        : period === 'month'
+          ? '금월'
+          : customFrom && customTo
+            ? `${customFrom}~${customTo}`
+            : '기간';
 
   const miceFlat = useMemo(() => flattenMiceInquiries(miceCustomers), [miceCustomers]);
 
-  // 주간/월간 채널별 카운트 — 항상 고정 (필터 무관)
-  const miceWeekIncall = computeMiceChannelMetrics(miceFlat, 'INCALL', week, null);
-  const miceWeekOutcall = computeMiceChannelMetrics(miceFlat, 'OUTCALL', week, null);
-  const miceMonthIncall = computeMiceChannelMetrics(miceFlat, 'INCALL', month, null);
-  const miceMonthOutcall = computeMiceChannelMetrics(miceFlat, 'OUTCALL', month, null);
-
-  // 필터 적용 전환율 (관리자 + 기간 모두 반영)
+  // 필터 적용 — 채널별 메트릭 (기간 + 담당자 반영)
   const miceFilteredIncall = useMemo(
     () => computeMiceChannelMetrics(miceFlat, 'INCALL', range, managerId || null),
     [miceFlat, range, managerId]
@@ -77,9 +113,7 @@ export default function SalesDashboard({
   const recentOutcalls = useMemo(() => findRecentOutcalls(miceFlat, 10), [miceFlat]);
   const managerStats = useMemo(() => computeManagerConversionRates(miceFlat, null), [miceFlat]);
 
-  // 웨딩
-  const wedWeek = computeWeddingMetrics(weddingCustomers, week, null);
-  const wedMonth = computeWeddingMetrics(weddingCustomers, month, null);
+  // 웨딩 — 기간 + 담당자 반영
   const wedFiltered = useMemo(
     () => computeWeddingMetrics(weddingCustomers, range, managerId || null),
     [weddingCustomers, range, managerId]
@@ -87,6 +121,36 @@ export default function SalesDashboard({
   const scheduled = useMemo(() => findScheduledConsultations(weddingCustomers), [weddingCustomers]);
   const cancelled = useMemo(() => findCancelledConsultations(weddingCustomers), [weddingCustomers]);
   const staleWed = useMemo(() => findStaleWedding(weddingCustomers, 14), [weddingCustomers]);
+
+  // ===== 드릴다운 열기 헬퍼 =====
+  function openMiceDrill(
+    channel: 'INCALL' | 'OUTCALL' | null,
+    statusGroup: MiceStatusGroup,
+    title: string
+  ) {
+    const items = filterMiceForDrill(miceFlat, channel, statusGroup, range, managerId || null);
+    setDrill({ open: true, kind: 'mice', title, items });
+  }
+  function openWeddingDrill(statusGroup: WeddingStatusGroup, title: string) {
+    const items = filterWeddingForDrill(weddingCustomers, statusGroup, range, managerId || null);
+    setDrill({ open: true, kind: 'wedding', title, items });
+  }
+  function openMiceStaleDrill() {
+    setDrill({
+      open: true,
+      kind: 'mice',
+      title: '미처리 인콜 (3일+ 누적, 기간 무관)',
+      items: stale3,
+    });
+  }
+  function openWeddingStaleDrill() {
+    setDrill({
+      open: true,
+      kind: 'wedding',
+      title: '장기 미전환 (14일+ 누적, 기간 무관)',
+      items: staleWed.map((s) => s.customer),
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -100,7 +164,7 @@ export default function SalesDashboard({
         onCustomToChange={setCustomTo}
         managerId={managerId}
         onManagerChange={setManagerId}
-        activeUsers={activeUsers}
+        activeUsers={salesManagers}
       />
 
       {/* ========== MICE 세일즈 대시보드 ========== */}
@@ -108,55 +172,114 @@ export default function SalesDashboard({
         <header className="flex items-baseline gap-3 mb-4 flex-wrap">
           <span className="text-xs text-gray-400 font-mono">01 / MICE</span>
           <h2 className="text-lg md:text-xl font-bold text-gray-900">MICE 세일즈</h2>
-          <span className="text-xs text-gray-500">유입 → 팔로업 → INQ/DEF/LOS 전환</span>
+          <span className="text-xs text-gray-500">
+            유입 → 팔로업 → INQ/DEF/LOS 전환 · 숫자 클릭 시 리스트
+          </span>
         </header>
 
-        {/* 상단 KPI 카드 */}
+        {/* 상단 KPI 카드 — 기간 필터 반영 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5">
-          <KpiCard label="금주 인콜" value={miceWeekIncall.total} accent="blue" />
-          <KpiCard label="금주 아웃콜" value={miceWeekOutcall.total} accent="purple" />
-          <KpiCard label="월간 인콜" value={miceMonthIncall.total} accent="blue" />
-          <KpiCard label="월간 아웃콜" value={miceMonthOutcall.total} accent="purple" />
+          <KpiCard
+            label={`${periodLabel} 인콜`}
+            value={miceFilteredIncall.total}
+            accent="blue"
+            onClick={() => openMiceDrill('INCALL', 'all', `${periodLabel} MICE 인콜 (${miceFilteredIncall.total}건)`)}
+          />
+          <KpiCard
+            label={`${periodLabel} 아웃콜`}
+            value={miceFilteredOutcall.total}
+            accent="purple"
+            onClick={() => openMiceDrill('OUTCALL', 'all', `${periodLabel} MICE 아웃콜 (${miceFilteredOutcall.total}건)`)}
+          />
           <KpiCard
             label="미처리 인콜 (3일+)"
             value={stale3.length}
             accent={stale3.length > 0 ? 'red' : 'gray'}
-            sub={stale7.length > 0 ? `7일+ ${stale7.length}건` : undefined}
+            sub={stale7.length > 0 ? `7일+ ${stale7.length}건` : '누적 기준'}
+            onClick={openMiceStaleDrill}
           />
           <KpiCard
-            label={`인콜 전환율${range ? '' : ' (전체)'}`}
+            label={`인콜 전환율 (${periodLabel})`}
             value={`${miceFilteredIncall.conversionRate.toFixed(1)}%`}
             sub={`${miceFilteredIncall.total}건 중 ${miceFilteredIncall.inq + miceFilteredIncall.def + miceFilteredIncall.los}건 전환`}
             accent="green"
+            onClick={() =>
+              openMiceDrill('INCALL', 'converted', `${periodLabel} 인콜 전환 건 (INQ/DEF/LOS)`)
+            }
           />
           <KpiCard
-            label={`아웃콜 전환율${range ? '' : ' (전체)'}`}
+            label={`아웃콜 전환율 (${periodLabel})`}
             value={`${miceFilteredOutcall.conversionRate.toFixed(1)}%`}
             sub={`${miceFilteredOutcall.total}건 중 ${miceFilteredOutcall.inq + miceFilteredOutcall.def + miceFilteredOutcall.los}건 전환`}
             accent="green"
+            onClick={() =>
+              openMiceDrill('OUTCALL', 'converted', `${periodLabel} 아웃콜 전환 건 (INQ/DEF/LOS)`)
+            }
           />
         </div>
 
-        {/* 퍼널 차트 */}
+        {/* 퍼널 차트 — 각 단계 클릭 시 리스트 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
           <FunnelCard
             title="인콜 (📞) → 전환 흐름"
             total={miceFilteredIncall.total}
             stages={[
-              { label: '미처리', value: miceFilteredIncall.unprocessed, color: 'bg-gray-300' },
-              { label: 'INQ', value: miceFilteredIncall.inq, color: 'bg-blue-500' },
-              { label: 'DEF', value: miceFilteredIncall.def, color: 'bg-emerald-500' },
-              { label: 'LOS', value: miceFilteredIncall.los, color: 'bg-red-500' },
+              {
+                label: '미처리',
+                value: miceFilteredIncall.unprocessed,
+                color: 'bg-gray-300',
+                onClick: () =>
+                  openMiceDrill('INCALL', 'unprocessed', `${periodLabel} 인콜 — 미처리 (단순문의)`),
+              },
+              {
+                label: 'INQ',
+                value: miceFilteredIncall.inq,
+                color: 'bg-blue-500',
+                onClick: () => openMiceDrill('INCALL', 'inq', `${periodLabel} 인콜 — INQ/TEN`),
+              },
+              {
+                label: 'DEF',
+                value: miceFilteredIncall.def,
+                color: 'bg-emerald-500',
+                onClick: () => openMiceDrill('INCALL', 'def', `${periodLabel} 인콜 — DEF`),
+              },
+              {
+                label: 'LOS',
+                value: miceFilteredIncall.los,
+                color: 'bg-red-500',
+                onClick: () => openMiceDrill('INCALL', 'los', `${periodLabel} 인콜 — LOS`),
+              },
             ]}
           />
           <FunnelCard
             title="아웃콜 (📤) → 전환 흐름"
             total={miceFilteredOutcall.total}
             stages={[
-              { label: '미처리', value: miceFilteredOutcall.unprocessed, color: 'bg-gray-300' },
-              { label: 'INQ', value: miceFilteredOutcall.inq, color: 'bg-blue-500' },
-              { label: 'DEF', value: miceFilteredOutcall.def, color: 'bg-emerald-500' },
-              { label: 'LOS', value: miceFilteredOutcall.los, color: 'bg-red-500' },
+              {
+                label: '미처리',
+                value: miceFilteredOutcall.unprocessed,
+                color: 'bg-gray-300',
+                onClick: () =>
+                  openMiceDrill('OUTCALL', 'unprocessed', `${periodLabel} 아웃콜 — 미처리`),
+              },
+              {
+                label: 'INQ',
+                value: miceFilteredOutcall.inq,
+                color: 'bg-blue-500',
+                onClick: () => openMiceDrill('OUTCALL', 'inq', `${periodLabel} 아웃콜 — INQ/TEN`),
+              },
+              {
+                label: 'DEF',
+                value: miceFilteredOutcall.def,
+                color: 'bg-emerald-500',
+                onClick: () => openMiceDrill('OUTCALL', 'def', `${periodLabel} 아웃콜 — DEF`),
+              },
+              {
+                label: 'LOS',
+                value: miceFilteredOutcall.los,
+                color: 'bg-red-500',
+                onClick: () => openMiceDrill('OUTCALL', 'los', `${periodLabel} 아웃콜 — LOS`),
+              },
             ]}
           />
         </div>
@@ -182,23 +305,60 @@ export default function SalesDashboard({
         </header>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5">
-          <KpiCard label="금주 신규 인콜" value={wedWeek.totalInflow} accent="blue" />
-          <KpiCard label="월간 신규 인콜" value={wedMonth.totalInflow} accent="blue" />
-          <KpiCard label="상담 예약" value={wedFiltered.consultBooked} accent="purple" />
-          <KpiCard label="상담 취소" value={wedFiltered.consultCancelled} accent="red" />
+          <KpiCard
+            label={`${periodLabel} 신규 인콜`}
+            value={wedFiltered.totalInflow}
+            accent="blue"
+            onClick={() =>
+              openWeddingDrill('all', `${periodLabel} WEDDING 신규 인콜 (${wedFiltered.totalInflow}건)`)
+            }
+          />
+          <KpiCard
+            label="상담 예약"
+            value={wedFiltered.consultBooked}
+            accent="purple"
+            onClick={() =>
+              openWeddingDrill('consult', `${periodLabel} WEDDING 상담 예약 (${wedFiltered.consultBooked}건)`)
+            }
+          />
+          <KpiCard
+            label="상담 취소"
+            value={wedFiltered.consultCancelled}
+            accent="red"
+            onClick={() =>
+              openWeddingDrill('consultCancelled', `${periodLabel} WEDDING 상담 취소 (${wedFiltered.consultCancelled}건)`)
+            }
+          />
           <KpiCard
             label="상담 전환율"
             value={`${wedFiltered.consultConversionRate.toFixed(1)}%`}
             sub={`인콜 ${wedFiltered.totalInflow}건 기준`}
             accent="green"
+            onClick={() =>
+              openWeddingDrill(
+                'advancedPastConsult',
+                `${periodLabel} WEDDING 상담 이상 전환 (상담+INQ+DEF+LOS)`
+              )
+            }
           />
-          <KpiCard label="DEF" value={wedFiltered.def} accent="emerald" />
-          <KpiCard label="LOS" value={wedFiltered.los} accent="red" />
+          <KpiCard
+            label="DEF"
+            value={wedFiltered.def}
+            accent="emerald"
+            onClick={() => openWeddingDrill('def', `${periodLabel} WEDDING DEF (${wedFiltered.def}건)`)}
+          />
+          <KpiCard
+            label="LOS"
+            value={wedFiltered.los}
+            accent="red"
+            onClick={() => openWeddingDrill('los', `${periodLabel} WEDDING LOS (${wedFiltered.los}건)`)}
+          />
           <KpiCard
             label="장기 미전환"
             value={staleWed.length}
             accent={staleWed.length > 0 ? 'red' : 'gray'}
-            sub="14일+ 신규문의/상담"
+            sub="14일+ 신규문의/상담 (누적)"
+            onClick={openWeddingStaleDrill}
           />
         </div>
 
@@ -206,12 +366,44 @@ export default function SalesDashboard({
           title="WEDDING 인콜 → 전환 흐름"
           total={wedFiltered.totalInflow}
           stages={[
-            { label: '신규문의 방치', value: wedFiltered.newOnly, color: 'bg-gray-300' },
-            { label: '상담', value: wedFiltered.consultBooked, color: 'bg-purple-500' },
-            { label: '상담취소', value: wedFiltered.consultCancelled, color: 'bg-amber-400' },
-            { label: 'INQ', value: wedFiltered.inq, color: 'bg-blue-500' },
-            { label: 'DEF', value: wedFiltered.def, color: 'bg-emerald-500' },
-            { label: 'LOS', value: wedFiltered.los, color: 'bg-red-500' },
+            {
+              label: '신규문의 방치',
+              value: wedFiltered.newOnly,
+              color: 'bg-gray-300',
+              onClick: () =>
+                openWeddingDrill('newOnly', `${periodLabel} WEDDING — 신규문의 방치`),
+            },
+            {
+              label: '상담',
+              value: wedFiltered.consultBooked,
+              color: 'bg-purple-500',
+              onClick: () => openWeddingDrill('consult', `${periodLabel} WEDDING — 상담`),
+            },
+            {
+              label: '상담취소',
+              value: wedFiltered.consultCancelled,
+              color: 'bg-amber-400',
+              onClick: () =>
+                openWeddingDrill('consultCancelled', `${periodLabel} WEDDING — 상담취소`),
+            },
+            {
+              label: 'INQ',
+              value: wedFiltered.inq,
+              color: 'bg-blue-500',
+              onClick: () => openWeddingDrill('inq', `${periodLabel} WEDDING — INQ/TEN`),
+            },
+            {
+              label: 'DEF',
+              value: wedFiltered.def,
+              color: 'bg-emerald-500',
+              onClick: () => openWeddingDrill('def', `${periodLabel} WEDDING — DEF`),
+            },
+            {
+              label: 'LOS',
+              value: wedFiltered.los,
+              color: 'bg-red-500',
+              onClick: () => openWeddingDrill('los', `${periodLabel} WEDDING — LOS`),
+            },
           ]}
         />
 
@@ -221,6 +413,200 @@ export default function SalesDashboard({
           <StaleWeddingCard items={staleWed} />
         </div>
       </section>
+
+      {/* ===== 드릴다운 모달 ===== */}
+      <DrillDownModal drill={drill} onClose={() => setDrill({ open: false })} />
+    </div>
+  );
+}
+
+// ===== 드릴다운 모달 =====
+function DrillDownModal({
+  drill,
+  onClose,
+}: {
+  drill: DrillState;
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  if (!drill.open) return null;
+  const count = drill.kind === 'mice' ? drill.items.length : drill.items.length;
+  return (
+    <Modal
+      open={drill.open}
+      onClose={onClose}
+      title={drill.title}
+      widthClass="max-w-5xl"
+      footer={
+        <>
+          <span className="text-xs text-gray-500 mr-auto">총 {count}건</span>
+          <button onClick={onClose} className="btn-secondary">
+            닫기
+          </button>
+        </>
+      }
+    >
+      {drill.kind === 'mice' ? (
+        <MiceDrillTable
+          items={drill.items}
+          onRowClick={(customerId) => {
+            onClose();
+            navigate(`/customer/mice/${customerId}`);
+          }}
+        />
+      ) : (
+        <WeddingDrillTable
+          items={drill.items}
+          onRowClick={(customerId) => {
+            onClose();
+            navigate(`/customer/wedding/${customerId}`);
+          }}
+        />
+      )}
+    </Modal>
+  );
+}
+
+function MiceDrillTable({
+  items,
+  onRowClick,
+}: {
+  items: InquiryWithCustomer[];
+  onRowClick: (customerId: string) => void;
+}) {
+  if (items.length === 0) {
+    return <div className="text-center text-gray-400 py-8 text-sm">해당 조건의 건이 없습니다.</div>;
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm whitespace-nowrap">
+        <thead className="bg-gray-50 text-gray-700">
+          <tr>
+            <th className="text-left px-3 py-2 font-semibold border-b">업체명</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">담당자(우리)</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">컨택</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">채널</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">진행</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">통화/생성</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">행사일</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">메모</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it) => (
+            <tr
+              key={it.inquiry.id}
+              onClick={() => onRowClick(it.customer.id)}
+              className="border-t hover:bg-blue-50 cursor-pointer"
+            >
+              <td className="px-3 py-2 font-medium text-gray-900">
+                {it.customer.organization_name}
+              </td>
+              <td className="px-3 py-2 text-gray-700">
+                {it.inquiry.assigned_manager_name || '-'}
+              </td>
+              <td className="px-3 py-2 text-gray-700">
+                {it.inquiry.contacts[0]?.name || '-'}
+              </td>
+              <td className="px-3 py-2">
+                <span
+                  className={
+                    'badge text-[10px] ' +
+                    (it.inquiry.inquiry_channel === 'INCALL'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-purple-100 text-purple-800')
+                  }
+                >
+                  {it.inquiry.inquiry_channel === 'INCALL' ? '📞 인콜' : '📤 아웃콜'}
+                </span>
+              </td>
+              <td className="px-3 py-2">
+                <span className="badge bg-gray-100 text-gray-800 text-[10px]">
+                  {it.inquiry.progress_status}
+                </span>
+              </td>
+              <td className="px-3 py-2 text-gray-600">
+                {(it.inquiry.call_date || it.inquiry.created_at).slice(0, 10)}
+              </td>
+              <td className="px-3 py-2 text-gray-600">
+                {it.inquiry.inquiry_event_date_text || '-'}
+              </td>
+              <td className="px-3 py-2 max-w-[16rem] truncate text-gray-600" title={it.inquiry.event_memo}>
+                {it.inquiry.event_memo || '-'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function WeddingDrillTable({
+  items,
+  onRowClick,
+}: {
+  items: WeddingCustomer[];
+  onRowClick: (customerId: string) => void;
+}) {
+  if (items.length === 0) {
+    return <div className="text-center text-gray-400 py-8 text-sm">해당 조건의 건이 없습니다.</div>;
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm whitespace-nowrap">
+        <thead className="bg-gray-50 text-gray-700">
+          <tr>
+            <th className="text-left px-3 py-2 font-semibold border-b">행사명</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">진행단계</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">신랑</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">신부</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">문의일자</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">희망상담</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">유입경로</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">담당자</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((c) => (
+            <tr
+              key={c.id}
+              onClick={() => onRowClick(c.id)}
+              className="border-t hover:bg-purple-50 cursor-pointer"
+            >
+              <td className="px-3 py-2 font-medium text-gray-900">
+                {c.wedding_event_name || '(이름 없음)'}
+              </td>
+              <td className="px-3 py-2">
+                <span className="badge bg-gray-100 text-gray-800 text-[10px]">
+                  {c.progress_status}
+                </span>
+              </td>
+              <td className="px-3 py-2 text-gray-700">
+                {c.groom_name || '-'}
+                {c.groom_phone && <span className="text-xs text-gray-500 block">{c.groom_phone}</span>}
+              </td>
+              <td className="px-3 py-2 text-gray-700">
+                {c.bride_name || '-'}
+                {c.bride_phone && <span className="text-xs text-gray-500 block">{c.bride_phone}</span>}
+              </td>
+              <td className="px-3 py-2 text-gray-600">
+                {(c.inquiry_date || c.created_at).slice(0, 10)}
+              </td>
+              <td className="px-3 py-2 text-gray-600">
+                {c.desired_consultation_date?.slice(0, 16).replace('T', ' ') || '-'}
+              </td>
+              <td className="px-3 py-2 text-gray-600">
+                {c.source || '-'}
+                {c.source_detail && <span className="text-xs text-gray-500 block">{c.source_detail}</span>}
+              </td>
+              <td className="px-3 py-2 text-gray-600">
+                {c.event_inquiries[0]?.assigned_manager_name || '-'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -315,19 +701,30 @@ function KpiCard({
   value,
   sub,
   accent = 'gray',
+  onClick,
 }: {
   label: string;
   value: number | string;
   sub?: string;
   accent?: Accent;
+  onClick?: () => void;
 }) {
-  return (
-    <div className={`border rounded-lg p-2.5 md:p-3 ${ACCENT_BG[accent]}`}>
+  const cls = `border rounded-lg p-2.5 md:p-3 ${ACCENT_BG[accent]} ${onClick ? 'text-left w-full hover:shadow-md hover:brightness-95 transition cursor-pointer' : ''}`;
+  const body = (
+    <>
       <div className="text-[11px] md:text-xs opacity-80 mb-1 truncate">{label}</div>
       <div className="text-xl md:text-2xl font-bold tabular-nums">{value}</div>
       {sub && <div className="text-[10px] md:text-[11px] opacity-70 mt-0.5 truncate">{sub}</div>}
-    </div>
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={cls} aria-label={`${label} 상세보기`}>
+        {body}
+      </button>
+    );
+  }
+  return <div className={cls}>{body}</div>;
 }
 
 function FunnelCard({
@@ -337,7 +734,7 @@ function FunnelCard({
 }: {
   title: string;
   total: number;
-  stages: Array<{ label: string; value: number; color: string }>;
+  stages: Array<{ label: string; value: number; color: string; onClick?: () => void }>;
 }) {
   const max = Math.max(total, 1);
   return (
@@ -353,10 +750,17 @@ function FunnelCard({
           {stages.map((s) => {
             const pct = total > 0 ? (s.value / max) * 100 : 0;
             const sharePct = total > 0 ? (s.value / total) * 100 : 0;
+            const disabled = !s.onClick || s.value === 0;
             return (
               <li key={s.label} className="text-xs">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="w-20 text-gray-700 shrink-0">{s.label}</span>
+                <button
+                  type="button"
+                  onClick={s.onClick}
+                  disabled={disabled}
+                  className={`w-full flex items-center gap-2 mb-0.5 rounded px-1 py-0.5 ${disabled ? '' : 'hover:bg-white cursor-pointer'}`}
+                  aria-label={`${s.label} 상세보기`}
+                >
+                  <span className="w-20 text-gray-700 shrink-0 text-left">{s.label}</span>
                   <div className="flex-1 bg-white border rounded overflow-hidden h-5">
                     <div
                       className={`h-full ${s.color} transition-all`}
@@ -366,7 +770,7 @@ function FunnelCard({
                   <span className="w-24 text-right tabular-nums text-gray-700 shrink-0">
                     {s.value}건 ({sharePct.toFixed(1)}%)
                   </span>
-                </div>
+                </button>
               </li>
             );
           })}
