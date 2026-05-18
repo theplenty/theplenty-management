@@ -118,9 +118,16 @@ export default function SalesDashboard({
     () => computeWeddingMetrics(weddingCustomers, range, managerId || null),
     [weddingCustomers, range, managerId]
   );
-  const scheduled = useMemo(() => findScheduledConsultations(weddingCustomers), [weddingCustomers]);
+  // 상담 예정 / 장기 미전환 — 신규문의일자(inquiry_date) 기준 기간 필터 반영
+  const scheduled = useMemo(
+    () => findScheduledConsultations(weddingCustomers, range),
+    [weddingCustomers, range]
+  );
   const cancelled = useMemo(() => findCancelledConsultations(weddingCustomers), [weddingCustomers]);
-  const staleWed = useMemo(() => findStaleWedding(weddingCustomers, 14), [weddingCustomers]);
+  const staleWed = useMemo(
+    () => findStaleWedding(weddingCustomers, 14, range),
+    [weddingCustomers, range]
+  );
 
   // ===== 드릴다운 열기 헬퍼 =====
   function openMiceDrill(
@@ -147,7 +154,7 @@ export default function SalesDashboard({
     setDrill({
       open: true,
       kind: 'wedding',
-      title: '장기 미전환 (14일+ 누적, 기간 무관)',
+      title: `장기 미전환 (14일+, ${periodLabel} 신규문의 기준)`,
       items: staleWed.map((s) => s.customer),
     });
   }
@@ -357,7 +364,7 @@ export default function SalesDashboard({
             label="장기 미전환"
             value={staleWed.length}
             accent={staleWed.length > 0 ? 'red' : 'gray'}
-            sub="14일+ 신규문의/상담 (누적)"
+            sub={`14일+ 신규문의/상담 · ${periodLabel} 기준`}
             onClick={openWeddingStaleDrill}
           />
         </div>
@@ -408,9 +415,9 @@ export default function SalesDashboard({
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-5">
-          <ScheduledConsultsCard items={scheduled} />
+          <ScheduledConsultsCard items={scheduled} periodLabel={periodLabel} />
           <CancelledConsultsCard items={cancelled} />
-          <StaleWeddingCard items={staleWed} />
+          <StaleWeddingCard items={staleWed} periodLabel={periodLabel} />
         </div>
       </section>
 
@@ -888,11 +895,20 @@ function ManagerStatsCard({
   );
 }
 
-function ScheduledConsultsCard({ items }: { items: WeddingCustomer[] }) {
+function ScheduledConsultsCard({
+  items,
+  periodLabel,
+}: {
+  items: WeddingCustomer[];
+  periodLabel: string;
+}) {
   const navigate = useNavigate();
   return (
     <div className="border rounded-lg p-3 bg-purple-50/30">
-      <h3 className="text-sm font-semibold text-gray-900 mb-2">📅 상담 예정 ({items.length}건)</h3>
+      <h3 className="text-sm font-semibold text-gray-900 mb-0.5">
+        📅 상담 예정 ({items.length}건)
+      </h3>
+      <div className="text-[10px] text-gray-500 mb-2">{periodLabel} 신규문의 기준</div>
       {items.length === 0 ? (
         <div className="text-xs text-gray-400 text-center py-4">예정된 상담이 없습니다.</div>
       ) : (
@@ -944,11 +960,20 @@ function CancelledConsultsCard({ items }: { items: WeddingCustomer[] }) {
   );
 }
 
-function StaleWeddingCard({ items }: { items: Array<{ customer: WeddingCustomer; ageDays: number }> }) {
+function StaleWeddingCard({
+  items,
+  periodLabel,
+}: {
+  items: Array<{ customer: WeddingCustomer; ageDays: number }>;
+  periodLabel: string;
+}) {
   const navigate = useNavigate();
   return (
     <div className="border rounded-lg p-3 bg-red-50/30">
-      <h3 className="text-sm font-semibold text-gray-900 mb-2">⏰ 장기 미전환 ({items.length}건)</h3>
+      <h3 className="text-sm font-semibold text-gray-900 mb-0.5">
+        ⏰ 장기 미전환 ({items.length}건)
+      </h3>
+      <div className="text-[10px] text-gray-500 mb-2">{periodLabel} 신규문의 · 14일+ 방치</div>
       {items.length === 0 ? (
         <div className="text-xs text-gray-400 text-center py-4">장기 미전환 건이 없습니다. 👍</div>
       ) : (

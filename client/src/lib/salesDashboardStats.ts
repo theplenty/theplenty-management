@@ -247,14 +247,17 @@ export function computeWeddingMetrics(
 }
 
 // 상담 예정 / 상담 취소 / 장기 미전환 리스트
+// range 전달 시 신규문의일자(inquiry_date, fallback created_at) 기준으로 필터.
 export function findScheduledConsultations(
   customers: WeddingCustomer[],
+  range: DateRange | null = null,
   now = new Date()
 ): WeddingCustomer[] {
   const today = now.toISOString().slice(0, 10);
   return customers
     .filter((c) => !c.deleted_at)
     .filter((c) => c.progress_status === '상담' || (c.desired_consultation_date && c.desired_consultation_date >= today))
+    .filter((c) => !range || inRange(c.inquiry_date || c.created_at, range))
     .sort((a, b) => {
       const ad = a.desired_consultation_date || '';
       const bd = b.desired_consultation_date || '';
@@ -358,9 +361,11 @@ export function filterWeddingForDrill(
 }
 
 // 장기 미전환 = 신규문의 또는 상담 상태로 N일 이상 방치
+// range 전달 시 신규문의일자(inquiry_date, fallback created_at) 기준으로 필터.
 export function findStaleWedding(
   customers: WeddingCustomer[],
   minAgeDays: number,
+  range: DateRange | null = null,
   now = new Date()
 ): Array<{ customer: WeddingCustomer; ageDays: number }> {
   const out: Array<{ customer: WeddingCustomer; ageDays: number }> = [];
@@ -368,6 +373,7 @@ export function findStaleWedding(
     if (c.deleted_at) continue;
     if (c.progress_status !== '신규문의' && c.progress_status !== '상담') continue;
     const baseIso = c.inquiry_date || c.created_at;
+    if (range && !inRange(baseIso, range)) continue;
     const created = new Date(baseIso).getTime();
     if (isNaN(created)) continue;
     const ageDays = Math.floor((now.getTime() - created) / 86400_000);
