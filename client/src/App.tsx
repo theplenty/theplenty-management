@@ -71,20 +71,24 @@ function ProtectedRoutes() {
         />
 
         <Route path="/customers" element={<Navigate to="/customers/mice" replace />} />
-        {/* MICE 고객 DB: admin + sales_mice(쓰기) + banquet/kitchen(뷰어). h_kitchen 제외. */}
+        {/* MICE 고객 DB: admin + 양 세일즈(CRUD) + banquet/kitchen(뷰어). h_kitchen 제외. */}
         <Route
           path="/customers/mice"
           element={
-            <ProtectedRoute allow={['admin', 'sales_mice', 'banquet', 'kitchen']}>
+            <ProtectedRoute
+              allow={['admin', 'sales_mice', 'sales_wedding', 'banquet', 'kitchen']}
+            >
               <MiceCustomers />
             </ProtectedRoute>
           }
         />
-        {/* WEDDING 고객 DB: admin + sales_wedding(쓰기) + banquet/kitchen(뷰어). h_kitchen 제외. */}
+        {/* WEDDING 고객 DB: admin + 양 세일즈(CRUD) + banquet/kitchen(뷰어). h_kitchen 제외. */}
         <Route
           path="/customers/wedding"
           element={
-            <ProtectedRoute allow={['admin', 'sales_wedding', 'banquet', 'kitchen']}>
+            <ProtectedRoute
+              allow={['admin', 'sales_mice', 'sales_wedding', 'banquet', 'kitchen']}
+            >
               <WeddingCustomers />
             </ProtectedRoute>
           }
@@ -95,11 +99,13 @@ function ProtectedRoutes() {
         <Route path="/calendar/summary" element={<CalendarSummary />} />
         <Route path="/events" element={<Events />} />
 
-        {/* 통합 고객 프로필 — 해당 고객 DB 권한자만. */}
+        {/* 통합 고객 프로필 — 양 세일즈/관리자/뷰어 모두 접근. h_kitchen 제외. */}
         <Route
           path="/customer/wedding/:id"
           element={
-            <ProtectedRoute allow={['admin', 'sales_wedding', 'banquet', 'kitchen']}>
+            <ProtectedRoute
+              allow={['admin', 'sales_mice', 'sales_wedding', 'banquet', 'kitchen']}
+            >
               <WeddingProfile />
             </ProtectedRoute>
           }
@@ -107,7 +113,9 @@ function ProtectedRoutes() {
         <Route
           path="/customer/mice/:id"
           element={
-            <ProtectedRoute allow={['admin', 'sales_mice', 'banquet', 'kitchen']}>
+            <ProtectedRoute
+              allow={['admin', 'sales_mice', 'sales_wedding', 'banquet', 'kitchen']}
+            >
               <MiceProfile />
             </ProtectedRoute>
           }

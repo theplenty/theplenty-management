@@ -16,9 +16,9 @@ import type {
 const router = Router();
 
 // 정책:
-// - READ: admin / sales / banquet / kitchen — h_kitchen 은 고객 DB 접근 불가 (스펙)
-// - WRITE: admin 또는 매칭 팀 (sales_mice → MICE, sales_wedding → WEDDING)
-function canAccessType(role: string, type: CustomerType): { read: boolean; write: boolean } {
+// - READ: admin / 양 세일즈 / banquet / kitchen — h_kitchen 은 고객 DB 접근 불가 (스펙)
+// - WRITE: admin / 양 세일즈 — 세일즈 팀끼리 서로의 DB 작성·수정 가능
+function canAccessType(role: string, _type: CustomerType): { read: boolean; write: boolean } {
   const read =
     role === 'admin' ||
     role === 'sales_mice' ||
@@ -27,9 +27,7 @@ function canAccessType(role: string, type: CustomerType): { read: boolean; write
     role === 'kitchen';
   // h_kitchen 은 명시적으로 false — 고객 DB 접근 불가
   const write =
-    role === 'admin' ||
-    (role === 'sales_mice' && type === 'MICE') ||
-    (role === 'sales_wedding' && type === 'WEDDING');
+    role === 'admin' || role === 'sales_mice' || role === 'sales_wedding';
   return { read, write };
 }
 

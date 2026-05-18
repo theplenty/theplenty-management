@@ -33,8 +33,15 @@ function currentMonth(): MonthKey {
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
 }
 
-// 행사 1건의 GTD/EXP 합계 — 확정 우선, 없으면 계약. 라벨은 항상 '확정 GTD/EXP'.
-function aggregateGtdExp(ev: EventWithFood): { gtd: number | null; exp: number | null } {
+// 행사 1건의 GTD/EXP 합계 — 확정 우선, 없으면 계약 fallback.
+// 라벨은 값의 출처에 따라 다름: 확정에서 왔으면 '확정', 계약에서 왔으면 '계약'.
+type GtdExpSource = 'final' | 'contract' | null;
+function aggregateGtdExp(ev: EventWithFood): {
+  gtd: number | null;
+  exp: number | null;
+  gtdSource: GtdExpSource;
+  expSource: GtdExpSource;
+} {
   let gtdFinal = 0;
   let gtdContract = 0;
   let expFinal = 0;
@@ -82,7 +89,19 @@ function aggregateGtdExp(ev: EventWithFood): { gtd: number | null; exp: number |
   return {
     gtd: hasFinalGtd ? gtdFinal : hasContractGtd ? gtdContract : null,
     exp: hasFinalExp ? expFinal : hasContractExp ? expContract : null,
+    gtdSource: hasFinalGtd ? 'final' : hasContractGtd ? 'contract' : null,
+    expSource: hasFinalExp ? 'final' : hasContractExp ? 'contract' : null,
   };
+}
+
+// 라벨 결정 — 값이 있는 항목의 출처를 모두 보고 결정.
+// 모두 final 이면 '확정', 하나라도 contract 면 '계약' (출처가 다르면 보수적으로 '계약').
+function gtdExpLabel(gtdSource: GtdExpSource, expSource: GtdExpSource): string {
+  const sources: GtdExpSource[] = [];
+  if (gtdSource) sources.push(gtdSource);
+  if (expSource) sources.push(expSource);
+  if (sources.length === 0) return '확정 GTD/EXP'; // 둘 다 없음 — 기본 라벨
+  return sources.every((s) => s === 'final') ? '확정 GTD/EXP' : '계약 GTD/EXP';
 }
 
 function dateKey(s: string): string {
@@ -331,7 +350,8 @@ function DateGroup({ date, events }: { date: string; events: EventWithFood[] }) 
 
 function EventCard({ ev }: { ev: EventWithFood }) {
   const halls = (ev.halls || []).join(' / ') || '홀 미지정';
-  const { gtd, exp } = aggregateGtdExp(ev);
+  const { gtd, exp, gtdSource, expSource } = aggregateGtdExp(ev);
+  const label = gtdExpLabel(gtdSource, expSource);
   const color = STATUS_HEX[ev.status] || '#6b7280';
   const foodItems = ev.food_items || [];
   // 메뉴명 모음 (중복 제거 — 같은 메뉴 여러 행 가능)
@@ -360,7 +380,7 @@ function EventCard({ ev }: { ev: EventWithFood }) {
           <span className="text-gray-500">사용홀:</span> <span className="text-gray-900">{halls}</span>
         </div>
         <div>
-          <span className="text-gray-500">확정 GTD/EXP:</span>{' '}
+          <span className="text-gray-500">{label}:</span>{' '}
           <span className="text-gray-900 font-mono">
             {gtd ?? '-'} / {exp ?? '-'}
           </span>

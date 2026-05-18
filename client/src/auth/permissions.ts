@@ -74,18 +74,31 @@ export function canSeeEvents(role: Role | undefined): boolean {
 }
 
 // ===== 고객 DB =====
-// MICE 고객 DB 보기 — 자기 팀 세일즈 + 다른 팀 뷰어(연회/주방) + 관리자. 에이치키친은 접근 불가.
+// MICE/WEDDING 세일즈는 서로의 DB도 보기·작성·수정 가능 (양 팀 모두 풀 액세스)
+// 뷰어(연회/주방)는 보기만. 에이치키친은 접근 불가.
 export function canSeeMice(role: Role | undefined): boolean {
-  return role === 'admin' || role === 'sales_mice' || role === 'banquet' || role === 'kitchen';
+  return (
+    role === 'admin' ||
+    role === 'sales_mice' ||
+    role === 'sales_wedding' ||
+    role === 'banquet' ||
+    role === 'kitchen'
+  );
 }
 export function canWriteMice(role: Role | undefined): boolean {
-  return role === 'admin' || role === 'sales_mice';
+  return role === 'admin' || role === 'sales_mice' || role === 'sales_wedding';
 }
 export function canSeeWedding(role: Role | undefined): boolean {
-  return role === 'admin' || role === 'sales_wedding' || role === 'banquet' || role === 'kitchen';
+  return (
+    role === 'admin' ||
+    role === 'sales_mice' ||
+    role === 'sales_wedding' ||
+    role === 'banquet' ||
+    role === 'kitchen'
+  );
 }
 export function canWriteWedding(role: Role | undefined): boolean {
-  return role === 'admin' || role === 'sales_wedding';
+  return role === 'admin' || role === 'sales_mice' || role === 'sales_wedding';
 }
 
 // ===== 행사리뷰 =====
