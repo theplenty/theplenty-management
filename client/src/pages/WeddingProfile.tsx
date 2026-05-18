@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import {
   type WeddingCustomer,
@@ -79,6 +79,22 @@ export default function WeddingProfile() {
   const [profile, setProfile] = useState<FullProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  function copyAndToast(text: string, label: string) {
+    if (!text) return;
+    navigator.clipboard
+      ?.writeText(text)
+      .then(() => {
+        setToast(`${label} 복사됨: ${text}`);
+        setTimeout(() => setToast(null), 2400);
+      })
+      .catch(() => {
+        // 클립보드 실패해도 toast 정도는 보여줌
+        setToast(`${label}: ${text} (수동 복사 필요)`);
+        setTimeout(() => setToast(null), 3000);
+      });
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -146,6 +162,13 @@ export default function WeddingProfile() {
         </div>
       </div>
 
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm px-4 py-2 rounded-lg shadow-lg">
+          {toast}
+        </div>
+      )}
+
       {/* 1. 기본 정보 */}
       <Section title="기본 정보">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -154,12 +177,14 @@ export default function WeddingProfile() {
             name={c.groom_name}
             phone={c.groom_phone}
             email={c.groom_email}
+            onCopy={copyAndToast}
           />
           <ContactCard
             party="신부"
             name={c.bride_name}
             phone={c.bride_phone}
             email={c.bride_email}
+            onCopy={copyAndToast}
           />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
@@ -211,11 +236,7 @@ export default function WeddingProfile() {
         ) : (
           <ul className="space-y-2">
             {profile.linked_events.map((ev) => (
-              <LinkedEventCard
-                key={ev.id}
-                ev={ev}
-                onOpen={() => navigate(`/events?focus=${ev.id}`)}
-              />
+              <LinkedEventCard key={ev.id} ev={ev} />
             ))}
           </ul>
         )}
@@ -262,11 +283,13 @@ function ContactCard({
   name,
   phone,
   email,
+  onCopy,
 }: {
   party: string;
   name: string;
   phone: string;
   email: string;
+  onCopy: (text: string, label: string) => void;
 }) {
   const isEmpty = !name && !phone && !email;
   return (
@@ -279,22 +302,57 @@ function ContactCard({
           <div className="text-sm font-semibold text-gray-900">{name || '(이름 없음)'}</div>
           <div className="mt-1.5 space-y-1 text-xs">
             {phone && (
-              <a
+              <CopyableContact
                 href={`tel:${phone.replace(/\D/g, '')}`}
-                className="flex items-center gap-1.5 text-blue-600 hover:underline"
-              >
-                📞 {fmtPhone(phone)}
-              </a>
+                label={`📞 ${fmtPhone(phone)}`}
+                copyText={phone}
+                copyKind={`${party} 전화`}
+                onCopy={onCopy}
+              />
             )}
             {email && (
-              <a href={`mailto:${email}`} className="flex items-center gap-1.5 text-blue-600 hover:underline">
-                ✉ {email}
-              </a>
+              <CopyableContact
+                href={`mailto:${email}`}
+                label={`✉ ${email}`}
+                copyText={email}
+                copyKind={`${party} 이메일`}
+                onCopy={onCopy}
+              />
             )}
           </div>
         </>
       )}
     </div>
+  );
+}
+
+// 클릭 = (1) 클립보드 복사 (2) tel: / mailto: 시도. PC 에서 다이얼러 핸들러 없어도 즉시 복사되어 활용 가능.
+function CopyableContact({
+  href,
+  label,
+  copyText,
+  copyKind,
+  onCopy,
+}: {
+  href: string;
+  label: string;
+  copyText: string;
+  copyKind: string;
+  onCopy: (text: string, label: string) => void;
+}) {
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        // 복사 먼저 수행. 그 다음 브라우저가 tel:/mailto: 처리 (핸들러 있으면 열림).
+        e.stopPropagation();
+        onCopy(copyText, copyKind);
+      }}
+      className="flex items-center gap-1.5 text-blue-600 hover:underline cursor-pointer break-all"
+      title={`클릭하여 복사 + ${href.startsWith('tel:') ? '통화 시도' : '메일 작성'}`}
+    >
+      {label}
+    </a>
   );
 }
 
@@ -333,22 +391,19 @@ function WeddingInquiryCard({ inq, idx }: { inq: WeddingEventInquiry; idx: numbe
   );
 }
 
-function LinkedEventCard({ ev, onOpen }: { ev: LinkedEvent; onOpen: () => void }) {
+function LinkedEventCard({ ev }: { ev: LinkedEvent }) {
   const halls = ev.halls.join(' / ') || '홀 미지정';
   const color = STATUS_HEX[ev.status] || '#6b7280';
   return (
     <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="w-full text-left border rounded p-3 hover:bg-blue-50 active:bg-blue-100 transition"
+      {/* react-router Link — SPA 네비. <button onClick={navigate}> 보다 안정적이고 의미상 명확. */}
+      <Link
+        to={`/events?focus=${ev.id}`}
+        className="block w-full text-left border rounded p-3 hover:bg-blue-50 active:bg-blue-100 transition no-underline text-current"
       >
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span className="badge bg-gray-100 text-gray-700">{ev.event_type}</span>
-          <span
-            className="badge text-white"
-            style={{ background: color }}
-          >
+          <span className="badge text-white" style={{ background: color }}>
             {ev.status}
           </span>
           {ev.customer_role && (
@@ -373,7 +428,7 @@ function LinkedEventCard({ ev, onOpen }: { ev: LinkedEvent; onOpen: () => void }
         {ev.cancellation?.reason && (
           <div className="text-xs text-red-600 mt-0.5">취소사유: {ev.cancellation.reason}</div>
         )}
-      </button>
+      </Link>
     </li>
   );
 }

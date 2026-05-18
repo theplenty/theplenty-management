@@ -144,17 +144,17 @@ export default function GlobalSearch() {
 
   return (
     <>
-      {/* 헤더 트리거 — 데스크탑은 검색바, 모바일은 아이콘 버튼 */}
+      {/* 헤더 트리거 — 모바일/PC 모두 "전체 검색" 텍스트 노출 (모바일은 아이콘+짧은 텍스트, PC 는 폭 넓게) */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 px-2 md:px-3 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-500 text-sm h-9 w-9 md:w-72 justify-center md:justify-start"
+        className="flex items-center gap-2 px-3 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-500 text-sm h-9 w-full md:w-72"
         title="전체 검색 (Ctrl+K)"
       >
         <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
         </svg>
-        <span className="hidden md:inline truncate">전체 검색…</span>
+        <span className="truncate">전체 검색…</span>
         <kbd className="hidden md:inline ml-auto text-[10px] bg-gray-100 border border-gray-300 rounded px-1 text-gray-500">
           Ctrl K
         </kbd>

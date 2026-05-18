@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import {
   type MiceCustomer,
@@ -73,6 +73,21 @@ export default function MiceProfile() {
   const [profile, setProfile] = useState<FullProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  function copyAndToast(text: string, label: string) {
+    if (!text) return;
+    navigator.clipboard
+      ?.writeText(text)
+      .then(() => {
+        setToast(`${label} 복사됨: ${text}`);
+        setTimeout(() => setToast(null), 2400);
+      })
+      .catch(() => {
+        setToast(`${label}: ${text} (수동 복사 필요)`);
+        setTimeout(() => setToast(null), 3000);
+      });
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -140,26 +155,38 @@ export default function MiceProfile() {
         </div>
       </div>
 
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm px-4 py-2 rounded-lg shadow-lg">
+          {toast}
+        </div>
+      )}
+
       {/* 1. 기본 정보 */}
       <Section title="기본 정보">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <KV label="공식 연락처">
             {c.official_phone ? (
-              <a
+              <CopyableContact
                 href={`tel:${c.official_phone.replace(/\D/g, '')}`}
-                className="text-blue-600 hover:underline"
-              >
-                📞 {fmtPhone(c.official_phone)}
-              </a>
+                label={`📞 ${fmtPhone(c.official_phone)}`}
+                copyText={c.official_phone}
+                copyKind="공식 연락처"
+                onCopy={copyAndToast}
+              />
             ) : (
               '-'
             )}
           </KV>
           <KV label="공식 이메일">
             {c.official_email ? (
-              <a href={`mailto:${c.official_email}`} className="text-blue-600 hover:underline">
-                ✉ {c.official_email}
-              </a>
+              <CopyableContact
+                href={`mailto:${c.official_email}`}
+                label={`✉ ${c.official_email}`}
+                copyText={c.official_email}
+                copyKind="공식 이메일"
+                onCopy={copyAndToast}
+              />
             ) : (
               '-'
             )}
@@ -196,7 +223,7 @@ export default function MiceProfile() {
         ) : (
           <ul className="space-y-2">
             {c.inquiries.map((inq, idx) => (
-              <MiceInquiryCard key={inq.id} inq={inq} idx={idx} />
+              <MiceInquiryCard key={inq.id} inq={inq} idx={idx} onCopy={copyAndToast} />
             ))}
           </ul>
         )}
@@ -209,11 +236,7 @@ export default function MiceProfile() {
         ) : (
           <ul className="space-y-2">
             {profile.linked_events.map((ev) => (
-              <LinkedEventCard
-                key={ev.id}
-                ev={ev}
-                onOpen={() => navigate(`/events?focus=${ev.id}`)}
-              />
+              <LinkedEventCard key={ev.id} ev={ev} />
             ))}
           </ul>
         )}
@@ -255,7 +278,15 @@ function EmptyState({ children }: { children: React.ReactNode }) {
   return <div className="text-sm text-gray-400 italic py-3 text-center">{children}</div>;
 }
 
-function MiceInquiryCard({ inq, idx }: { inq: MiceInquiry; idx: number }) {
+function MiceInquiryCard({
+  inq,
+  idx,
+  onCopy,
+}: {
+  inq: MiceInquiry;
+  idx: number;
+  onCopy: (text: string, label: string) => void;
+}) {
   return (
     <li className="border rounded p-3 text-sm">
       <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
@@ -270,25 +301,30 @@ function MiceInquiryCard({ inq, idx }: { inq: MiceInquiry; idx: number }) {
           {inq.assigned_manager_name && `담당: ${inq.assigned_manager_name}`}
         </div>
       </div>
-      {/* 담당자 contacts */}
+      {/* 담당자 contacts — 클릭 시 복사 + 다이얼/메일 시도 */}
       {inq.contacts.length > 0 && (
         <div className="space-y-1 mb-2">
           {inq.contacts.map((ct, ci) => (
-            <div key={ct.id} className="flex items-center gap-2 text-xs">
+            <div key={ct.id} className="flex items-center gap-2 text-xs flex-wrap">
               <span className="text-gray-500">담당 {ci + 1}.</span>
               <span className="font-medium text-gray-900">{ct.name || '(이름 없음)'}</span>
               {ct.phone && (
-                <a
+                <CopyableContact
                   href={`tel:${ct.phone.replace(/\D/g, '')}`}
-                  className="text-blue-600 hover:underline"
-                >
-                  📞 {ct.phone}
-                </a>
+                  label={`📞 ${ct.phone}`}
+                  copyText={ct.phone}
+                  copyKind={`${ct.name || '담당'} 전화`}
+                  onCopy={onCopy}
+                />
               )}
               {ct.email && (
-                <a href={`mailto:${ct.email}`} className="text-blue-600 hover:underline">
-                  ✉ {ct.email}
-                </a>
+                <CopyableContact
+                  href={`mailto:${ct.email}`}
+                  label={`✉ ${ct.email}`}
+                  copyText={ct.email}
+                  copyKind={`${ct.name || '담당'} 이메일`}
+                  onCopy={onCopy}
+                />
               )}
             </div>
           ))}
@@ -309,15 +345,43 @@ function MiceInquiryCard({ inq, idx }: { inq: MiceInquiry; idx: number }) {
   );
 }
 
-function LinkedEventCard({ ev, onOpen }: { ev: LinkedEvent; onOpen: () => void }) {
+// 클릭 = 클립보드 복사 + tel/mailto 시도 (PC에서 다이얼러 없어도 즉시 복사되어 활용 가능)
+function CopyableContact({
+  href,
+  label,
+  copyText,
+  copyKind,
+  onCopy,
+}: {
+  href: string;
+  label: string;
+  copyText: string;
+  copyKind: string;
+  onCopy: (text: string, label: string) => void;
+}) {
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.stopPropagation();
+        onCopy(copyText, copyKind);
+      }}
+      className="text-blue-600 hover:underline cursor-pointer break-all"
+      title={`클릭하여 복사 + ${href.startsWith('tel:') ? '통화 시도' : '메일 작성'}`}
+    >
+      {label}
+    </a>
+  );
+}
+
+function LinkedEventCard({ ev }: { ev: LinkedEvent }) {
   const halls = ev.halls.join(' / ') || '홀 미지정';
   const color = STATUS_HEX[ev.status] || '#6b7280';
   return (
     <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="w-full text-left border rounded p-3 hover:bg-blue-50 active:bg-blue-100 transition"
+      <Link
+        to={`/events?focus=${ev.id}`}
+        className="block w-full text-left border rounded p-3 hover:bg-blue-50 active:bg-blue-100 transition no-underline text-current"
       >
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span className="badge bg-gray-100 text-gray-700">{ev.event_type}</span>
@@ -346,7 +410,7 @@ function LinkedEventCard({ ev, onOpen }: { ev: LinkedEvent; onOpen: () => void }
         {ev.cancellation?.reason && (
           <div className="text-xs text-red-600 mt-0.5">취소사유: {ev.cancellation.reason}</div>
         )}
-      </button>
+      </Link>
     </li>
   );
 }
