@@ -146,15 +146,23 @@ router.get('/', (req, res) => {
     return res.json(out);
   }
 
-  // 권한:
-  //   - admin/banquet/kitchen: 모든 영역 검색 가능 (kitchen 도 검색은 OK — 조회 권한 보유)
-  //   - sales_mice: MICE + events
-  //   - sales_wedding: WEDDING + events
+  // 권한 (양 세일즈 상호 고객 DB 접근 허용):
+  //   - admin/banquet/kitchen: 모든 영역 검색 가능
+  //   - 양 sales: MICE + WEDDING + events 모두 검색 가능
+  //   - h_kitchen: 행사만 (고객 DB 접근 불가)
   const canSeeWedding =
-    role === 'admin' || role === 'banquet' || role === 'kitchen' || role === 'sales_wedding';
+    role === 'admin' ||
+    role === 'banquet' ||
+    role === 'kitchen' ||
+    role === 'sales_wedding' ||
+    role === 'sales_mice';
   const canSeeMice =
-    role === 'admin' || role === 'banquet' || role === 'kitchen' || role === 'sales_mice';
-  const canSeeEvents = true; // 활성 사용자 모두 행사 검색 가능
+    role === 'admin' ||
+    role === 'banquet' ||
+    role === 'kitchen' ||
+    role === 'sales_mice' ||
+    role === 'sales_wedding';
+  const canSeeEvents = true; // 활성 사용자 모두 행사 검색 가능 (h_kitchen 포함)
 
   // 행사별 고객 카운트 (event_count) 빠르게 가져오기 위한 인덱스
   const eventCountByCustomer = new Map<string, number>();
@@ -217,6 +225,18 @@ router.get('/', (req, res) => {
 
   out.total = out.wedding.length + out.mice.length + out.events.length;
   out.took_ms = Date.now() - t0;
+  // 디버그 — 검색 쿼리 분석과 매칭 결과 카운트 로그
+  console.log(
+    '[search] role=' + role,
+    'q=' + JSON.stringify(q),
+    'parsed=' + JSON.stringify({
+      text: parsed.text,
+      phoneNumeric: parsed.phoneNumeric,
+      emailLocal: parsed.emailLocal,
+    }),
+    'matches=W:' + out.wedding.length + ' M:' + out.mice.length + ' E:' + out.events.length,
+    'took=' + out.took_ms + 'ms'
+  );
   res.json(out);
 });
 
