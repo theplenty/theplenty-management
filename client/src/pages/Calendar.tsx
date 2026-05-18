@@ -218,13 +218,14 @@ export default function Calendar() {
       return true;
     });
     // === 중복 행사 감지 ===
-    // 같은 구분·홀·시작·종료·이름의 행사가 여러 개면 캘린더상 정확히 같은 위치에 그려져 시각적으로
-    // 하나처럼 보임 (FullCalendar는 동일한 props의 이벤트를 dedupe 하지는 않지만 완전 겹침은 분간 불가).
-    // 표시용 id 에 시퀀스 suffix + 제목 앞에 [중복 N/M] 라벨을 붙여 각각 분리되어 보이도록.
+    // 같은 시작시간 + 행사명(대소문자/공백 무시) 이면 중복으로 간주 — 사용자가 실수로 두 번
+    // 등록한 케이스를 잡기 위해 키를 느슨하게. 홀이나 종료시간이 살짝 달라도 묶임.
+    // 표시용 id 에 시퀀스 suffix + 제목 앞에 [중복 N/M] 라벨을 붙여 시각적으로 분리.
     const dupKeyOf = (e: EventWithFood) =>
-      `${e.event_type}|${(e.halls || []).join('/')}|${e.start_datetime}|${e.end_datetime}|${(e.event_name || '').trim()}`;
+      `${(e.event_name || '').trim().toLowerCase()}|${e.start_datetime}`;
     const dupGroups = new Map<string, EventWithFood[]>();
     for (const e of filtered) {
+      if (!e.event_name) continue; // 이름 없는 행사는 중복 검출 대상 외
       const k = dupKeyOf(e);
       if (!dupGroups.has(k)) dupGroups.set(k, []);
       dupGroups.get(k)!.push(e);
@@ -232,8 +233,14 @@ export default function Calendar() {
     const dupSeqOf = new Map<string, { idx: number; total: number }>();
     for (const [, arr] of dupGroups) {
       if (arr.length > 1) {
+        // 생성 시간 오래된 순으로 정렬하여 #1 이 가장 먼저 만든 행사가 되도록.
+        arr.sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
         arr.forEach((ev, i) => dupSeqOf.set(ev.id, { idx: i + 1, total: arr.length }));
       }
+    }
+    if (dupSeqOf.size > 0 && typeof window !== 'undefined') {
+      // 디버그용 — DevTools 콘솔에서 중복 검출 결과를 사용자가 확인 가능
+      console.log('[캘린더] 중복 행사 감지', dupSeqOf.size, '건', Array.from(dupSeqOf.entries()));
     }
     const out = filtered.map((ev) => {
       const conflict = detectConflict(ev as Event, filtered as Event[]);
@@ -244,7 +251,9 @@ export default function Calendar() {
         // 내부 식별자도 분리 — FullCalendar 가 동일 id를 자동 dedupe 하더라도 안전하게.
         // 실제 클릭 시에는 extendedProps.event.id 로 원본 행사를 식별하므로 영향 없음.
         fcEv.id = `${ev.id}__dup${dup.idx}`;
-        fcEv.title = `[중복 ${dup.idx}/${dup.total}] ${fcEv.title}`;
+        fcEv.title = `🔴 [중복 ${dup.idx}/${dup.total}] ${fcEv.title}`;
+        // 색상도 강제로 빨강 계열 — 시각적 강조
+        fcEv.borderColor = '#dc2626';
       }
       return fcEv;
     });

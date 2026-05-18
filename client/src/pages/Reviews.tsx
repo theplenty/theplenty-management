@@ -156,6 +156,7 @@ export default function Reviews() {
   }, [list, filter, tc.sort]);
 
   async function openEvent(e: EligibleEvent) {
+    console.log('[리뷰] 행사 열기 시도', { id: e.id, name: e.event_name, status: e.status });
     try {
       const res = await api.get<{
         event: Event;
@@ -164,14 +165,34 @@ export default function Reviews() {
         invoice: Invoice | null;
         cancellation: Cancellation | null;
       }>(`/api/events/${e.id}`);
-      setEditing({ ...res.event, food_items: res.food_items });
+      console.log('[리뷰] 행사 데이터 OK', {
+        id: res.event?.id,
+        files_count: undefined,
+        food_items_count: res.food_items?.length,
+        invoice: !!res.invoice,
+        cancellation: !!res.cancellation,
+      });
+      if (!res.event) {
+        alert('서버에서 행사 데이터를 받지 못했습니다. 행사 ID: ' + e.id);
+        return;
+      }
+      setEditing({ ...res.event, food_items: res.food_items || [] });
       setEditingLinks(res.customer_links || []);
       setEditingInvoice(res.invoice);
       setEditingCancellation(res.cancellation);
       setModalOpen(true);
     } catch (err) {
-      alert('행사 정보를 불러오지 못했습니다.');
-      console.error(err);
+      const status = (err as { status?: number }).status;
+      console.error('[리뷰] 행사 데이터 fetch 실패', { id: e.id, status, err });
+      if (status === 404) {
+        alert(
+          `행사를 찾을 수 없습니다 (ID: ${e.id}).\n휴지통(/admin/trash)에 있거나 영구 삭제된 행사일 수 있습니다.`
+        );
+      } else if (status === 403) {
+        alert('이 행사를 볼 권한이 없습니다.');
+      } else {
+        alert(`행사 정보를 불러오지 못했습니다.\n오류: HTTP ${status || '알 수 없음'}`);
+      }
     }
   }
 
