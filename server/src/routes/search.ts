@@ -284,8 +284,56 @@ router.get('/', (req, res) => {
       emailLocal: parsed.emailLocal,
     }),
     'matches=W:' + out.wedding.length + ' M:' + out.mice.length + ' E:' + out.events.length,
+    'store=W:' + store.wedding_customers.length + ' M:' + store.mice_customers.length + ' E:' + store.events.length,
     'took=' + out.took_ms + 'ms'
   );
+
+  // 응답에 진단용 정보를 동봉 — 클라이언트는 무시. F12 Network Response 에서 확인 가능.
+  // ?debug=1 일 때 phoneNumeric 매칭 상세 (어느 고객이 어느 필드로 매칭됐는지 또는 매칭 실패한 이유).
+  if (req.query.debug === '1' && parsed.phoneNumeric) {
+    const phone = parsed.phoneNumeric;
+    const sampled: Array<{
+      id: string;
+      name: string;
+      groom_phone_raw: string;
+      groom_phone_digits: string;
+      bride_phone_raw: string;
+      bride_phone_digits: string;
+      all_digits_includes: boolean;
+      all_digits_sample: string;
+    }> = [];
+    for (const c of store.wedding_customers) {
+      if (c.deleted_at) continue;
+      const gd = normalizePhone(c.groom_phone);
+      const bd = normalizePhone(c.bride_phone);
+      const all = buildWeddingDigits(c);
+      const allMatch = all.includes(phone);
+      // 매칭 후보만 포함 (전체 출력은 응답 크기 폭발)
+      if (gd.includes(phone) || bd.includes(phone) || allMatch) {
+        sampled.push({
+          id: c.id,
+          name: c.wedding_event_name || `${c.groom_name} ${c.bride_name}`,
+          groom_phone_raw: c.groom_phone || '',
+          groom_phone_digits: gd,
+          bride_phone_raw: c.bride_phone || '',
+          bride_phone_digits: bd,
+          all_digits_includes: allMatch,
+          all_digits_sample: all.slice(0, 200),
+        });
+      }
+    }
+    (out as unknown as Record<string, unknown>)._debug = {
+      role,
+      parsed,
+      store_counts: {
+        wedding: store.wedding_customers.length,
+        mice: store.mice_customers.length,
+        events: store.events.length,
+      },
+      wedding_candidates: sampled,
+    };
+  }
+
   res.json(out);
 });
 
