@@ -137,8 +137,9 @@ router.get('/wedding/_similar-phone', (req, res) => {
   const matches: Match[] = [];
   for (const c of store.wedding_customers) {
     if (c.deleted_at) continue;
-    const g = (c.groom_phone || '').replace(/\D/g, '');
-    const b = (c.bride_phone || '').replace(/\D/g, '');
+    // String() 강제 변환 — 엑셀 임포트로 number 타입 phone 이 섞여 있어도 안전.
+    const g = String(c.groom_phone || '').replace(/\D/g, '');
+    const b = String(c.bride_phone || '').replace(/\D/g, '');
     if (g && g.includes(digits)) {
       matches.push({
         id: c.id,

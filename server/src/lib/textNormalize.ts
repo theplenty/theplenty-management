@@ -47,17 +47,18 @@ export function normalizeOrgName(input: string | null | undefined): string {
   return s;
 }
 
-/** 전화번호에서 숫자만 추출. "010-1234-5678" → "01012345678" */
-export function normalizePhone(s: string | null | undefined): string {
-  if (!s) return '';
-  return s.replace(/\D/g, '');
+/** 전화번호에서 숫자만 추출. 엑셀 임포트로 number 타입이 섞여 있어도 안전하게 처리. */
+export function normalizePhone(s: unknown): string {
+  if (s == null) return '';
+  return String(s).replace(/\D/g, '');
 }
 
 /** 이메일 로컬 파트 (@ 앞) 소문자. 검색 부분일치용. */
-export function normalizeEmail(s: string | null | undefined): string {
-  if (!s) return '';
-  const at = s.indexOf('@');
-  return (at === -1 ? s : s.slice(0, at)).toLowerCase();
+export function normalizeEmail(s: unknown): string {
+  if (s == null) return '';
+  const str = String(s);
+  const at = str.indexOf('@');
+  return (at === -1 ? str : str.slice(0, at)).toLowerCase();
 }
 
 /**
@@ -138,15 +139,18 @@ export function extractChoseong(s: string): string {
  * `query` 가 `target` 에 substring 으로 포함되는지 + 초성 일치도 검사.
  * - 일반 substring match (case-insensitive)
  * - 한글 초성 substring match
+ * target 이 number 등 비문자열이어도 안전 (String() 강제 변환).
  */
-export function softIncludes(target: string | null | undefined, queryText: string): boolean {
-  if (!target || !queryText) return false;
-  const t = target.toLowerCase();
+export function softIncludes(target: unknown, queryText: string): boolean {
+  if (target == null || !queryText) return false;
+  const targetStr = String(target);
+  if (!targetStr) return false;
+  const t = targetStr.toLowerCase();
   const q = queryText.toLowerCase();
   if (t.includes(q)) return true;
   // 초성 매칭 — 사용자가 'ㄱㅁ' 으로 '김미현' 검색하는 케이스
   if (/^[ㄱ-ㅎ]+$/.test(q)) {
-    return extractChoseong(target).includes(q);
+    return extractChoseong(targetStr).includes(q);
   }
   return false;
 }
