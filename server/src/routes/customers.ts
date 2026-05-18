@@ -33,6 +33,32 @@ function canAccessType(role: string, type: CustomerType): { read: boolean; write
 
 router.use(requireActiveRole);
 
+// ===== 고객별 행사 개최 횟수 =====
+// /admin/trash 의 휴지통 행사는 제외. 취소 계열(LOS / 상담취소 / 미팅취소)도 "개최 실적"에서 제외.
+// 응답: { counts: { [customer_id]: { total, held } } }
+//   - total: 휴지통 외 모든 연결 (취소 포함) — 연결 수 자체
+//   - held: 실제 개최된 행사 (DEF 또는 그 외 진행/완료 상태에서 취소 계열 제외)
+router.get('/_event-counts', (_req, res) => {
+  // 1) 휴지통·취소 계열 행사 id 제외 set
+  const cancelled = new Set(['LOS', '상담취소', '미팅취소']);
+  const activeEventIds = new Set<string>();
+  const heldEventIds = new Set<string>();
+  for (const e of store.events) {
+    if (e.deleted_at) continue;
+    activeEventIds.add(e.id);
+    if (!cancelled.has(e.status)) heldEventIds.add(e.id);
+  }
+  // 2) event_customers 링크를 돌면서 customer_id별 카운트 집계
+  const counts: Record<string, { total: number; held: number }> = {};
+  for (const link of store.event_customers) {
+    if (!activeEventIds.has(link.event_id)) continue;
+    const slot = (counts[link.customer_id] ||= { total: 0, held: 0 });
+    slot.total += 1;
+    if (heldEventIds.has(link.event_id)) slot.held += 1;
+  }
+  res.json({ counts });
+});
+
 // ===== MICE =====
 
 const MICE_FIELD_LABELS: Record<string, string> = {

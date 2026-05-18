@@ -205,6 +205,10 @@ export default function MiceCustomers() {
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, 200);
   const [showSuggest, setShowSuggest] = useState(false);
+  // 고객별 행사 개최 횟수
+  const [eventCounts, setEventCounts] = useState<
+    Record<string, { total: number; held: number }>
+  >({});
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -223,6 +227,15 @@ export default function MiceCustomers() {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+    // 행사 개최 횟수 — 별도 fetch.
+    try {
+      const cres = await api.get<{
+        counts: Record<string, { total: number; held: number }>;
+      }>('/api/customers/_event-counts');
+      setEventCounts(cres.counts || {});
+    } catch (e) {
+      console.error('event counts fetch 실패:', e);
     }
   }
   useEffect(() => {
@@ -398,16 +411,36 @@ export default function MiceCustomers() {
 
   // 컬럼 표시/숨김 + 정렬 — localStorage에 페이지별로 보존.
   const tc = useTableControls({ storageKey: 'mice_customers_table' });
+  // 'event_count' 컬럼은 eventCounts state에 의존하므로 런타임에 합성.
+  const allColumns = useMemo<MiceCol[]>(() => {
+    const eventCountCol: MiceCol = {
+      key: 'event_count',
+      label: '행사 개최',
+      render: (c) => {
+        const x = eventCounts[c.id];
+        if (!x) return <span className="text-gray-300">-</span>;
+        return (
+          <span className="text-xs">
+            <span className="font-semibold text-gray-900">{x.held}</span>
+            <span className="text-gray-400">/{x.total}</span>
+          </span>
+        );
+      },
+      sortValue: (c) => eventCounts[c.id]?.held ?? 0,
+    };
+    return [...MICE_COLUMNS, eventCountCol];
+  }, [eventCounts]);
+
   const visibleColumns = useMemo(
-    () => MICE_COLUMNS.filter((col) => !tc.isHidden(col.key)),
-    [tc]
+    () => allColumns.filter((col) => !tc.isHidden(col.key)),
+    [allColumns, tc]
   );
   const sortedFiltered = useMemo(() => {
     if (!tc.sort.key) return filtered;
-    const col = MICE_COLUMNS.find((c) => c.key === tc.sort.key);
+    const col = allColumns.find((c) => c.key === tc.sort.key);
     if (!col?.sortValue) return filtered;
     return [...filtered].sort((a, b) => compareSortValues(col.sortValue!(a), col.sortValue!(b), tc.sort.dir));
-  }, [filtered, tc.sort]);
+  }, [filtered, tc.sort, allColumns]);
 
   // 페이지네이션 — 20개씩
   const { page, setPage, pageItems } = usePaginated(sortedFiltered, [
@@ -430,7 +463,7 @@ export default function MiceCustomers() {
         </div>
         <div className="flex items-center gap-2">
           <TableColumnMenu
-            columns={MICE_COLUMNS}
+            columns={allColumns}
             hidden={tc.hidden}
             onToggle={tc.toggleHidden}
             onReset={() => tc.setHiddenAll([])}

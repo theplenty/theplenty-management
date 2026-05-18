@@ -234,6 +234,10 @@ export default function WeddingCustomers() {
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, 200);
   const [showSuggest, setShowSuggest] = useState(false);
+  // 고객별 행사 개최 횟수 — 검색에서 실적 확인용
+  const [eventCounts, setEventCounts] = useState<
+    Record<string, { total: number; held: number }>
+  >({});
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -252,6 +256,15 @@ export default function WeddingCustomers() {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+    // 행사 개최 횟수 — 별도 fetch (실패해도 카운트만 비어 보임).
+    try {
+      const cres = await api.get<{
+        counts: Record<string, { total: number; held: number }>;
+      }>('/api/customers/_event-counts');
+      setEventCounts(cres.counts || {});
+    } catch (e) {
+      console.error('event counts fetch 실패:', e);
     }
   }
   useEffect(() => {
@@ -421,16 +434,36 @@ export default function WeddingCustomers() {
   const flatRows = useMemo(() => buildWeddingFlatRows(items), [items]);
 
   const tc = useTableControls({ storageKey: 'wedding_customers_table' });
+  // 'event_count' 컬럼은 eventCounts state에 의존하므로 런타임에 합성.
+  const allColumns = useMemo<WedCol[]>(() => {
+    const eventCountCol: WedCol = {
+      key: 'event_count',
+      label: '행사 개최',
+      render: (c) => {
+        const x = eventCounts[c.id];
+        if (!x) return <span className="text-gray-300">-</span>;
+        return (
+          <span className="text-xs">
+            <span className="font-semibold text-gray-900">{x.held}</span>
+            <span className="text-gray-400">/{x.total}</span>
+          </span>
+        );
+      },
+      sortValue: (c) => eventCounts[c.id]?.held ?? 0,
+    };
+    return [...WEDDING_COLUMNS, eventCountCol];
+  }, [eventCounts]);
+
   const visibleColumns = useMemo(
-    () => WEDDING_COLUMNS.filter((col) => !tc.isHidden(col.key)),
-    [tc]
+    () => allColumns.filter((col) => !tc.isHidden(col.key)),
+    [allColumns, tc]
   );
   const sortedFiltered = useMemo(() => {
     if (!tc.sort.key) return filtered;
-    const col = WEDDING_COLUMNS.find((c) => c.key === tc.sort.key);
+    const col = allColumns.find((c) => c.key === tc.sort.key);
     if (!col?.sortValue) return filtered;
     return [...filtered].sort((a, b) => compareSortValues(col.sortValue!(a), col.sortValue!(b), tc.sort.dir));
-  }, [filtered, tc.sort]);
+  }, [filtered, tc.sort, allColumns]);
 
   // 페이지네이션 — 20개씩
   const { page, setPage, pageItems } = usePaginated(sortedFiltered, [
@@ -453,7 +486,7 @@ export default function WeddingCustomers() {
         </div>
         <div className="flex items-center gap-2">
           <TableColumnMenu
-            columns={WEDDING_COLUMNS}
+            columns={allColumns}
             hidden={tc.hidden}
             onToggle={tc.toggleHidden}
             onReset={() => tc.setHiddenAll([])}

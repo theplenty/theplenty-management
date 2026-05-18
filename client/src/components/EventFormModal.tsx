@@ -147,6 +147,8 @@ export default function EventFormModal({
   initialTab,
 }: Props) {
   const { user } = useAuth();
+  // 중복안내 클릭 시 충돌 행사 상세 목록을 모달로 노출
+  const [conflictDetailOpen, setConflictDetailOpen] = useState(false);
   const admin = isAdmin(user?.role);
   const activeUsers = useActiveUsers();
   // MICE 행사 담당자 드롭다운 — 기업세일즈 + 관리자만 노출
@@ -435,21 +437,25 @@ export default function EventFormModal({
         </>
       }
     >
-      {/* 충돌 경고 (모든 탭에서 보이도록 상단 고정) */}
+      {/* 충돌 경고 (모든 탭에서 보이도록 상단 고정) — 클릭하면 충돌 행사 상세 모달 */}
       {conflict.level !== 'none' && (
-        <div
+        <button
+          type="button"
+          onClick={() => setConflictDetailOpen(true)}
           className={
-            'mb-3 rounded-md p-2.5 text-xs border ' +
+            'w-full text-left mb-3 rounded-md p-2.5 text-xs border hover:brightness-95 cursor-pointer ' +
             (conflict.level === 'hard'
               ? 'bg-red-50 border-red-200 text-red-800'
               : 'bg-yellow-50 border-yellow-200 text-yellow-800')
           }
+          title="클릭하여 충돌 행사 상세 보기"
         >
           <strong>
-            {conflict.level === 'hard' ? '⚠️ 강한 충돌' : 'ℹ️ 중복 안내'} —{' '}
+            {conflict.level === 'hard' ? '⚠️ 강한 충돌' : 'ℹ️ 중복 안내'} ({conflict.with.length}건) —{' '}
           </strong>
           같은 홀·시간 행사: {conflict.with.map((c) => `[${c.status}] ${c.event_name}`).join(', ')}
-        </div>
+          <span className="ml-2 underline decoration-dotted">자세히 보기</span>
+        </button>
       )}
 
       {/* 탭 헤더 */}
@@ -515,6 +521,47 @@ export default function EventFormModal({
 
       {/* 수정 이력 — 모든 탭에서 모달 하단에 노출. 모달 닫고 다시 열 때 fresh fetch. */}
       <ChangeLogPanel entityType="event" entityId={initialEvent?.id || null} />
+
+      {/* 중복안내·강한충돌 클릭 시 노출되는 충돌 행사 상세 모달 */}
+      <Modal
+        open={conflictDetailOpen}
+        onClose={() => setConflictDetailOpen(false)}
+        title={
+          conflict.level === 'hard'
+            ? `⚠️ 강한 충돌 — ${conflict.with.length}건`
+            : `중복 안내 — ${conflict.with.length}건`
+        }
+        widthClass="max-w-3xl"
+        footer={
+          <button onClick={() => setConflictDetailOpen(false)} className="btn-primary">
+            닫기
+          </button>
+        }
+      >
+        {conflict.with.length === 0 ? (
+          <div className="text-sm text-gray-500">충돌 행사가 없습니다.</div>
+        ) : (
+          <ul className="divide-y">
+            {conflict.with.map((c) => (
+              <li key={c.id} className="py-2 text-sm">
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                  <span className="badge bg-gray-100 text-gray-700">{c.event_type}</span>
+                  <span className="badge bg-blue-100 text-blue-700">{c.status}</span>
+                  <span className="font-medium text-gray-900">
+                    {c.event_name || '(이름 없음)'}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-600">
+                  {c.halls.join(' / ') || '홀 미지정'} · {c.start_datetime} ~ {c.end_datetime}
+                </div>
+                {c.assigned_manager_name && (
+                  <div className="text-xs text-gray-500">담당: {c.assigned_manager_name}</div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
     </Modal>
   );
 }

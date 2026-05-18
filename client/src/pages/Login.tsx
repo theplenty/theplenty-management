@@ -1,6 +1,36 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+
+// 카카오톡/네이버/페북 등 in-app 브라우저는 sessionStorage가 격리되어 있어 Firebase signInWithPopup/Redirect
+// 가 "missing initial state" 오류를 발생시킴. 외부 브라우저로 열도록 유도해야 함.
+function detectInAppBrowser(): { name: string; isIOS: boolean } | null {
+  if (typeof navigator === 'undefined') return null;
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  if (/KAKAOTALK/i.test(ua)) return { name: '카카오톡', isIOS };
+  if (/NAVER\(inapp/i.test(ua) || /; NAVER /i.test(ua)) return { name: '네이버 앱', isIOS };
+  if (/FBAN|FBAV|FB_IAB/i.test(ua)) return { name: '페이스북 앱', isIOS };
+  if (/Instagram/i.test(ua)) return { name: '인스타그램', isIOS };
+  if (/Line\//i.test(ua)) return { name: '라인', isIOS };
+  if (/wv\)/i.test(ua) && /Android/i.test(ua)) return { name: 'Android 인앱', isIOS: false };
+  return null;
+}
+
+function openExternalBrowser(currentUrl: string, inApp: { name: string; isIOS: boolean }) {
+  // 카카오톡: kakaotalk://web/openExternal — Android에서 잘 동작. iOS는 동작 제한적이라 안내만.
+  if (inApp.name === '카카오톡' && !inApp.isIOS) {
+    window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(currentUrl)}`;
+    return true;
+  }
+  // 네이버 앱: naversearchapp://inappbrowser/close
+  if (inApp.name === '네이버 앱') {
+    window.location.href =
+      'naversearchapp://inappbrowser/close?target=' + encodeURIComponent(currentUrl);
+    return true;
+  }
+  return false;
+}
 
 // 모킹 로그인 화면.
 // 실 빌드에서는 Google 로그인 버튼만 노출하고,
@@ -25,6 +55,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const { loginMock, loginWithGoogle, firebaseConfigured } = useAuth();
   const navigate = useNavigate();
+  const inApp = useMemo(detectInAppBrowser, []);
 
   function postLoginNavigate(role: string) {
     if (role === 'pending' || role === 'disabled') navigate('/pending');
@@ -72,10 +103,39 @@ export default function Login() {
           <p className="text-sm text-gray-500 mt-1">운영 통합관리 시스템</p>
         </div>
 
-        {/* Google 로그인 — Firebase config 있을 때만 활성 */}
+        {/* 인앱 브라우저(카카오톡/네이버/페북 등) 감지 시 안내 — Google 로그인은 sessionStorage 격리로 실패함 */}
+        {inApp && (
+          <div className="mb-4 p-3 rounded-md border border-amber-300 bg-amber-50 text-xs text-amber-900">
+            <div className="font-semibold mb-1">
+              ⚠️ {inApp.name} 인앱 브라우저로 접속 중입니다.
+            </div>
+            <p className="leading-relaxed">
+              인앱 브라우저는 보안상 Google 로그인이 동작하지 않습니다.
+              아래 버튼으로 외부 브라우저(Safari/Chrome)에서 열어주세요.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                const url = window.location.href;
+                if (!openExternalBrowser(url, inApp)) {
+                  // 자동 외부 열기가 안 되는 경우 (iOS 등) — 안내 모달 대신 URL 복사 폴백
+                  navigator.clipboard?.writeText(url).catch(() => {});
+                  alert(
+                    'URL이 클립보드에 복사되었습니다.\nSafari 또는 Chrome 을 열어 주소창에 붙여넣고 접속해주세요.'
+                  );
+                }
+              }}
+              className="mt-2 w-full px-3 py-2 rounded bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700"
+            >
+              🌐 외부 브라우저에서 열기
+            </button>
+          </div>
+        )}
+
+        {/* Google 로그인 — Firebase config 있을 때만 활성. 인앱 브라우저면 비활성. */}
         <button
           onClick={doGoogleLogin}
-          disabled={busy || !firebaseConfigured}
+          disabled={busy || !firebaseConfigured || !!inApp}
           className={
             'w-full flex items-center justify-center gap-2 border rounded-md py-2.5 text-sm transition ' +
             (firebaseConfigured
@@ -83,9 +143,11 @@ export default function Login() {
               : 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed')
           }
           title={
-            firebaseConfigured
-              ? 'Google 계정으로 로그인'
-              : 'Firebase config 미설정 (.env의 VITE_FIREBASE_* 확인)'
+            inApp
+              ? `${inApp.name} 인앱 브라우저에서는 동작하지 않음 — 외부 브라우저로 열어주세요`
+              : firebaseConfigured
+                ? 'Google 계정으로 로그인'
+                : 'Firebase config 미설정 (.env의 VITE_FIREBASE_* 확인)'
           }
         >
           <svg width="18" height="18" viewBox="0 0 18 18">

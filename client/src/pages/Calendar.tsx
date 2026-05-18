@@ -387,6 +387,23 @@ export default function Calendar() {
 
       {/* 상태별 체크박스 + MICE/WEDDING 드롭다운 */}
       <div className="bg-white border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3 text-xs">
+        {/* ALL 토글 — 한 번 누르면 전체 체크/해제 (상담 포함). 현재 상태에 따라 동작 결정. */}
+        <button
+          type="button"
+          onClick={() => {
+            const allOn =
+              EVENT_STATUS_OPTIONS.every((s) => statusVisible[s]) && showConsultations;
+            const next = !allOn;
+            const map = {} as Record<EventStatus, boolean>;
+            for (const s of EVENT_STATUS_OPTIONS) map[s] = next;
+            setStatusVisible(map);
+            setShowConsultations(next);
+          }}
+          className="px-2 py-0.5 rounded border text-[11px] font-semibold border-gray-300 hover:bg-gray-50 active:bg-gray-100"
+          title="모든 상태 체크/해제"
+        >
+          ALL
+        </button>
         {EVENT_STATUS_OPTIONS.map((s) => (
           <label key={s} className="flex items-center gap-1.5 cursor-pointer select-none">
             <input
@@ -481,7 +498,9 @@ export default function Calendar() {
           selectable={canCreateEvent(user?.role)}
           selectMirror
           select={handleSelect}
-          dayMaxEvents
+          // dayMaxEvents=false — 한 날짜에 행사가 여러 건이어도 모두 표시 (중복·다중 행사 누락 방지).
+          // 셀이 길어지는 단점은 있지만 사용자가 모든 일정을 한눈에 볼 수 있게 우선.
+          dayMaxEvents={false}
           events={fcEvents}
           eventClick={handleEventClick}
           eventDidMount={(arg) => {

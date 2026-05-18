@@ -14,11 +14,20 @@ body {
 }
 
 /* FullCalendar 보강 */
+/* 취소 계열 — 줄긋기. dayGrid (.fc-event-title) 뿐 아니라 list 뷰(.fc-list-event-title) 와
+   list-item 표기 시에도 적용되도록 a 태그와 행 자체에도 보강. 모바일에서 list로 봐도 보임. */
 .fc-event-los .fc-event-title,
-.fc-event-cancelled .fc-event-title {
-  text-decoration: line-through;
+.fc-event-cancelled .fc-event-title,
+.fc-event-los .fc-list-event-title,
+.fc-event-cancelled .fc-list-event-title,
+.fc-event-los .fc-list-event-title a,
+.fc-event-cancelled .fc-list-event-title a,
+tr.fc-event-cancelled .fc-list-event-title,
+tr.fc-event-los .fc-list-event-title {
+  text-decoration: line-through !important;
 }
-.fc-event-cancelled {
+.fc-event-cancelled,
+tr.fc-event-cancelled {
   opacity: 0.5;
 }
 .fc-event-conflict {
