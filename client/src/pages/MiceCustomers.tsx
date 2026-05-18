@@ -16,6 +16,7 @@ import {
   type MiceInquiryStatus,
 } from '../types';
 import Modal from '../components/Modal';
+import SimilarOrgWarning from '../components/SimilarOrgWarning';
 import { Field, StatusBadge } from '../components/Field';
 import ExcelButtons from '../components/ExcelButtons';
 import ChangeLogPanel from '../components/ChangeLogPanel';
@@ -241,6 +242,19 @@ export default function MiceCustomers() {
   useEffect(() => {
     load();
   }, []);
+
+  // 전역 검색에서 ?focus=<id> 로 진입 시 해당 고객 모달 자동 오픈.
+  useEffect(() => {
+    if (!items.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const focusId = params.get('focus');
+    if (!focusId) return;
+    const target = items.find((c) => c.id === focusId);
+    if (target) {
+      openEdit(target);
+      history.replaceState(null, '', window.location.pathname);
+    }
+  }, [items]);
 
   // items 가 바뀔 때만 검색 인덱스를 재계산. 키 입력마다는 includes() 만 돌도록.
   const searchIndex = useMemo(() => {
@@ -717,40 +731,25 @@ export default function MiceCustomers() {
                 value={form.organization_name}
                 onChange={(e) => setForm({ ...form, organization_name: e.target.value })}
               />
-              {dupMatches.length > 0 && (
-                <div className="mt-1.5 p-2 bg-yellow-50 border border-yellow-300 rounded text-xs">
-                  <div className="font-medium text-yellow-900 mb-1">
-                    ⚠️ 비슷한 업체가 이미 등록되어 있습니다 (중복 등록 방지):
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {dupMatches.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          // 현재 편집 중이면 변경사항이 사라질 수 있어 확인
-                          if (editingId || form.organization_name) {
-                            if (
-                              !confirm(
-                                `[${c.organization_name}] 기존 고객으로 이동합니다.\n현재 입력한 내용은 사라집니다. 계속하시겠습니까?`
-                              )
-                            )
-                              return;
-                          }
-                          openEdit(c);
-                        }}
-                        className="px-2 py-0.5 rounded border border-yellow-400 bg-white text-yellow-900 hover:bg-yellow-100 transition"
-                      >
-                        {c.organization_name}{' '}
-                        <span className="text-yellow-700">({c.mice_category})</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="text-[11px] text-yellow-700 mt-1">
-                    같은 업체면 위에서 클릭해 기존 레코드에 문의를 추가하시고, 다른 업체라면 그대로 입력 진행하세요.
-                  </div>
-                </div>
-              )}
+              {/* 서버 사이드 정규화 + Levenshtein 기반 유사 업체 경고
+                  (이비인후과학회 vs 이빈후과학회 같은 오타·공백 변형도 잡음) */}
+              <SimilarOrgWarning
+                name={form.organization_name}
+                editingId={editingId}
+                onPickExisting={(id) => {
+                  const target = items.find((c) => c.id === id);
+                  if (!target) return;
+                  if (editingId || form.organization_name) {
+                    if (
+                      !confirm(
+                        `[${target.organization_name}] 기존 고객으로 이동합니다.\n현재 입력한 내용은 사라집니다. 계속하시겠습니까?`
+                      )
+                    )
+                      return;
+                  }
+                  openEdit(target);
+                }}
+              />
             </Field>
             <Field label="공식연락처">
               <input

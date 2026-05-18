@@ -255,17 +255,22 @@ export default function WeddingCustomers() {
     load();
   }, []);
 
-  // 캘린더에서 상담 클릭 시 #consult-<id> 해시로 진입 → 해당 고객 모달 자동 오픈
+  // 캘린더에서 상담 클릭 시 #consult-<id> 해시 + 전역 검색에서 ?focus=<id> 쿼리 둘 다 처리.
   useEffect(() => {
     if (!items.length) return;
     const hash = window.location.hash;
+    const params = new URLSearchParams(window.location.search);
+    const focusId = params.get('focus');
     const m = hash.match(/^#consult-(.+)$/);
-    if (!m) return;
-    const target = items.find((c) => c.id === m[1]);
+    let targetId: string | null = null;
+    if (focusId) targetId = focusId;
+    else if (m) targetId = m[1];
+    if (!targetId) return;
+    const target = items.find((c) => c.id === targetId);
     if (target) {
       openEdit(target);
-      // 같은 해시로 재진입해도 다시 열리도록 hash 정리
-      history.replaceState(null, '', window.location.pathname + window.location.search);
+      // 같은 진입으로 재진입해도 다시 열리도록 hash / query 정리
+      history.replaceState(null, '', window.location.pathname);
     }
   }, [items]);
 

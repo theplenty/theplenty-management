@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { store, persistDoc, softDelete, activeRows, isDeleted } from '../store/mockStore.js';
 import { requireActiveRole } from '../middleware/auth.js';
 import { logChange, computeDiff, getLogsForEntity } from '../store/changeLog.js';
+import { normalizeOrgName, levenshtein } from '../lib/textNormalize.js';
 import type {
   MiceContact,
   MiceCustomer,
@@ -32,6 +33,99 @@ function canAccessType(role: string, type: CustomerType): { read: boolean; write
 }
 
 router.use(requireActiveRole);
+
+// ===== MICE 업체명 중복 추정 (신규 등록 시 inline 경고용) =====
+// normalizeOrgName 으로 키 정규화한 뒤:
+//   1) 완전 일치 → exact_after_normalize, score 1.0
+//   2) 한쪽이 다른쪽의 substring → substring, score 0.9
+//   3) Levenshtein ≤ 2 → levenshtein, score = 1 - dist/max(len)
+// 점수 내림차순 top N.
+router.get('/mice/_similar-org', (req, res) => {
+  const raw = typeof req.query.name === 'string' ? req.query.name : '';
+  const limit = Math.min(
+    20,
+    Math.max(1, parseInt(String(req.query.limit || 5), 10) || 5)
+  );
+  const inputNorm = normalizeOrgName(raw);
+  if (!inputNorm || inputNorm.length < 2) {
+    return res.json({ input_normalized: inputNorm, similar: [] });
+  }
+
+  // 행사 카운트 인덱스
+  const activeEventIds = new Set<string>();
+  for (const ev of store.events) if (!ev.deleted_at) activeEventIds.add(ev.id);
+  const eventCountByCustomer = new Map<string, number>();
+  for (const link of store.event_customers) {
+    if (!activeEventIds.has(link.event_id)) continue;
+    eventCountByCustomer.set(
+      link.customer_id,
+      (eventCountByCustomer.get(link.customer_id) || 0) + 1
+    );
+  }
+
+  type MatchType = 'exact_after_normalize' | 'substring' | 'levenshtein';
+  interface Candidate {
+    id: string;
+    organization_name: string;
+    normalized: string;
+    score: number;
+    match_type: MatchType;
+    distance?: number;
+    event_count: number;
+  }
+  const candidates: Candidate[] = [];
+
+  for (const c of store.mice_customers) {
+    if (c.deleted_at) continue;
+    const norm = normalizeOrgName(c.organization_name);
+    if (!norm) continue;
+    let match: Candidate | null = null;
+    if (norm === inputNorm) {
+      match = {
+        id: c.id,
+        organization_name: c.organization_name,
+        normalized: norm,
+        score: 1.0,
+        match_type: 'exact_after_normalize',
+        event_count: eventCountByCustomer.get(c.id) || 0,
+      };
+    } else if (norm.includes(inputNorm) || inputNorm.includes(norm)) {
+      const shorter = Math.min(norm.length, inputNorm.length);
+      const longer = Math.max(norm.length, inputNorm.length);
+      // 길이 차이가 너무 크면 정확도 낮음 — 짧은쪽이 긴쪽의 절반 이상일 때만 유효
+      if (shorter * 2 >= longer) {
+        match = {
+          id: c.id,
+          organization_name: c.organization_name,
+          normalized: norm,
+          score: 0.9 * (shorter / longer),
+          match_type: 'substring',
+          event_count: eventCountByCustomer.get(c.id) || 0,
+        };
+      }
+    } else {
+      const dist = levenshtein(norm, inputNorm);
+      const maxLen = Math.max(norm.length, inputNorm.length);
+      // 거리 임계: 4자 이하면 1, 그 이상은 2 허용
+      const threshold = maxLen <= 4 ? 1 : 2;
+      if (dist <= threshold) {
+        match = {
+          id: c.id,
+          organization_name: c.organization_name,
+          normalized: norm,
+          score: 1 - dist / Math.max(maxLen, 1),
+          match_type: 'levenshtein',
+          distance: dist,
+          event_count: eventCountByCustomer.get(c.id) || 0,
+        };
+      }
+    }
+    if (match) candidates.push(match);
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  res.json({ input_normalized: inputNorm, similar: candidates.slice(0, limit) });
+});
 
 // ===== 고객별 행사 개최 횟수 =====
 // /admin/trash 의 휴지통 행사는 제외. 취소 계열(LOS / 상담취소 / 미팅취소)도 "개최 실적"에서 제외.

@@ -398,6 +398,31 @@ export default function Events() {
     load();
   }, []);
 
+  // 전역 검색에서 ?focus=<id> 로 진입 시 해당 행사 모달 자동 오픈.
+  useEffect(() => {
+    if (!events.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const focusId = params.get('focus');
+    if (!focusId) return;
+    const target = events.find((e) => e.id === focusId);
+    if (!target) return;
+    setEditing(target);
+    setModalOpen(true);
+    api
+      .get<{
+        customer_links: EventCustomerLink[];
+        invoice: Invoice | null;
+        cancellation: Cancellation | null;
+      }>(`/api/events/${target.id}`)
+      .then((r) => {
+        setEditingLinks(r.customer_links || []);
+        setEditingInvoice(r.invoice);
+        setEditingCancellation(r.cancellation);
+      })
+      .catch((e) => console.error('[Events focus] fetch detail 실패', e));
+    history.replaceState(null, '', window.location.pathname);
+  }, [events]);
+
   const admin = isAdmin(user?.role);
   // 삭제는 휴지통 안전망 덕에 모든 활성 사용자에게 허용. 전체비우기(clearAllEvents)는 admin 유지.
   const canDelete = !!user;

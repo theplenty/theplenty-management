@@ -10,6 +10,7 @@ import {
   canSeeDashboard,
 } from '../auth/permissions';
 import clsx from 'clsx';
+import GlobalSearch from './GlobalSearch';
 
 interface MenuLink {
   to: string;
@@ -168,7 +169,7 @@ export default function Layout() {
 
       {/* 메인 */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="h-14 px-4 md:px-6 flex items-center justify-between border-b bg-white">
+        <header className="h-14 px-3 md:px-6 flex items-center justify-between border-b bg-white gap-2 md:gap-4">
           <div className="flex items-center gap-2 min-w-0">
             {/* 모바일 햄버거 */}
             <button
@@ -187,14 +188,19 @@ export default function Layout() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <div className="text-sm text-gray-600 truncate">내부 운영 시스템</div>
+            <div className="hidden lg:block text-sm text-gray-600 truncate">내부 운영 시스템</div>
           </div>
+          {/* 전역 검색 — 헤더 가운데, 모바일에선 아이콘만 */}
+          {user && (
+            <div className="flex-1 max-w-md flex justify-center md:justify-start">
+              <GlobalSearch />
+            </div>
+          )}
           {user && (
             <div className="flex items-center gap-2 md:gap-3 text-sm min-w-0">
-              <div className="text-right min-w-0">
+              <div className="text-right min-w-0 hidden sm:block">
                 <div className="font-medium text-gray-900 truncate">{user.name}</div>
-                {/* 이메일·권한은 sm 이상에서만 */}
-                <div className="hidden sm:block text-xs text-gray-500 truncate">
+                <div className="text-xs text-gray-500 truncate">
                   {user.email} · {ROLE_LABEL[user.role]}
                 </div>
               </div>
