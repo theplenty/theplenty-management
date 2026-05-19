@@ -193,8 +193,10 @@ export interface WeddingMetrics {
   def: number;
   los: number;
   newOnly: number; // 신규문의 상태로 남아 있음 (방치)
+  advancedPastConsult: number; // 상담 이상 도달 (상담 + INQ + DEF + LOS) — DEF 전환율 분모
   consultConversionRate: number; // (상담 + 후속전환) / 인콜
-  defRate: number; // DEF / 인콜
+  defRate: number; // DEF / 인콜 (전체 깔때기 기준)
+  consultToDefRate: number; // DEF / 상담 이상 도달 (상담 단계 도달 후 확정 비율)
 }
 
 export function computeWeddingMetrics(
@@ -233,6 +235,8 @@ export function computeWeddingMetrics(
   const advancedPastConsult = consultBooked + inq + def + los;
   const consultConversionRate = totalInflow > 0 ? (advancedPastConsult / totalInflow) * 100 : 0;
   const defRate = totalInflow > 0 ? (def / totalInflow) * 100 : 0;
+  // 상담→DEF 전환율 = 상담 단계 이상 도달한 건 중 DEF로 확정된 비율
+  const consultToDefRate = advancedPastConsult > 0 ? (def / advancedPastConsult) * 100 : 0;
   return {
     totalInflow,
     consultBooked,
@@ -241,8 +245,10 @@ export function computeWeddingMetrics(
     def,
     los,
     newOnly,
+    advancedPastConsult,
     consultConversionRate,
     defRate,
+    consultToDefRate,
   };
 }
 

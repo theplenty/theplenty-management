@@ -349,6 +349,15 @@ export default function SalesDashboard({
             }
           />
           <KpiCard
+            label="상담→DEF 전환율"
+            value={`${wedFiltered.consultToDefRate.toFixed(1)}%`}
+            sub={`상담 ${wedFiltered.advancedPastConsult}건 중 ${wedFiltered.def}건 확정`}
+            accent="emerald"
+            onClick={() =>
+              openWeddingDrill('def', `${periodLabel} WEDDING DEF 확정 (${wedFiltered.def}건)`)
+            }
+          />
+          <KpiCard
             label="DEF"
             value={wedFiltered.def}
             accent="emerald"
