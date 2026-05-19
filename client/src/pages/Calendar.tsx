@@ -39,7 +39,7 @@ interface FetchResp {
 }
 
 const CONSULT_HEX = '#a855f7'; // 상담 — 보라
-const CONSULT_CANCELLED_HEX = '#ef4444'; // 상담취소·LOS — 빨강 (이벤트 취소 색과 동일)
+const CONSULT_CANCELLED_HEX = '#000000'; // 상담취소 — 블랙 (취소 계열 통일, strikethrough 로 구분)
 
 function toFcConsultation(c: WeddingCustomer): EventInput {
   const dt = c.desired_consultation_date!;
@@ -78,7 +78,7 @@ function toFcConsultation(c: WeddingCustomer): EventInput {
 function toFcEvent(ev: EventWithFood, faded: boolean, hardConflict: boolean): EventInput {
   // 알 수 없는 상태값(레거시 TEN 등)에 대비해 회색 fallback
   const baseColor = STATUS_HEX[ev.status] || '#6b7280';
-  const textColor = ev.status === 'LOS' ? '#7f1d1d' : '#ffffff';
+  const textColor = '#ffffff';
   const cancelled = isCancelledStatus(ev.status);
   return {
     id: ev.id,

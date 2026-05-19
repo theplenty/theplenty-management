@@ -519,10 +519,10 @@ export interface Cancellation {
 export const STATUS_HEX: Record<EventStatus, string> = {
   INQ: '#9ca3af', // gray
   DEF: '#22c55e', // green
-  LOS: '#ef4444', // red
-  상담취소: '#ef4444', // LOS 동일 (취소표시는 클래스로 strikethrough)
+  LOS: '#000000', // black — 취소 계열은 모두 블랙 (strikethrough 로 구분)
+  상담취소: '#000000', // black
   미팅: '#3b82f6', // blue
-  미팅취소: '#ef4444', // LOS 동일
+  미팅취소: '#000000', // black
   시식: '#f97316', // orange
 };
 

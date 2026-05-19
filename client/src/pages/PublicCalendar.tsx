@@ -64,7 +64,7 @@ export default function PublicCalendar() {
       end: ev.end_datetime,
       backgroundColor: STATUS_HEX[ev.status],
       borderColor: STATUS_HEX[ev.status],
-      textColor: ev.status === 'LOS' ? '#7f1d1d' : '#ffffff',
+      textColor: '#ffffff',
     }));
   }, [events]);
 

@@ -14,16 +14,31 @@ body {
 }
 
 /* FullCalendar 보강 */
-/* 취소 계열 — 줄긋기. dayGrid (.fc-event-title) 뿐 아니라 list 뷰(.fc-list-event-title) 와
-   list-item 표기 시에도 적용되도록 a 태그와 행 자체에도 보강. 모바일에서 list로 봐도 보임. */
+/* 취소 계열 — 줄긋기. 모바일 dayGrid 에서 행사명이 잘려도 시간부터 줄이 그어져 보이도록
+   .fc-event-time 까지 포함. dayGrid (.fc-event-title) 뿐 아니라 list 뷰(.fc-list-event-title)
+   와 list-item 표기 시에도 적용되도록 a 태그와 행 자체에도 보강. */
+.fc-event-los .fc-event-time,
+.fc-event-cancelled .fc-event-time,
 .fc-event-los .fc-event-title,
 .fc-event-cancelled .fc-event-title,
+.fc-event-los .fc-list-event-time,
+.fc-event-cancelled .fc-list-event-time,
 .fc-event-los .fc-list-event-title,
 .fc-event-cancelled .fc-list-event-title,
 .fc-event-los .fc-list-event-title a,
 .fc-event-cancelled .fc-list-event-title a,
+tr.fc-event-cancelled .fc-list-event-time,
+tr.fc-event-los .fc-list-event-time,
 tr.fc-event-cancelled .fc-list-event-title,
 tr.fc-event-los .fc-list-event-title {
+  text-decoration: line-through !important;
+}
+/* dayGrid 의 dot 스타일 이벤트는 한 줄 전체에 줄긋기 (시간 + 제목 동시에).
+   text-decoration 을 부모에 걸어 시간/제목이 잘려도 가시화. */
+.fc-daygrid-dot-event.fc-event-cancelled,
+.fc-daygrid-dot-event.fc-event-los,
+a.fc-daygrid-event.fc-event-cancelled,
+a.fc-daygrid-event.fc-event-los {
   text-decoration: line-through !important;
 }
 .fc-event-cancelled,
