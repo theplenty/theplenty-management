@@ -168,7 +168,7 @@ export default function Layout() {
             })}
         </nav>
         <div className="p-4 border-t border-gray-800 text-xs text-gray-400">
-          v0.2
+          v0.3
         </div>
       </aside>
 
