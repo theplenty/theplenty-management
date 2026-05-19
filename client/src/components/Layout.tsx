@@ -13,6 +13,7 @@ import {
 } from '../auth/permissions';
 import clsx from 'clsx';
 import GlobalSearch from './GlobalSearch';
+import HelpPopover from './HelpPopover';
 
 interface MenuLink {
   to: string;
@@ -202,6 +203,7 @@ export default function Layout() {
           )}
           {user && (
             <div className="flex items-center gap-2 md:gap-3 text-sm min-w-0">
+              <HelpPopover />
               <div className="text-right min-w-0 hidden sm:block">
                 <div className="font-medium text-gray-900 truncate">{user.name}</div>
                 <div className="text-xs text-gray-500 truncate">
