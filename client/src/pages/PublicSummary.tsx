@@ -36,6 +36,15 @@ export default function PublicSummary() {
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-2">
           <span className="text-lg font-bold text-gray-900">📊 캘린더 요약</span>
           <span className="text-xs text-gray-400">플렌티컨벤션</span>
+          {!loading && !error && (
+            <button
+              onClick={() => window.print()}
+              className="ml-auto btn-secondary !py-1.5"
+              title="보이는 화면 그대로 인쇄"
+            >
+              🖨️ 출력
+            </button>
+          )}
         </div>
       </header>
       <div className="max-w-5xl mx-auto p-3 md:p-6">

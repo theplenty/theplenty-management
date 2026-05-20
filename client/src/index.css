@@ -167,17 +167,33 @@ tr.fc-event-cancelled {
   .page-break-after {
     page-break-after: always;
   }
-  /* 캘린더 요약(그리드)을 보이는 그대로 출력 — 셀 높이 자동, 한 날짜 칸이 페이지 중간에
-     잘리지 않도록. 헤더 툴바 버튼은 위의 button 규칙으로 이미 숨김(가운데 월 제목은 유지). */
+  /* 캘린더 요약(그리드)을 보이는 그대로 출력 — 셀 높이 자동, 한 날짜 칸/한 주 행이
+     페이지 중간에 잘리지 않도록. 헤더 툴바 버튼은 위의 button 규칙으로 이미 숨김(월 제목 유지). */
   .fc-summary .fc-daygrid-day-frame {
     min-height: 0 !important;
   }
-  .fc-summary .fc-daygrid-day {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-  .fc-summary .fc-scroller {
+  /* 스크롤 제거 — 전체 그리드가 인쇄에 펼쳐지도록 */
+  .fc-summary .fc-scroller,
+  .fc-summary .fc-scroller-liquid-absolute,
+  .fc-summary .fc-daygrid-body,
+  .fc-summary .fc-scrollgrid-sync-inner {
     overflow: visible !important;
+    height: auto !important;
+    position: static !important;
+  }
+  /* 전체 표는 페이지에 걸쳐 나뉠 수 있게(auto) 하되... */
+  .fc-summary table,
+  .fc-summary .fc-scrollgrid,
+  .fc-summary .fc-scrollgrid-section {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+  /* ...한 주(행)와 개별 날짜 칸은 통째로 유지 → 날짜가 중간에서 잘리지 않음 */
+  .fc-summary .fc-daygrid-body tr,
+  .fc-summary .fc-daygrid-row,
+  .fc-summary .fc-daygrid-day {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
   /* 인쇄 시 텍스트 색·border 강제 (Chrome 인쇄 색 보존) */
   * {
