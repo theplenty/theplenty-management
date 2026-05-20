@@ -120,8 +120,10 @@ export default function Calendar() {
     return init;
   });
   const [showConsultations, setShowConsultations] = useState(true);
-  const [showHolidays, setShowHolidays] = useState(true);
   const [filterType, setFilterType] = useState<'ALL' | 'MICE' | 'WEDDING'>('ALL');
+  // 한국 공휴일 — 항상 표시. 보이는 범위(datesSet)에 맞춰 비동기 로드.
+  const [visibleRange, setVisibleRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [holidays, setHolidays] = useState<EventInput[]>([]);
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, 200);
 
@@ -301,6 +303,8 @@ export default function Calendar() {
         out.push(toFcConsultation(c));
       }
     }
+    // 공휴일은 필터·검색과 무관하게 항상 표시
+    out.push(...holidays);
     return out;
   }, [
     events,
@@ -312,17 +316,20 @@ export default function Calendar() {
     eventSearchIndex,
     consultSearchIndex,
     dupAnalysis,
+    holidays,
   ]);
 
-  // 한국 공휴일·명절 — 보이는 범위만큼 동적 생성 (별도 eventSource)
-  const holidaySource = useMemo(
-    () => ({
-      id: 'kr-holidays',
-      events: (info: { start: Date; end: Date }) =>
-        buildKoreanHolidays(info.start, info.end),
-    }),
-    []
-  );
+  // 보이는 범위가 바뀌면 그 범위의 한국 공휴일을 비동기 로드
+  useEffect(() => {
+    if (!visibleRange) return;
+    let cancelled = false;
+    buildKoreanHolidays(visibleRange.start, visibleRange.end).then((hs) => {
+      if (!cancelled) setHolidays(hs);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleRange]);
 
   function handleSelect(info: DateSelectArg) {
     if (!canCreateEvent(user?.role)) {
@@ -481,15 +488,12 @@ export default function Calendar() {
           type="button"
           onClick={() => {
             const allOn =
-              EVENT_STATUS_OPTIONS.every((s) => statusVisible[s]) &&
-              showConsultations &&
-              showHolidays;
+              EVENT_STATUS_OPTIONS.every((s) => statusVisible[s]) && showConsultations;
             const next = !allOn;
             const map = {} as Record<EventStatus, boolean>;
             for (const s of EVENT_STATUS_OPTIONS) map[s] = next;
             setStatusVisible(map);
             setShowConsultations(next);
-            setShowHolidays(next);
           }}
           className="px-2 py-0.5 rounded border text-[11px] font-semibold border-gray-300 hover:bg-gray-50 active:bg-gray-100"
           title="모든 상태 체크/해제"
@@ -524,18 +528,10 @@ export default function Calendar() {
           />
           <span>상담</span>
         </label>
-        <label className="flex items-center gap-1.5 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={showHolidays}
-            onChange={(e) => setShowHolidays(e.target.checked)}
-          />
-          <span
-            className="inline-block w-3 h-3 rounded-sm"
-            style={{ background: '#fecaca' }}
-          />
+        <span className="flex items-center gap-1.5 text-gray-400 select-none" title="공휴일은 항상 표시됩니다">
+          <span className="inline-block w-3 h-3 rounded-sm" style={{ background: '#fecaca' }} />
           <span>공휴일</span>
-        </label>
+        </span>
 
         <div className="h-5 w-px bg-gray-200 mx-1" />
 
@@ -623,7 +619,7 @@ export default function Calendar() {
             if (isMobile) setSelectedDate(info.dateStr);
           }}
           events={fcEvents}
-          eventSources={showHolidays ? [holidaySource] : []}
+          datesSet={(arg) => setVisibleRange({ start: arg.start, end: arg.end })}
           eventClick={handleEventClick}
           eventDidMount={(arg) => {
             if (arg.event.extendedProps.holiday) {
