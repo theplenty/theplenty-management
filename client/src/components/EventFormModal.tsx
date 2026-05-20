@@ -656,13 +656,33 @@ function BasicInfoTab({
               onChange={(e) => setForm({ ...form, event_name: e.target.value })}
             />
           </Field>
-          {/* 2) 행사 시작일시 — 우선 입력 항목이라 col-span-2 로 단독 행 차지 */}
-          <Field label="행사 시작일시" required className="md:col-span-2">
+          {/* 2) 행사 시작일시 / 종료일시 — 한 줄에 나란히.
+              시작일시의 '일자'가 바뀌면 종료 일자를 같은 날로 자동 동기화(당일행사 기본, 시간은 유지). */}
+          <Field label="행사 시작일시" required>
             <input
               type="datetime-local"
               className="input"
               value={form.start_datetime}
-              onChange={(e) => setForm({ ...form, start_datetime: e.target.value })}
+              onChange={(e) => {
+                const value = e.target.value;
+                const oldDate = form.start_datetime.slice(0, 10);
+                const newDate = value.slice(0, 10);
+                let end = form.end_datetime;
+                if (newDate && (newDate !== oldDate || !end)) {
+                  const endTime =
+                    (end && end.length >= 16 ? end.slice(11) : '') || value.slice(11) || '15:00';
+                  end = `${newDate}T${endTime}`;
+                }
+                setForm({ ...form, start_datetime: value, end_datetime: end });
+              }}
+            />
+          </Field>
+          <Field label="행사 종료일시" required>
+            <input
+              type="datetime-local"
+              className="input"
+              value={form.end_datetime}
+              onChange={(e) => setForm({ ...form, end_datetime: e.target.value })}
             />
           </Field>
           {/* 3) 사용홀 */}
@@ -697,7 +717,7 @@ function BasicInfoTab({
               placeholder="여러 줄 입력 가능 — 내부 참고용 메모"
             />
           </Field>
-          {/* 5) 이하는 기존 순서 유지 — 구분 / 상태 / 이용시간 / 좌석수 / 행사 종료일시 / 작성일자 / 작성자 / 담당자 */}
+          {/* 5) 이하는 기존 순서 유지 — 구분 / 상태 / 이용시간 / 좌석수 / 작성일자 / 작성자 / 담당자 */}
           <Field label="구분" required>
             <select
               className="input"
@@ -747,14 +767,6 @@ function BasicInfoTab({
               onChange={(e) =>
                 setForm({ ...form, seats: e.target.value === '' ? null : Number(e.target.value) })
               }
-            />
-          </Field>
-          <Field label="행사 종료일시" required className="md:col-span-2">
-            <input
-              type="datetime-local"
-              className="input"
-              value={form.end_datetime}
-              onChange={(e) => setForm({ ...form, end_datetime: e.target.value })}
             />
           </Field>
           <Field label="작성일자">
