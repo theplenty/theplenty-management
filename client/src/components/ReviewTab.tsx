@@ -26,7 +26,7 @@ interface Review {
 interface Props {
   eventId: string | null;
   canWrite: boolean;
-  eventEndDatetime?: string;
+  eventStartDatetime?: string;
   eventStatus: string;
 }
 
@@ -54,7 +54,7 @@ function fmt(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function ReviewTab({ eventId, canWrite, eventEndDatetime, eventStatus }: Props) {
+export default function ReviewTab({ eventId, canWrite, eventStartDatetime, eventStatus }: Props) {
   const [review, setReview] = useState<Review | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [loading, setLoading] = useState(false);
@@ -126,8 +126,10 @@ export default function ReviewTab({ eventId, canWrite, eventEndDatetime, eventSt
     );
   }
 
-  const ended = eventEndDatetime ? new Date(eventEndDatetime).getTime() < Date.now() : false;
-  const eligibleToWrite = canWrite && eventStatus === 'DEF' && ended;
+  const started = eventStartDatetime
+    ? new Date(eventStartDatetime).getTime() < Date.now()
+    : false;
+  const eligibleToWrite = canWrite && eventStatus === 'DEF' && started;
 
   async function save() {
     if (!eventId) return;
@@ -246,11 +248,11 @@ export default function ReviewTab({ eventId, canWrite, eventEndDatetime, eventSt
     return (
       <div className="border rounded-md p-6 text-center bg-yellow-50 border-yellow-200">
         <div className="text-sm text-yellow-800">
-          행사리뷰는 <strong>DEF 상태 + 행사 종료 후</strong>에만 작성할 수 있습니다.
+          행사리뷰는 <strong>DEF 상태 + 행사 시작 후</strong>에 작성할 수 있습니다.
         </div>
         <div className="text-xs text-yellow-700 mt-2">
           현재 상태: {eventStatus}
-          {eventEndDatetime && ` · 종료 ${ended ? '완료' : '예정'}: ${fmt(eventEndDatetime)}`}
+          {eventStartDatetime && ` · 시작 ${started ? '완료' : '예정'}: ${fmt(eventStartDatetime)}`}
         </div>
       </div>
     );

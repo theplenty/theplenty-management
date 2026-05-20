@@ -445,6 +445,23 @@ export default function Calendar() {
     setModalOpen(true);
   }
 
+  // 캘린더 요약 — 공개 링크를 새 창으로 연다. 그 창의 주소를 복사해 공유하면
+  // 링크만으로 로그인 없이 열람 가능. (팝업 차단 회피: 창을 먼저 열고 주소를 채움)
+  async function openSummaryWindow() {
+    const w = window.open('', '_blank');
+    try {
+      const { token } = await api.get<{ token: string }>('/api/calendar-summary/share');
+      const url = `${window.location.origin}/public/summary/${token}`;
+      if (w) w.location.href = url;
+      else window.open(url, '_blank');
+    } catch (e) {
+      console.error(e);
+      if (w) w.close();
+      // 폴백 — 사내 인증 페이지로 이동
+      navigate('/calendar/summary');
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -456,9 +473,9 @@ export default function Calendar() {
             </button>
           )}
           <button
-            onClick={() => navigate('/calendar/summary')}
+            onClick={openSummaryWindow}
             className="btn-secondary"
-            title="월별 행사 요약 보기"
+            title="새 창으로 열기 — 주소를 복사해 공유하면 링크만으로 열람 가능"
           >
             📊 캘린더 요약
           </button>

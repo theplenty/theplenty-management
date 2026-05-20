@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { type EventWithFood, type EventStatus, STATUS_HEX } from '../types';
+import CalendarSummaryView from '../components/CalendarSummaryView';
 
 // 캘린더 요약 — 월별로 행사를 요약하여 표시하고 인쇄 가능.
 // 요약 화면 제외 조건:
@@ -117,7 +118,7 @@ export default function CalendarSummary() {
   const [events, setEvents] = useState<EventWithFood[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [current, setCurrent] = useState<MonthKey>(currentMonth());
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
   const [printPickerOpen, setPrintPickerOpen] = useState(false);
   const [selectedPrintMonths, setSelectedPrintMonths] = useState<Set<string>>(
     new Set([fmtMonthSlug(currentMonth())])
@@ -191,6 +192,25 @@ export default function CalendarSummary() {
     return () => window.removeEventListener('afterprint', handler);
   }, []);
 
+  // 공개 공유 링크 — 토큰을 발급/조회한 뒤 클립보드에 복사. 링크만 있으면 로그인 없이 열람.
+  async function copyShareLink() {
+    try {
+      const { token } = await api.get<{ token: string }>('/api/calendar-summary/share');
+      const url = `${window.location.origin}/public/summary/${token}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareMsg('공유 링크가 복사되었습니다. 링크만 있으면 로그인 없이 열람할 수 있습니다.');
+      } catch {
+        // 클립보드 차단 환경 — 링크를 직접 노출
+        setShareMsg(url);
+      }
+      setTimeout(() => setShareMsg(null), 6000);
+    } catch {
+      setShareMsg('공유 링크 생성에 실패했습니다.');
+      setTimeout(() => setShareMsg(null), 4000);
+    }
+  }
+
   if (loading) return <div className="p-6 text-sm text-gray-400">불러오는 중...</div>;
   if (error)
     return <div className="p-6 text-sm text-red-600">{error}</div>;
@@ -223,51 +243,39 @@ export default function CalendarSummary() {
             </div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">📊 캘린더 요약</h1>
             <p className="text-xs text-gray-500 mt-1">
-              상담·미팅·LOS·취소 행사는 자동 제외 · 사용홀·메뉴·GTD/EXP·메뉴 비고를 요약 표시
+              상담·미팅·LOS·취소 행사는 자동 제외 · 행사를 클릭하면 사용홀·메뉴·GTD/EXP·비고 표시
             </p>
           </div>
-          <button
-            onClick={() => setPrintPickerOpen(true)}
-            className="btn-secondary"
-            title="원하는 월을 선택하여 인쇄"
-          >
-            🖨️ 출력
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={copyShareLink}
+              className="btn-secondary"
+              title="링크만으로 열람 가능한 공유 주소 복사"
+            >
+              🔗 공유 링크 복사
+            </button>
+            <button
+              onClick={() => setPrintPickerOpen(true)}
+              className="btn-secondary"
+              title="원하는 월을 선택하여 인쇄"
+            >
+              🖨️ 출력
+            </button>
+          </div>
         </div>
 
-        {/* 월 네비 */}
-        <div className="flex items-center justify-center gap-3 mb-4 bg-white border rounded-lg p-2">
-          <button
-            onClick={() => setCurrent(addMonths(current, -1))}
-            className="px-3 py-1 rounded hover:bg-gray-100 text-sm"
-          >
-            ← 이전 달
-          </button>
-          <div className="text-base md:text-lg font-bold text-gray-900 min-w-[140px] text-center">
-            {fmtMonth(current)}
+        {shareMsg && (
+          <div className="mb-4 text-xs bg-blue-50 border border-blue-200 text-blue-800 rounded p-2 break-all">
+            {shareMsg}
           </div>
-          <button
-            onClick={() => setCurrent(addMonths(current, 1))}
-            className="px-3 py-1 rounded hover:bg-gray-100 text-sm"
-          >
-            다음 달 →
-          </button>
-          <button
-            onClick={() => setCurrent(currentMonth())}
-            className="ml-2 px-3 py-1 rounded hover:bg-gray-100 text-xs text-gray-500"
-            title="이번 달로 이동"
-          >
-            오늘
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* 본문 — 인쇄 모드 OFF: 현재 월만, 인쇄 모드 ON: 선택된 월들 모두 */}
+      {/* 본문 — 인쇄 모드 OFF: 캘린더 그리드, 인쇄 모드 ON: 선택된 월 리스트 */}
       {!printMode ? (
-        <MonthSection
-          month={current}
-          events={byMonth.get(fmtMonthSlug(current)) || []}
-        />
+        <div className="no-print">
+          <CalendarSummaryView events={filtered} />
+        </div>
       ) : (
         printMonthsList.map((m) => (
           <MonthSection

@@ -21,6 +21,7 @@ import ActivityLog from './pages/ActivityLog';
 import ErrorBoundary from './components/ErrorBoundary';
 import Dashboard from './pages/Dashboard';
 import PublicCalendar from './pages/PublicCalendar';
+import PublicSummary from './pages/PublicSummary';
 import ApiDocs from './pages/ApiDocs';
 
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
       <Routes>
         {/* 공개 — 인증 없이 접근, 토큰 기반 외부 공유 */}
         <Route path="/public/calendar/:token" element={<PublicCalendar />} />
+        <Route path="/public/summary/:token" element={<PublicSummary />} />
         {/* 공개 — API 문서 (외부 개발자용) */}
         <Route path="/api-docs" element={<ApiDocs />} />
 

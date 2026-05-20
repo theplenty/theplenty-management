@@ -12,11 +12,11 @@ function canWriteReview(role: string): boolean {
   return role === 'admin' || role === 'banquet';
 }
 
-// 리뷰 작성 대상 행사 — DEF + 종료된 행사
+// 리뷰 작성 대상 행사 — DEF + 시작 시간이 지난 행사 (종료 전에도 작성 가능)
 router.get('/eligible', (_req, res) => {
   const now = Date.now();
   const events = store.events.filter(
-    (e) => e.status === 'DEF' && new Date(e.end_datetime).getTime() < now
+    (e) => e.status === 'DEF' && new Date(e.start_datetime).getTime() < now
   );
   const enriched = events.map((e) => ({
     ...e,

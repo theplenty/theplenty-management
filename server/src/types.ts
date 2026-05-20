@@ -362,6 +362,14 @@ export interface CalendarShare {
   event_type_filter: 'ALL' | 'MICE' | 'WEDDING';
 }
 
+// 캘린더 요약 공개 공유 — 단일 토큰. 토큰 보유자는 로그인 없이 요약을 열람.
+export interface SummaryShare {
+  id: string;
+  token: string;
+  created_at: string;
+  created_by: string;
+}
+
 export interface Cancellation {
   id: string;
   event_id: string;

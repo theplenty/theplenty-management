@@ -278,8 +278,8 @@ export default function Reviews() {
       </div>
 
       <p className="text-sm text-gray-500 mb-4">
-        DEF 상태 + 종료된 행사가 표시됩니다. 행사를 클릭하면 행사리뷰 탭에서 작성·확인할 수
-        있습니다.
+        DEF 상태 + 시작된 행사가 표시됩니다 (종료 전에도 작성 가능). 행사를 클릭하면 행사리뷰
+        탭에서 작성·확인할 수 있습니다.
         {!writable && (
           <span className="block mt-1 text-xs">
             작성·수정은 관리자 / 연회팀만 가능하며, 그 외 권한은 조회만 가능합니다.
@@ -341,7 +341,7 @@ export default function Reviews() {
             ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={7} className="text-center text-gray-400 py-8">
-                  대상 행사가 없습니다. (DEF 상태 + 종료된 행사만 표시)
+                  대상 행사가 없습니다. (DEF 상태 + 시작된 행사만 표시)
                 </td>
               </tr>
             ) : (

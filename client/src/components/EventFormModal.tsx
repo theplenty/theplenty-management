@@ -536,7 +536,7 @@ export default function EventFormModal({
           <ReviewTab
             eventId={initialEvent?.id || null}
             canWrite={canWriteReview(user?.role)}
-            eventEndDatetime={initialEvent?.end_datetime || form.end_datetime}
+            eventStartDatetime={initialEvent?.start_datetime || form.start_datetime}
             eventStatus={form.status}
           />
         </ErrorBoundary>
