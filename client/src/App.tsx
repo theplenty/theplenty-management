@@ -10,6 +10,7 @@ import Calendar from './pages/Calendar';
 import Events from './pages/Events';
 import Reviews from './pages/Reviews';
 import Files from './pages/Files';
+import Collaborations from './pages/Collaborations';
 import AdminUsers from './pages/AdminUsers';
 import AdminApiKeys from './pages/AdminApiKeys';
 import Trash from './pages/Trash';
@@ -135,6 +136,14 @@ function ProtectedRoutes() {
         />
 
         <Route path="/files" element={<Files />} />
+        <Route
+          path="/collaborations"
+          element={
+            <ProtectedRoute allow={['admin', 'sales_mice', 'sales_wedding', 'kitchen', 'banquet']}>
+              <Collaborations />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/admin/users"
           element={

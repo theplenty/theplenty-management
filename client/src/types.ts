@@ -160,7 +160,11 @@ export interface WeddingCustomer {
 }
 
 // ===== 변경 이력 =====
-export type ChangeLogEntityType = 'mice_customer' | 'wedding_customer' | 'event';
+export type ChangeLogEntityType =
+  | 'mice_customer'
+  | 'wedding_customer'
+  | 'event'
+  | 'collaboration_request';
 export type ChangeLogAction = 'create' | 'update' | 'delete';
 
 // ===== 외부 클라이언트용 API 키 =====
@@ -564,6 +568,75 @@ export interface EventReview {
   final_revenue: number | null;
   created_by: string;
   created_at: string;
+  updated_at: string;
+}
+
+// ===== 협업요청서 (Collaboration Request) =====
+export type CollabTeam = 'kitchen' | 'banquet';
+
+export type CollabDeviation =
+  | '메뉴/식자재'
+  | '음주류'
+  | '인력/외주'
+  | '운영 시간'
+  | '공간 세팅'
+  | '기타';
+
+export const COLLAB_DEVIATIONS: CollabDeviation[] = [
+  '메뉴/식자재',
+  '음주류',
+  '인력/외주',
+  '운영 시간',
+  '공간 세팅',
+  '기타',
+];
+
+export type CollabReplyResult = '가능' | '조건부 가능' | '불가';
+export type CollabDecision = '진행' | '조건부진행' | '진행안함';
+export type CollabStatus = '회신대기' | '회신완료' | CollabDecision;
+
+export const COLLAB_TEAM_LABEL: Record<CollabTeam, string> = {
+  kitchen: '주방',
+  banquet: '연회',
+};
+
+export interface CollaborationReply {
+  team: CollabTeam;
+  result: CollabReplyResult | null;
+  added_cost: number | null;
+  added_cost_memo: string;
+  condition_or_reject_reason: string;
+  alternative: string;
+  replied_by_id: string;
+  replied_by_name: string;
+  replied_at: string | null;
+}
+
+export interface CollaborationRequest {
+  id: string;
+  event_id: string;
+  created_by_id: string;
+  created_by_name: string;
+  created_by_role: Role;
+  created_at: string;
+  customer_event_name: string;
+  event_date: string | null;
+  customer_request: string;
+  deviations: CollabDeviation[];
+  deviation_other: string;
+  expected_revenue: number | null;
+  expected_revenue_memo: string;
+  target_teams: CollabTeam[];
+  sales_comment: string;
+  replies: CollaborationReply[];
+  decision: CollabDecision | null;
+  decided_margin: number | null;
+  decision_comment: string;
+  decided_by_id: string | null;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  status: CollabStatus;
+  reply_due_at: string;
   updated_at: string;
 }
 

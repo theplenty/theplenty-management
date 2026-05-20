@@ -30,6 +30,7 @@ import CancellationTab, {
 } from './CancellationTab';
 import FilesTab from './FilesTab';
 import ReviewTab from './ReviewTab';
+import CollaborationTab from './CollaborationTab';
 import ChangeLogPanel from './ChangeLogPanel';
 import AutoExpandTextarea from './AutoExpandTextarea';
 import { useAuth } from '../auth/AuthContext';
@@ -55,7 +56,7 @@ interface Props {
   // 관리자 삭제 콜백 — 부모가 목록에서 제거 처리. 미제공 시 삭제 버튼 미노출.
   onDeleted?: (eventId: string) => void;
   // 모달 열릴 때 처음 보일 탭 — 미지정 시 '기본정보'.
-  initialTab?: 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review';
+  initialTab?: 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review' | 'collaboration';
 }
 
 interface FormState {
@@ -76,7 +77,7 @@ interface FormState {
   assigned_manager_name: string;
 }
 
-type TabKey = 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review';
+type TabKey = 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review' | 'collaboration';
 
 interface TabDef {
   key: TabKey;
@@ -90,6 +91,7 @@ const TABS: TabDef[] = [
   { key: 'customer', label: '업체정보', visible: () => true },
   { key: 'invoice', label: '가톨릭대관료', visible: () => true },
   { key: 'files', label: '첨부파일', visible: () => true },
+  { key: 'collaboration', label: '협업요청서', visible: () => true },
   { key: 'cancel', label: '취소정보', visible: (f) => f.status === 'LOS' },
   { key: 'review', label: '행사리뷰', visible: () => true },
 ];
@@ -513,6 +515,15 @@ export default function EventFormModal({
       {tab === 'files' && (
         <ErrorBoundary title="첨부파일 탭에서 오류가 발생했습니다">
           <FilesTab eventId={initialEvent?.id || null} canWrite={canCreateEvent(user?.role)} />
+        </ErrorBoundary>
+      )}
+      {tab === 'collaboration' && (
+        <ErrorBoundary title="협업요청서 탭에서 오류가 발생했습니다">
+          <CollaborationTab
+            eventId={initialEvent?.id || null}
+            defaultEventName={form.event_name}
+            defaultEventDate={form.start_datetime}
+          />
         </ErrorBoundary>
       )}
       {tab === 'cancel' && form.status === 'LOS' && (

@@ -7,6 +7,7 @@ import {
   canSeeWedding,
   canSeeReviews,
   canSeeDashboard,
+  canSeeCollaboration,
   canManageUsers,
   canManageApiKeys,
   canManageTrash,
@@ -14,6 +15,7 @@ import {
 import clsx from 'clsx';
 import GlobalSearch from './GlobalSearch';
 import HelpPopover from './HelpPopover';
+import CollaborationNotifyBadge from './CollaborationNotifyBadge';
 
 interface MenuLink {
   to: string;
@@ -65,6 +67,11 @@ export default function Layout() {
       to: '/reviews',
       label: '연회팀 행사리뷰',
       visible: !!user && canSeeReviews(role),
+    },
+    {
+      to: '/collaborations',
+      label: '🤝 협업요청서',
+      visible: !!user && canSeeCollaboration(role),
     },
     { to: '/files', label: '첨부파일 관리', visible: !!user },
     // 관리자 전용 탭 — admin role 만 노출.
@@ -203,6 +210,7 @@ export default function Layout() {
           )}
           {user && (
             <div className="flex items-center gap-2 md:gap-3 text-sm min-w-0">
+              <CollaborationNotifyBadge />
               <HelpPopover />
               <div className="text-right min-w-0 hidden sm:block">
                 <div className="font-medium text-gray-900 truncate">{user.name}</div>

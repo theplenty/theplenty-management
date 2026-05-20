@@ -16,6 +16,7 @@ import type {
   ChangeLog,
   SalesTarget,
   ApiKey,
+  CollaborationRequest,
 } from '../types.js';
 
 // 데이터 파일은 서버 루트의 data/ 폴더에 JSON으로 저장한다.
@@ -44,6 +45,7 @@ interface DB {
   change_logs: ChangeLog[];
   sales_targets: SalesTarget[];
   api_keys: ApiKey[];
+  collaboration_requests: CollaborationRequest[];
 }
 
 const COLLECTIONS: (keyof DB)[] = [
@@ -61,6 +63,7 @@ const COLLECTIONS: (keyof DB)[] = [
   'change_logs',
   'sales_targets',
   'api_keys',
+  'collaboration_requests',
 ];
 
 function safeReadJSON<T>(file: string): T | null {
@@ -168,6 +171,7 @@ const db: DB = {
   change_logs: loadCollection('change_logs'),
   sales_targets: loadCollection('sales_targets'),
   api_keys: loadCollection('api_keys'),
+  collaboration_requests: loadCollection('collaboration_requests'),
 };
 
 export function getCollection<K extends keyof DB>(name: K): DB[K] {

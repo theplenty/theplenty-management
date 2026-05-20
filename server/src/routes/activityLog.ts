@@ -48,6 +48,13 @@ function enrichLog(l: ChangeLog): EnrichedLog {
     } else {
       deleted = true;
     }
+  } else if (l.entity_type === 'collaboration_request') {
+    const c = store.collaboration_requests.find((x) => x.id === l.entity_id);
+    if (c) {
+      name = c.customer_event_name || null;
+    } else {
+      deleted = true; // 삭제됨
+    }
   }
   return { ...l, entity_name: name, entity_deleted: deleted };
 }
@@ -62,7 +69,12 @@ router.get('/', (req, res) => {
     Math.max(1, parseInt(String(req.query.limit || 100), 10) || 100)
   );
 
-  const validEntity: ChangeLogEntityType[] = ['event', 'mice_customer', 'wedding_customer'];
+  const validEntity: ChangeLogEntityType[] = [
+    'event',
+    'mice_customer',
+    'wedding_customer',
+    'collaboration_request',
+  ];
   const entityType =
     entityTypeParam && validEntity.includes(entityTypeParam as ChangeLogEntityType)
       ? (entityTypeParam as ChangeLogEntityType)

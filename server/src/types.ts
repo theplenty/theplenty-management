@@ -171,7 +171,11 @@ export type Customer = MiceCustomer | WeddingCustomer;
 
 // ===== 변경 이력 =====
 // 고객/행사 등 주요 엔티티의 수정 이력을 누적 기록.
-export type ChangeLogEntityType = 'mice_customer' | 'wedding_customer' | 'event';
+export type ChangeLogEntityType =
+  | 'mice_customer'
+  | 'wedding_customer'
+  | 'event'
+  | 'collaboration_request';
 export type ChangeLogAction = 'create' | 'update' | 'delete';
 
 export interface ChangeLogChange {
@@ -384,5 +388,72 @@ export interface EventReview {
   final_revenue: number | null;
   created_by: string;
   created_at: string;
+  updated_at: string;
+}
+
+// ===== 협업요청서 (Collaboration Request) =====
+// 세일즈팀이 고객의 비표준 요청을 받았을 때 주방/연회와 협업 가능 여부를
+// 신속하게 합의하기 위한 양식. 행사(Event)에 연결되며 작성→회신→결정 워크플로우.
+export type CollabTeam = 'kitchen' | 'banquet';
+
+// 표준 운영 대비 다른 부분 (다중 선택)
+export type CollabDeviation =
+  | '메뉴/식자재'
+  | '음주류'
+  | '인력/외주'
+  | '운영 시간'
+  | '공간 세팅'
+  | '기타';
+
+export type CollabReplyResult = '가능' | '조건부 가능' | '불가';
+export type CollabDecision = '진행' | '조건부진행' | '진행안함';
+export type CollabStatus = '회신대기' | '회신완료' | CollabDecision;
+
+// 팀별 회신 (화면 2)
+export interface CollaborationReply {
+  team: CollabTeam;
+  result: CollabReplyResult | null;
+  added_cost: number | null; // 추가 COST 예상 (숫자)
+  added_cost_memo: string; // 보충 메모 (식자재/인건비 등)
+  condition_or_reject_reason: string; // '조건부 가능'/'불가' 시 필수
+  alternative: string; // 대안 제안 (선택)
+  replied_by_id: string;
+  replied_by_name: string;
+  replied_at: string | null;
+}
+
+export interface CollaborationRequest {
+  id: string;
+  event_id: string;
+
+  // --- 화면 1: 작성 (세일즈) ---
+  created_by_id: string;
+  created_by_name: string;
+  created_by_role: Role;
+  created_at: string;
+  customer_event_name: string; // 고객사/행사명 (필수)
+  event_date: string | null; // 행사 예정일 (필수)
+  customer_request: string; // 고객 요청 사항 (필수, ≤100)
+  deviations: CollabDeviation[]; // 표준 대비 다른 부분 (다중)
+  deviation_other: string; // '기타' 선택 시 텍스트
+  expected_revenue: number | null; // 예상 매출 (필수)
+  expected_revenue_memo: string; // 메모 (선택)
+  target_teams: CollabTeam[]; // 협업 요청 받는 팀 (1개 이상)
+  sales_comment: string; // 세일즈 의견 (≤200)
+
+  // --- 화면 2: 팀별 회신 ---
+  replies: CollaborationReply[];
+
+  // --- 화면 3: 최종 결정 (세일즈) ---
+  decision: CollabDecision | null;
+  decided_margin: number | null; // 예상매출 - 추가COST 합 (자동계산, 수정가능)
+  decision_comment: string;
+  decided_by_id: string | null;
+  decided_by_name: string | null;
+  decided_at: string | null;
+
+  // --- 상태 / 메타 ---
+  status: CollabStatus;
+  reply_due_at: string; // created_at + 24h (카운트다운 기준)
   updated_at: string;
 }

@@ -140,6 +140,36 @@ export function canManageTrash(role: Role | undefined): boolean {
   return role === 'admin';
 }
 
+// ===== 협업요청서 =====
+// 작성·최종결정: admin + 세일즈. 회신: admin + 주방/연회. 삭제: admin.
+export function canCreateCollaboration(role: Role | undefined): boolean {
+  return role === 'admin' || isSales(role);
+}
+export function canDecideCollaboration(role: Role | undefined): boolean {
+  return role === 'admin' || isSales(role);
+}
+export function canReplyCollaboration(role: Role | undefined): boolean {
+  return role === 'admin' || role === 'kitchen' || role === 'banquet';
+}
+// 이 사용자가 회신할 수 있는 팀 (admin 은 양팀 가능 → null 로 표시하고 UI에서 선택)
+export function collabReplyTeam(role: Role | undefined): 'kitchen' | 'banquet' | null {
+  if (role === 'kitchen') return 'kitchen';
+  if (role === 'banquet') return 'banquet';
+  return null;
+}
+// 조회: admin/세일즈는 전체, 주방/연회는 자기 팀 대상 건. h_kitchen 등은 불가.
+export function canSeeCollaboration(role: Role | undefined): boolean {
+  return (
+    role === 'admin' ||
+    isSales(role) ||
+    role === 'kitchen' ||
+    role === 'banquet'
+  );
+}
+export function canDeleteCollaboration(role: Role | undefined): boolean {
+  return role === 'admin';
+}
+
 // ===== 행사 삭제 =====
 // 휴지통 안전망이 있으므로 활성 사용자 모두 행사·고객 soft-delete 가능.
 // 전체비우기(clearAllEvents) 등 mass 작업은 admin only.

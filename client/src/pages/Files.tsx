@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import {
+  COLLAB_TEAM_LABEL,
   EVENT_FILE_TYPE_LABEL,
+  type CollaborationRequest,
   type EventFile,
   type EventFileType,
   type EventWithFood,
 } from '../types';
+import { listCollaborations, statusBadgeClass } from '../lib/collaboration';
 
 const TYPE_BADGE: Record<EventFileType, string> = {
   estimate: 'bg-yellow-100 text-yellow-800',
@@ -25,6 +29,7 @@ function fmtDate(iso: string): string {
 export default function Files() {
   const [files, setFiles] = useState<EventFile[]>([]);
   const [events, setEvents] = useState<EventWithFood[]>([]);
+  const [collabs, setCollabs] = useState<CollaborationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<'ALL' | EventFileType>('ALL');
   const [filterEvent, setFilterEvent] = useState<'ALL' | string>('ALL');
@@ -34,12 +39,14 @@ export default function Files() {
     setLoading(true);
     setError(null);
     try {
-      const [filesRes, evRes] = await Promise.all([
+      const [filesRes, evRes, collabRes] = await Promise.all([
         api.get<{ files: EventFile[] }>('/api/events/_all'),
         api.get<{ events: EventWithFood[] }>('/api/events'),
+        listCollaborations().catch(() => [] as CollaborationRequest[]),
       ]);
       setFiles(filesRes.files);
       setEvents(evRes.events);
+      setCollabs(collabRes);
     } catch (e) {
       setError('목록을 불러오지 못했습니다.');
       console.error(e);
@@ -96,6 +103,51 @@ export default function Files() {
         모두 여기에 모입니다. <strong>BEO</strong>는 추후 행사정보 기반 워드 자동 생성과
         연결될 예정입니다.
       </p>
+
+      {/* 협업요청서 일괄 리스트 (작성된 협업요청서를 첨부파일 관리에서도 한눈에) */}
+      {collabs.length > 0 && (
+        <div className="bg-white border rounded-lg overflow-hidden mb-5">
+          <div className="px-4 py-2 bg-gray-50 border-b flex items-center gap-3">
+            <span className="font-semibold text-gray-800">🤝 협업요청서</span>
+            <span className="text-xs text-gray-500">{collabs.length}건</span>
+            <Link to="/collaborations" className="ml-auto text-xs text-blue-600 hover:underline">
+              전체 보기 →
+            </Link>
+          </div>
+          <table className="w-full text-sm whitespace-nowrap">
+            <thead className="bg-white text-gray-700">
+              <tr>
+                <th className="text-left px-4 py-2 font-semibold">요청일</th>
+                <th className="text-left px-4 py-2 font-semibold">고객사/행사명</th>
+                <th className="text-left px-4 py-2 font-semibold">작성자</th>
+                <th className="text-left px-4 py-2 font-semibold">대상팀</th>
+                <th className="text-left px-4 py-2 font-semibold">상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {collabs.slice(0, 12).map((c) => (
+                <tr key={c.id} className="border-t">
+                  <td className="px-4 py-2 text-xs text-gray-500">{c.created_at.slice(0, 10)}</td>
+                  <td className="px-4 py-2">
+                    <Link to="/collaborations" className="text-blue-600 hover:underline">
+                      {c.customer_event_name}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-2 text-gray-700">{c.created_by_name}</td>
+                  <td className="px-4 py-2 text-xs">
+                    {c.target_teams.map((t) => COLLAB_TEAM_LABEL[t]).join('+')}
+                  </td>
+                  <td className="px-4 py-2">
+                    <span className={`badge border text-[11px] ${statusBadgeClass(c.status)}`}>
+                      {c.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="bg-white border rounded-lg p-3 mb-4 flex items-center gap-3 text-xs flex-wrap">
         <select
