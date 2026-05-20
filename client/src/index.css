@@ -137,6 +137,11 @@ tr.fc-event-cancelled {
 
 /* ===== 인쇄용 — 캘린더 요약 (CalendarSummary) ===== */
 @media print {
+  /* 7열(일~토)이 한 페이지 폭에 들어가도록 가로 방향 + 여백 최소화 */
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
   /* 인쇄 시 헤더·사이드바·헤더툴바·버튼 등은 숨김 */
   header,
   aside,
@@ -194,6 +199,47 @@ tr.fc-event-cancelled {
   .fc-summary .fc-daygrid-day {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
+  }
+  /* ★ 7열(일~토)이 페이지 폭에 모두 들어가도록 — 가로 잘림(금·토 사라짐) 방지 */
+  .fc-summary,
+  .fc-summary .fc,
+  .fc-summary .fc-view-harness,
+  .fc-summary .fc-scrollgrid,
+  .fc-summary .fc-scrollgrid table,
+  .fc-summary .fc-col-header,
+  .fc-summary .fc-daygrid-body,
+  .fc-summary .fc-scrollgrid-sync-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+  .fc-summary .fc-view-harness {
+    height: auto !important;
+  }
+  /* FullCalendar 가 화면 기준으로 박아둔 열 너비(col)를 무시하고 7등분 */
+  .fc-summary .fc-col-header,
+  .fc-summary .fc-daygrid-body,
+  .fc-summary .fc-scrollgrid-sync-table {
+    table-layout: fixed !important;
+  }
+  .fc-summary col {
+    width: 14.285% !important;
+    min-width: 0 !important;
+  }
+  /* 좁아진 칸에서도 내용이 읽히도록 폰트·여백 축소 (자식 요소까지 강제) */
+  .fc-summary .summary-block,
+  .fc-summary .summary-block * {
+    font-size: 8px !important;
+    line-height: 1.15 !important;
+  }
+  .fc-summary .summary-block .badge {
+    font-size: 7px !important;
+    padding: 0 2px !important;
+  }
+  .fc-summary .fc-daygrid-day-number,
+  .fc-summary .fc-col-header-cell-cushion {
+    font-size: 9px !important;
   }
   /* 인쇄 시 텍스트 색·border 강제 (Chrome 인쇄 색 보존) */
   * {
