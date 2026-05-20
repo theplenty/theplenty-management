@@ -1,40 +1,43 @@
-// 한국 공휴일·명절 — date-holidays 기반으로 FullCalendar 이벤트 생성.
-// 외부 API/키 불필요, 음력 명절(설날/추석)은 라이브러리가 자동 계산.
-//
-// 보정:
-//  - 제헌절은 2008년부터 공휴일이 아니므로 제외 (라이브러리가 public 으로 잘못 분류)
-//  - 설날/추석은 라이브러리가 당일 하나만 주므로 ±1일(총 3일) 연휴로 확장
-//  ※ 주말과 겹칠 때의 대체공휴일까지 정확히 반영하지는 않음 — 참고용 표시.
+// 한국 공휴일·명절 — 서버(/api/holidays)를 통해 구글 공식 공휴일 캘린더를 가져온다.
+// 대체공휴일·임시공휴일(선거일 등)까지 구글이 관리하는 그대로 표시. API 키 불필요.
 
-import type Holidays from 'date-holidays';
+import { api } from './api';
 import type { EventInput } from '@fullcalendar/core';
 
-// date-holidays 는 전 세계 데이터를 포함해 번들이 큼 → 동적 import 로 분리.
-// 캘린더에서 공휴일을 처음 켤 때만 로드되고, 초기 번들에는 포함되지 않음.
-let hd: Holidays | null = null;
-async function getHd(): Promise<Holidays> {
-  if (!hd) {
-    const mod = await import('date-holidays');
-    const HolidaysCtor = mod.default;
-    hd = new HolidaysCtor('KR');
-  }
-  return hd;
+interface RawHoliday {
+  date: string; // YYYY-MM-DD
+  name: string;
 }
-
-const EXCLUDE_NAMES = new Set<string>(['제헌절']);
-const LUNAR_FESTIVALS = new Set<string>(['설날', '추석']);
 
 const HOLIDAY_BG = '#fee2e2'; // 옅은 빨강
 const HOLIDAY_BORDER = '#fecaca';
 const HOLIDAY_TEXT = '#dc2626';
 
-function ymd(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+// 한 번 받아서 캐시 (캘린더 내 여러 뷰가 공유)
+let cache: RawHoliday[] | null = null;
+let inflight: Promise<RawHoliday[]> | null = null;
+
+async function fetchHolidays(): Promise<RawHoliday[]> {
+  if (cache) return cache;
+  if (inflight) return inflight;
+  inflight = api
+    .get<{ holidays: RawHoliday[] }>('/api/holidays')
+    .then((r) => {
+      cache = r.holidays || [];
+      return cache;
+    })
+    .catch(() => {
+      // 실패해도 캘린더 자체는 동작해야 함
+      cache = [];
+      return cache;
+    })
+    .finally(() => {
+      inflight = null;
+    });
+  return inflight;
 }
 
-function makeHolidayEvent(date: Date, name: string): EventInput {
-  const dateStr = ymd(date);
+function makeHolidayEvent(dateStr: string, name: string): EventInput {
   return {
     id: `holiday-${dateStr}-${name}`,
     title: `🇰🇷 ${name}`,
@@ -52,29 +55,13 @@ function makeHolidayEvent(date: Date, name: string): EventInput {
 
 // FullCalendar 가 요청한 [start, end) 범위에 들어오는 공휴일만 생성.
 export async function buildKoreanHolidays(start: Date, end: Date): Promise<EventInput[]> {
-  const h = await getHd();
+  const list = await fetchHolidays();
   const out: EventInput[] = [];
-  const seen = new Set<string>();
-
-  for (let y = start.getFullYear(); y <= end.getFullYear(); y++) {
-    const list = h.getHolidays(y);
-    for (const item of list) {
-      if (item.type !== 'public') continue;
-      if (EXCLUDE_NAMES.has(item.name)) continue;
-
-      // 명절은 ±1일 연휴로 확장, 그 외는 당일만
-      const offsets = LUNAR_FESTIVALS.has(item.name) ? [-1, 0, 1] : [0];
-      for (const off of offsets) {
-        const d = new Date(item.start.getFullYear(), item.start.getMonth(), item.start.getDate() + off);
-        if (d < start || d >= end) continue;
-        const label =
-          LUNAR_FESTIVALS.has(item.name) && off !== 0 ? `${item.name} 연휴` : item.name;
-        const key = `${ymd(d)}-${label}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push(makeHolidayEvent(d, label));
-      }
-    }
+  for (const h of list) {
+    const d = new Date(`${h.date}T00:00:00`);
+    if (isNaN(d.getTime())) continue;
+    if (d < start || d >= end) continue;
+    out.push(makeHolidayEvent(h.date, h.name));
   }
   return out;
 }
