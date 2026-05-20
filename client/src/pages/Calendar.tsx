@@ -15,6 +15,7 @@ import { useIsMobile } from '../lib/useIsMobile';
 import { detectConflict } from '../lib/conflictCheck';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { buildSearchEntry, fuzzyMatchEntry, type SearchEntry } from '../lib/koreanSearch';
+import { buildKoreanHolidays } from '../lib/koreanHolidays';
 import {
   EVENT_STATUS_OPTIONS,
   STATUS_HEX,
@@ -119,6 +120,7 @@ export default function Calendar() {
     return init;
   });
   const [showConsultations, setShowConsultations] = useState(true);
+  const [showHolidays, setShowHolidays] = useState(true);
   const [filterType, setFilterType] = useState<'ALL' | 'MICE' | 'WEDDING'>('ALL');
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, 200);
@@ -312,6 +314,16 @@ export default function Calendar() {
     dupAnalysis,
   ]);
 
+  // 한국 공휴일·명절 — 보이는 범위만큼 동적 생성 (별도 eventSource)
+  const holidaySource = useMemo(
+    () => ({
+      id: 'kr-holidays',
+      events: (info: { start: Date; end: Date }) =>
+        buildKoreanHolidays(info.start, info.end),
+    }),
+    []
+  );
+
   function handleSelect(info: DateSelectArg) {
     if (!canCreateEvent(user?.role)) {
       info.view.calendar.unselect();
@@ -329,6 +341,7 @@ export default function Calendar() {
   }
 
   async function handleEventClick(info: EventClickArg) {
+    if (info.event.extendedProps.holiday) return; // 공휴일은 클릭 무시
     const consult = info.event.extendedProps.consultation as WeddingCustomer | undefined;
     if (consult) {
       if (canSeeWedding(user?.role)) {
@@ -468,12 +481,15 @@ export default function Calendar() {
           type="button"
           onClick={() => {
             const allOn =
-              EVENT_STATUS_OPTIONS.every((s) => statusVisible[s]) && showConsultations;
+              EVENT_STATUS_OPTIONS.every((s) => statusVisible[s]) &&
+              showConsultations &&
+              showHolidays;
             const next = !allOn;
             const map = {} as Record<EventStatus, boolean>;
             for (const s of EVENT_STATUS_OPTIONS) map[s] = next;
             setStatusVisible(map);
             setShowConsultations(next);
+            setShowHolidays(next);
           }}
           className="px-2 py-0.5 rounded border text-[11px] font-semibold border-gray-300 hover:bg-gray-50 active:bg-gray-100"
           title="모든 상태 체크/해제"
@@ -507,6 +523,18 @@ export default function Calendar() {
             style={{ background: CONSULT_HEX }}
           />
           <span>상담</span>
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showHolidays}
+            onChange={(e) => setShowHolidays(e.target.checked)}
+          />
+          <span
+            className="inline-block w-3 h-3 rounded-sm"
+            style={{ background: '#fecaca' }}
+          />
+          <span>공휴일</span>
         </label>
 
         <div className="h-5 w-px bg-gray-200 mx-1" />
@@ -595,8 +623,13 @@ export default function Calendar() {
             if (isMobile) setSelectedDate(info.dateStr);
           }}
           events={fcEvents}
+          eventSources={showHolidays ? [holidaySource] : []}
           eventClick={handleEventClick}
           eventDidMount={(arg) => {
+            if (arg.event.extendedProps.holiday) {
+              arg.el.title = arg.event.title;
+              return;
+            }
             const consult = arg.event.extendedProps.consultation as WeddingCustomer | undefined;
             if (consult) {
               arg.el.title = `[상담] ${consult.wedding_event_name}\n신랑: ${consult.groom_name} ${consult.groom_phone}\n신부: ${consult.bride_name} ${consult.bride_phone}\n희망상담일자: ${consult.desired_consultation_date}\n진행단계: ${consult.progress_status}`;
