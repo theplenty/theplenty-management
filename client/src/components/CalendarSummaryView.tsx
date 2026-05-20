@@ -118,15 +118,15 @@ export default function CalendarSummaryView({ events }: { events: SummaryEvent[]
     () =>
       summaryEvents.map((e) => {
         const color = STATUS_HEX[e.status] || '#6b7280';
-        const halls = (e.halls || []).join(',') || '홀미정';
         return {
           id: e.id,
-          title: `${e.event_name || '(이름없음)'} · ${halls}`,
+          title: e.event_name || '(이름없음)',
           start: e.start_datetime,
           end: e.end_datetime,
-          backgroundColor: color,
+          // 셀 안에 상세를 직접 렌더하므로 블록은 흰 배경 + 상태색 테두리
+          backgroundColor: '#ffffff',
           borderColor: color,
-          textColor: e.status === 'LOS' ? '#7f1d1d' : '#ffffff',
+          textColor: '#111827',
           extendedProps: { summary: e },
         };
       }),
@@ -145,7 +145,7 @@ export default function CalendarSummaryView({ events }: { events: SummaryEvent[]
 
   return (
     <div>
-      <div className="bg-white border rounded-lg p-2 md:p-4 shadow-sm overflow-x-auto">
+      <div className="bg-white border rounded-lg p-2 md:p-4 shadow-sm overflow-x-auto fc-summary">
         <FullCalendar
           plugins={[dayGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
@@ -154,17 +154,17 @@ export default function CalendarSummaryView({ events }: { events: SummaryEvent[]
           buttonText={{ today: '오늘' }}
           height="auto"
           editable={false}
+          // PC: 셀에 모든 행사 상세를 펼쳐 한눈에 + 그대로 출력 / 모바일: 2건만, 탭하면 하단 리스트
           dayMaxEvents={isMobile ? 2 : false}
           events={fcEvents}
           eventClick={handleEventClick}
           dateClick={(info) => {
             if (isMobile) setSelectedDate(info.dateStr);
           }}
-          eventDidMount={(arg) => {
+          eventContent={(arg) => {
             const ev = arg.event.extendedProps.summary as SummaryEvent | undefined;
-            if (!ev) return;
-            const { gtd, exp, gtdSource, expSource } = aggregateGtdExp(ev);
-            arg.el.title = `[${ev.status}] ${ev.event_name}\n${(ev.halls || []).join(' / ') || '홀 미지정'}\n${gtdExpLabel(gtdSource, expSource)} ${gtd ?? '-'}/${exp ?? '-'}`;
+            if (!ev) return undefined;
+            return <SummaryEventBlock ev={ev} compact={isMobile} />;
           }}
         />
       </div>
@@ -203,6 +203,68 @@ export default function CalendarSummaryView({ events }: { events: SummaryEvent[]
       >
         {selected && <SummaryCard ev={selected} expanded />}
       </Modal>
+    </div>
+  );
+}
+
+// 캘린더 셀 안에 직접 렌더되는 행사 1건 요약 블록.
+// PC(compact=false): 홀·GTD/EXP·메뉴·비고까지 한눈에. 모바일(compact=true): 시간·행사명만.
+function SummaryEventBlock({ ev, compact }: { ev: SummaryEvent; compact: boolean }) {
+  const color = STATUS_HEX[ev.status] || '#6b7280';
+
+  if (compact) {
+    return (
+      <div className="px-1 py-0.5 leading-tight overflow-hidden" style={{ borderLeft: `3px solid ${color}` }}>
+        <span className="text-[10px] text-gray-500">{timeOnly(ev.start_datetime)}</span>{' '}
+        <span className="text-[11px] font-semibold text-gray-900">{ev.event_name || '(이름없음)'}</span>
+      </div>
+    );
+  }
+
+  const halls = (ev.halls || []).join(' / ') || '홀 미지정';
+  const { gtd, exp, gtdSource, expSource } = aggregateGtdExp(ev);
+  const label = gtdExpLabel(gtdSource, expSource);
+  const foodItems = ev.food_items || [];
+  const menuNames = Array.from(new Set(foodItems.map((f) => f.menu_name).filter(Boolean)));
+  const menuMemos = foodItems.filter((f) => (f.memo || '').trim()).map((f) => ({ menu: f.menu_name, memo: f.memo }));
+
+  return (
+    <div
+      className="summary-block whitespace-normal px-1.5 py-1 leading-snug w-full"
+      style={{ borderLeft: `4px solid ${color}` }}
+    >
+      <div className="flex items-center gap-1 flex-wrap mb-0.5">
+        <span className="badge text-white text-[9px] px-1" style={{ background: color }}>
+          {ev.status}
+        </span>
+        <span className="text-[9px] text-gray-500">{ev.event_type}</span>
+        <span className="text-[10px] text-gray-600 tabular-nums">
+          {timeOnly(ev.start_datetime)}~{timeOnly(ev.end_datetime)}
+        </span>
+      </div>
+      <div className="text-[11px] font-bold text-gray-900 break-words">
+        {ev.event_name || '(이름 없음)'}
+      </div>
+      <div className="text-[10px] text-gray-700 break-words">
+        <span className="text-gray-400">홀</span> {halls}
+      </div>
+      <div className="text-[10px] text-gray-700 tabular-nums">
+        <span className="text-gray-400">{label}</span> {gtd ?? '-'}/{exp ?? '-'}
+      </div>
+      {menuNames.length > 0 && (
+        <div className="text-[10px] text-gray-700 break-words">
+          <span className="text-gray-400">메뉴</span> {menuNames.join(', ')}
+        </div>
+      )}
+      {menuMemos.length > 0 && (
+        <div className="text-[10px] text-gray-600 break-words">
+          {menuMemos.map((m, i) => (
+            <div key={i}>
+              <span className="text-gray-400">·</span> <strong>{m.menu}</strong>: {m.memo}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

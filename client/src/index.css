@@ -48,6 +48,23 @@ tr.fc-event-cancelled {
 .fc-event-conflict {
   box-shadow: 0 0 0 2px #dc2626 inset;
 }
+
+/* 캘린더 요약 — 셀에 행사 상세(홀·메뉴·GTD/EXP·비고)를 펼쳐 한눈에 보이도록
+   줄바꿈 허용 + 이벤트 패딩 제거. 셀 높이는 내용에 따라 자동 확장(height=auto). */
+.fc-summary .fc-daygrid-event,
+.fc-summary .fc-daygrid-event .fc-event-main {
+  white-space: normal !important;
+}
+.fc-summary .fc-event-main {
+  padding: 0 !important;
+}
+.fc-summary .fc-daygrid-event {
+  margin-top: 2px;
+  border-radius: 4px;
+}
+.fc-summary .fc-daygrid-event-harness {
+  overflow: visible;
+}
 .fc {
   font-size: 0.85rem;
 }
@@ -149,6 +166,18 @@ tr.fc-event-cancelled {
   /* 월 섹션 사이 페이지 나눔 */
   .page-break-after {
     page-break-after: always;
+  }
+  /* 캘린더 요약(그리드)을 보이는 그대로 출력 — 셀 높이 자동, 한 날짜 칸이 페이지 중간에
+     잘리지 않도록. 헤더 툴바 버튼은 위의 button 규칙으로 이미 숨김(가운데 월 제목은 유지). */
+  .fc-summary .fc-daygrid-day-frame {
+    min-height: 0 !important;
+  }
+  .fc-summary .fc-daygrid-day {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .fc-summary .fc-scroller {
+    overflow: visible !important;
   }
   /* 인쇄 시 텍스트 색·border 강제 (Chrome 인쇄 색 보존) */
   * {
