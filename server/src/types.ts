@@ -21,11 +21,31 @@ export type Team =
 
 export interface User {
   id: string;
+  // 멀티테넌시 — 이 사용자가 속한 회사(워크스페이스). 미지정 시 기본 테넌트로 간주.
+  tenant_id?: string;
   email: string;
   name: string;
   picture?: string | null;
   role: Role;
   team: Team;
+  created_at: string;
+  updated_at: string;
+}
+
+// ===== 멀티테넌시 (회사/워크스페이스) =====
+// SaaS 전환을 위한 테넌트 모델. 모든 업무 데이터는 tenant_id 로 회사별 격리한다.
+// 기존(단일 회사) 데이터는 부팅 시 DEFAULT_TENANT_ID 로 일괄 백필된다.
+export const DEFAULT_TENANT_ID = 'plenty';
+
+export type TenantPlan = 'owner' | 'free' | 'pro' | 'enterprise';
+export type TenantStatus = 'active' | 'suspended';
+
+export interface Tenant {
+  id: string;
+  name: string; // 회사명 (예: 플렌티컨벤션)
+  slug: string; // URL-safe 식별자 — 향후 서브도메인 후보
+  plan: TenantPlan;
+  status: TenantStatus;
   created_at: string;
   updated_at: string;
 }
@@ -81,6 +101,7 @@ export interface MiceInquiry {
 
 export interface MiceCustomer {
   id: string;
+  tenant_id?: string;
   customer_type: 'MICE';
   mice_category: MiceCategory;
   organization_name: string;
@@ -135,6 +156,7 @@ export interface WeddingEventInquiry {
 
 export interface WeddingCustomer {
   id: string;
+  tenant_id?: string;
   customer_type: 'WEDDING';
   // (1) 고객기본정보
   wedding_event_name: string;
@@ -186,6 +208,7 @@ export interface ChangeLogChange {
 
 export interface ChangeLog {
   id: string;
+  tenant_id?: string;
   entity_type: ChangeLogEntityType;
   entity_id: string;
   action: ChangeLogAction;
@@ -222,6 +245,7 @@ export type MenuName =
 
 export interface FoodItem {
   id: string;
+  tenant_id?: string;
   event_id: string;
   menu_name: MenuName;
   // set/lunchbox 메뉴 — 계약 시점과 행사 직전 확정 시점을 분리해서 보관
@@ -240,6 +264,7 @@ export type CustomerRole = '주최사' | '대행사' | '협력사' | '회계 담
 
 export interface EventCustomerLink {
   id: string;
+  tenant_id?: string;
   event_id: string;
   customer_id: string;
   customer_role: CustomerRole;
@@ -253,6 +278,7 @@ export interface EventCustomerLink {
 
 export interface Event {
   id: string;
+  tenant_id?: string;
   event_type: CustomerType;
   created_by: string; // user id
   created_by_name: string; // 작성 시점의 사용자 이름 — 사용자가 삭제되어도 표시 유지
@@ -285,6 +311,7 @@ export interface Event {
 
 export interface Invoice {
   id: string;
+  tenant_id?: string;
   event_id: string;
   payment_status: '고객요청' | '입금완료' | '총무팀협의-면제대상' | '';
   invoice_type: '세금계산서' | '현금영수증' | '';
@@ -302,6 +329,7 @@ export type EventFileType = 'estimate' | 'contract' | 'beo' | 'final_invoice' | 
 
 export interface EventFile {
   id: string;
+  tenant_id?: string;
   event_id: string;
   file_type: EventFileType;
   file_name: string;
@@ -314,6 +342,7 @@ export interface EventFile {
 // (year, month) 조합이 unique key. Total은 wedding+mice 자동 합산이 기본이지만 별도 저장도 허용.
 export interface SalesTarget {
   id: string;
+  tenant_id?: string;
   year: number;
   month: number; // 1~12
   wedding_event_count_forecast: number | null;
@@ -338,6 +367,7 @@ export type ApiKeyScope = 'all' | 'summary' | 'wedding' | 'mice';
 
 export interface ApiKey {
   id: string;
+  tenant_id?: string;
   label: string;
   token: string;
   scope: ApiKeyScope;
@@ -352,6 +382,7 @@ export interface ApiKey {
 // 토큰 보유자는 해당 월의 행사 캘린더만 조회 가능 (월간 화살표 이동 X, 행사 클릭 상세 X)
 export interface CalendarShare {
   id: string;
+  tenant_id?: string;
   token: string; // URL-safe random
   year: number;
   month: number; // 1~12
@@ -365,6 +396,7 @@ export interface CalendarShare {
 // 캘린더 요약 공개 공유 — 단일 토큰. 토큰 보유자는 로그인 없이 요약을 열람.
 export interface SummaryShare {
   id: string;
+  tenant_id?: string;
   token: string;
   created_at: string;
   created_by: string;
@@ -372,6 +404,7 @@ export interface SummaryShare {
 
 export interface Cancellation {
   id: string;
+  tenant_id?: string;
   event_id: string;
   cancel_requested_at: string | null;
   cancel_reason: string;
@@ -382,6 +415,7 @@ export interface Cancellation {
 
 export interface EventReview {
   id: string;
+  tenant_id?: string;
   event_id: string;
   banquet_manager: string;
   actual_meal_count: number | null;
@@ -432,6 +466,7 @@ export interface CollaborationReply {
 
 export interface CollaborationRequest {
   id: string;
+  tenant_id?: string;
   event_id: string;
 
   // --- 화면 1: 작성 (세일즈) ---

@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { nanoid } from 'nanoid';
 import { store, persistDoc, ensureHydrated } from '../store/mockStore.js';
+import { DEFAULT_TENANT_ID } from '../types.js';
 import type { Role, User } from '../types.js';
 
 declare global {
@@ -8,6 +9,8 @@ declare global {
   namespace Express {
     interface Request {
       user?: User;
+      // 멀티테넌시 — 현재 요청이 속한 테넌트. attachTenant 가 채운다.
+      tenantId?: string;
     }
   }
 }
@@ -64,6 +67,11 @@ function findOrCreateUserByEmail(
       user.picture = picture;
       dirty = true;
     }
+    // 테넌트 미지정 기존 사용자는 기본 테넌트로 백필
+    if (!user.tenant_id) {
+      user.tenant_id = DEFAULT_TENANT_ID;
+      dirty = true;
+    }
     if (dirty) {
       user.updated_at = new Date().toISOString();
       persistDoc('users', user.id);
@@ -76,6 +84,9 @@ function findOrCreateUserByEmail(
   const now = new Date().toISOString();
   user = {
     id: nanoid(10),
+    // 현재는 단일 테넌트 — 자동 생성 사용자도 기본 테넌트 소속.
+    // Phase 3(셀프 온보딩)에서 가입 흐름이 적절한 테넌트를 배정.
+    tenant_id: DEFAULT_TENANT_ID,
     email,
     name: name || email.split('@')[0],
     picture: picture || null,
@@ -118,6 +129,14 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
     const user = store.users.find((u) => u.id === uid);
     if (user) req.user = user;
   }
+  next();
+}
+
+// 멀티테넌시 — 현재 요청의 테넌트를 결정한다.
+// 현재: 로그인 사용자의 tenant_id 기준(미지정 시 기본 테넌트).
+// 향후: 서브도메인/헤더, 공유 토큰(레코드의 tenant_id)으로 확장.
+export function attachTenant(req: Request, _res: Response, next: NextFunction) {
+  req.tenantId = req.user?.tenant_id || DEFAULT_TENANT_ID;
   next();
 }
 

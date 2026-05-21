@@ -32,7 +32,7 @@ import activityLogRouter from './routes/activityLog.js';
 import holidaysRouter from './routes/holidays.js';
 import collaborationRequestsRouter from './routes/collaborationRequests.js';
 import summaryShareRouter from './routes/summaryShare.js';
-import { attachUser } from './middleware/auth.js';
+import { attachUser, attachTenant } from './middleware/auth.js';
 import { runSeed } from './store/seed.js';
 import { runMigrations } from './store/migrate.js';
 
@@ -48,6 +48,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 app.use(morgan('dev'));
 app.use(attachUser);
+app.use(attachTenant);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 

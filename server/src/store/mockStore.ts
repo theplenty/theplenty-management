@@ -18,7 +18,9 @@ import type {
   ApiKey,
   CollaborationRequest,
   SummaryShare,
+  Tenant,
 } from '../types.js';
+import { DEFAULT_TENANT_ID } from '../types.js';
 
 // 데이터 파일은 서버 루트의 data/ 폴더에 JSON으로 저장한다.
 // 빌드 후에도 동일 경로를 가리키도록 src/ 기준으로 두 단계 위로 올라간다.
@@ -32,6 +34,7 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
 interface DB {
+  tenants: Tenant[];
   users: User[];
   mice_customers: MiceCustomer[];
   wedding_customers: WeddingCustomer[];
@@ -51,6 +54,7 @@ interface DB {
 }
 
 const COLLECTIONS: (keyof DB)[] = [
+  'tenants',
   'users',
   'mice_customers',
   'wedding_customers',
@@ -160,6 +164,7 @@ function saveCollection<K extends keyof DB>(name: K, value: DB[K]) {
 }
 
 const db: DB = {
+  tenants: loadCollection('tenants'),
   users: loadCollection('users'),
   mice_customers: loadCollection('mice_customers'),
   wedding_customers: loadCollection('wedding_customers'),
@@ -429,6 +434,22 @@ export function purgeHard<K extends SoftDeleteCollection>(coll: K, id: string): 
 // 활성 row만 반환하는 헬퍼 — 라우트 GET에서 사용.
 export function activeRows<T extends { deleted_at?: string | null }>(rows: readonly T[]): T[] {
   return rows.filter((r) => !r.deleted_at);
+}
+
+// ===================================================================
+// 멀티테넌시 — 테넌트 스코핑 헬퍼
+// ===================================================================
+// tenant_id 가 없는(아직 백필 전) row 는 기본 테넌트 소속으로 간주 → 전환기 안전.
+// Phase 2 에서 라우트들이 이 헬퍼로 읽기를 좁히고, 쓰기 시 tenant_id 를 주입한다.
+export function tenantRows<T extends { tenant_id?: string }>(
+  rows: readonly T[],
+  tenantId: string
+): T[] {
+  return rows.filter((r) => (r.tenant_id || DEFAULT_TENANT_ID) === tenantId);
+}
+
+export function belongsToTenant(row: { tenant_id?: string } | undefined | null, tenantId: string): boolean {
+  return !!row && (row.tenant_id || DEFAULT_TENANT_ID) === tenantId;
 }
 
 export function isDeleted<T extends { deleted_at?: string | null }>(row: T | undefined | null): boolean {

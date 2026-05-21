@@ -2,11 +2,13 @@
 
 import { nanoid } from 'nanoid';
 import { store, persist } from './mockStore.js';
+import { DEFAULT_TENANT_ID } from '../types.js';
 import type {
   MiceContact,
   MiceCustomer,
   MiceInquiry,
   MiceInquiryStatus,
+  Tenant,
   WeddingCustomer,
   WeddingEventInquiry,
 } from '../types.js';
@@ -305,7 +307,62 @@ function migrateFoodItems() {
   }
 }
 
+// ===== 멀티테넌시 백필 =====
+// 기본 테넌트를 보장하고, 기존 단일 회사 데이터 전체에 tenant_id 를 채운다. 멱등.
+function migrateTenants() {
+  if (!store.tenants.find((t) => t.id === DEFAULT_TENANT_ID)) {
+    const now = new Date().toISOString();
+    const t: Tenant = {
+      id: DEFAULT_TENANT_ID,
+      name: '플렌티컨벤션',
+      slug: DEFAULT_TENANT_ID,
+      plan: 'owner',
+      status: 'active',
+      created_at: now,
+      updated_at: now,
+    };
+    store.tenants.push(t);
+    persist('tenants');
+    console.log('[migrate] 기본 테넌트 생성:', DEFAULT_TENANT_ID);
+  }
+
+  const collections = [
+    'users',
+    'mice_customers',
+    'wedding_customers',
+    'events',
+    'event_customers',
+    'event_food_items',
+    'invoices',
+    'event_files',
+    'cancellations',
+    'event_reviews',
+    'calendar_shares',
+    'change_logs',
+    'sales_targets',
+    'api_keys',
+    'collaboration_requests',
+    'summary_shares',
+  ] as const;
+
+  for (const coll of collections) {
+    const arr = store[coll] as unknown as Array<Record<string, unknown>>;
+    let n = 0;
+    for (const row of arr) {
+      if (!row.tenant_id) {
+        row.tenant_id = DEFAULT_TENANT_ID;
+        n++;
+      }
+    }
+    if (n > 0) {
+      persist(coll);
+      console.log(`[migrate] ${coll} ${n}건 → tenant_id 백필`);
+    }
+  }
+}
+
 export function runMigrations() {
+  migrateTenants();
   migrateMiceCustomers();
   migrateWeddingCustomers();
   migrateEventReviews();
