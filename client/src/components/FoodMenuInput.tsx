@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { nanoid } from '../lib/clientId';
-import { MENU_OPTIONS, type FoodItem, type MenuName } from '../types';
+import { type FoodItem, type MenuMode, MENU_OPTIONS, menuModeOf } from '../types';
 
-// 식음 메뉴 입력 — 드롭다운으로 선택해서 추가, 같은 메뉴 중복 가능.
-// 각 행: [메뉴명] [계약 GTD/EXP 쌍] [확정 GTD/EXP 쌍] [비고] [삭제]
+// 식음 메뉴 입력 — MENU_OPTIONS 고정 목록에서 선택.
+// 행사 저장 후에는 menu_name이 문자열로 고정됨 (마스터 변경 영향 없음).
+// 각 행: [메뉴명(고정)] [모드별 수량입력] [비고] [삭제]
 
 type DraftItem = Omit<FoodItem, 'event_id'>;
 
@@ -12,7 +13,7 @@ interface Props {
   onChange: (next: DraftItem[]) => void;
 }
 
-function makeDraft(name: MenuName): DraftItem {
+function makeDraft(name: string): DraftItem {
   return {
     id: nanoid(),
     menu_name: name,
@@ -28,9 +29,10 @@ function makeDraft(name: MenuName): DraftItem {
 }
 
 export default function FoodMenuInput({ items, onChange }: Props) {
-  const [picker, setPicker] = useState<MenuName | ''>('');
+  const [picker, setPicker] = useState('');
 
-  function addMenu(name: MenuName) {
+  function addMenu(name: string) {
+    if (!name) return;
     onChange([...items, makeDraft(name)]);
   }
 
@@ -44,22 +46,22 @@ export default function FoodMenuInput({ items, onChange }: Props) {
 
   return (
     <div>
-      {/* 메뉴 추가 드롭다운 — 선택 즉시 행이 추가되고 셀렉트는 초기화 */}
+      {/* 메뉴 추가 드롭다운 */}
       <div className="flex items-center gap-2 mb-4">
         <select
-          className="input !py-1.5 !text-sm !w-auto min-w-[200px]"
+          className="input !py-1.5 !text-sm !w-auto min-w-[220px]"
           value={picker}
           onChange={(e) => {
-            const v = e.target.value as MenuName | '';
+            const v = e.target.value;
             if (!v) return;
             addMenu(v);
             setPicker('');
           }}
         >
           <option value="">+ 식음 메뉴 추가 (선택 시 즉시 추가, 중복 가능)</option>
-          {MENU_OPTIONS.map((m) => (
-            <option key={m} value={m}>
-              {m}
+          {MENU_OPTIONS.map((name) => (
+            <option key={name} value={name}>
+              {name}
             </option>
           ))}
         </select>
@@ -73,72 +75,146 @@ export default function FoodMenuInput({ items, onChange }: Props) {
         <div className="text-xs text-gray-400 italic py-2">선택된 메뉴가 없습니다.</div>
       ) : (
         <div className="space-y-2">
-          {/* 데스크탑 헤더 (md 이상) — 메뉴(3) + 계약(3) + 확정(3) + 비고(2) + 삭제(1) = 12 */}
-          <div className="hidden md:grid md:grid-cols-12 gap-2 px-2 text-[11px] uppercase tracking-wide text-gray-500 font-semibold">
-            <div className="md:col-span-3">메뉴</div>
-            <div className="md:col-span-3 text-center">계약 GTD / EXP</div>
-            <div className="md:col-span-3 text-center">확정 GTD / EXP</div>
-            <div className="md:col-span-2">비고</div>
-            <div className="md:col-span-1" />
-          </div>
-
-          {items.map((r, idx) => (
-            <div
-              key={r.id}
-              className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border rounded-md p-2 bg-gray-50/50"
-            >
-              <div className="md:col-span-3 flex items-center gap-2">
-                <span className="text-[11px] text-gray-400 tabular-nums w-5 text-right">
-                  {idx + 1}.
-                </span>
-                <span className="font-medium text-sm">{r.menu_name}</span>
-              </div>
-
-              <PairCell
-                mobileLabel="계약 GTD / EXP"
-                gtd={r.gtd_contract}
-                exp={r.exp_contract}
-                onGtd={(v) => updateRow(r.id, { gtd_contract: v })}
-                onExp={(v) => updateRow(r.id, { exp_contract: v })}
+          {items.map((r, idx) => {
+            const mode = menuModeOf(r.menu_name);
+            return (
+              <FoodRow
+                key={r.id}
+                idx={idx}
+                item={r}
+                mode={mode}
+                onUpdate={(patch) => updateRow(r.id, patch)}
+                onDelete={() => deleteRow(r.id)}
               />
-              <PairCell
-                mobileLabel="확정 GTD / EXP"
-                gtd={r.gtd_final}
-                exp={r.exp_final}
-                onGtd={(v) => updateRow(r.id, { gtd_final: v })}
-                onExp={(v) => updateRow(r.id, { exp_final: v })}
-              />
-
-              <div className="md:col-span-2">
-                <label className="md:hidden text-[11px] uppercase tracking-wide text-gray-500">
-                  비고
-                </label>
-                <input
-                  type="text"
-                  className="input !py-1.5 !text-sm"
-                  value={r.memo}
-                  onChange={(e) => updateRow(r.id, { memo: e.target.value })}
-                />
-              </div>
-
-              <div className="md:col-span-1 flex md:justify-end">
-                <button
-                  type="button"
-                  onClick={() => deleteRow(r.id)}
-                  className="text-xs text-red-500 hover:underline px-2 py-1"
-                >
-                  삭제
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-// GTD/EXP 한 쌍을 한 칸 안에 배치 — 두 개의 작은 number input + 사이에 "/" 구분자.
+// ── 개별 행 컴포넌트 ─────────────────────────────────────────────────
+function FoodRow({
+  idx,
+  item,
+  mode,
+  onUpdate,
+  onDelete,
+}: {
+  idx: number;
+  item: DraftItem;
+  mode: MenuMode;
+  onUpdate: (patch: Partial<DraftItem>) => void;
+  onDelete: () => void;
+}) {
+  if (mode === 'set') {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border rounded-md p-2 bg-gray-50/50">
+        <NameCell idx={idx} name={item.menu_name} />
+        <PairCell
+          mobileLabel="계약 GTD / EXP"
+          gtd={item.gtd_contract}
+          exp={item.exp_contract}
+          onGtd={(v) => onUpdate({ gtd_contract: v })}
+          onExp={(v) => onUpdate({ exp_contract: v })}
+        />
+        <PairCell
+          mobileLabel="확정 GTD / EXP"
+          gtd={item.gtd_final}
+          exp={item.exp_final}
+          onGtd={(v) => onUpdate({ gtd_final: v })}
+          onExp={(v) => onUpdate({ exp_final: v })}
+        />
+        <MemoCell memo={item.memo} onMemo={(v) => onUpdate({ memo: v })} />
+        <DeleteCell onDelete={onDelete} />
+      </div>
+    );
+  }
+
+  if (mode === 'coffee') {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border rounded-md p-2 bg-gray-50/50">
+        <NameCell idx={idx} name={item.menu_name} />
+        {/* 타임 라벨 */}
+        <div className="md:col-span-2">
+          <label className="md:hidden text-[11px] uppercase tracking-wide text-gray-500">
+            타임 라벨
+          </label>
+          <input
+            type="text"
+            className="input !py-1.5 !text-sm"
+            placeholder="예: 오전"
+            value={item.time_label}
+            onChange={(e) => onUpdate({ time_label: e.target.value })}
+          />
+        </div>
+        {/* 서비스 시간 */}
+        <div className="md:col-span-2">
+          <label className="md:hidden text-[11px] uppercase tracking-wide text-gray-500">
+            서비스 시간
+          </label>
+          <input
+            type="text"
+            className="input !py-1.5 !text-sm"
+            placeholder="예: 10:00"
+            value={item.service_time}
+            onChange={(e) => onUpdate({ service_time: e.target.value })}
+          />
+        </div>
+        {/* 수량 */}
+        <div className="md:col-span-2">
+          <label className="md:hidden text-[11px] uppercase tracking-wide text-gray-500">
+            수량
+          </label>
+          <input
+            type="number"
+            className="input !py-1.5 !text-sm !text-right tabular-nums !px-2"
+            placeholder="수량"
+            value={item.quantity ?? ''}
+            onChange={(e) =>
+              onUpdate({ quantity: e.target.value === '' ? null : Number(e.target.value) })
+            }
+          />
+        </div>
+        <MemoCell memo={item.memo} onMemo={(v) => onUpdate({ memo: v })} />
+        <DeleteCell onDelete={onDelete} />
+      </div>
+    );
+  }
+
+  // mode === 'qty': 단순 수량
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border rounded-md p-2 bg-gray-50/50">
+      <NameCell idx={idx} name={item.menu_name} />
+      <div className="md:col-span-6">
+        <label className="md:hidden text-[11px] uppercase tracking-wide text-gray-500">수량</label>
+        <input
+          type="number"
+          className="input !py-1.5 !text-sm !text-right tabular-nums !px-2 w-32"
+          placeholder="수량"
+          value={item.quantity ?? ''}
+          onChange={(e) =>
+            onUpdate({ quantity: e.target.value === '' ? null : Number(e.target.value) })
+          }
+        />
+      </div>
+      <MemoCell memo={item.memo} onMemo={(v) => onUpdate({ memo: v })} />
+      <DeleteCell onDelete={onDelete} />
+    </div>
+  );
+}
+
+// ── 공통 셀 ──────────────────────────────────────────────────────────
+function NameCell({ idx, name }: { idx: number; name: string }) {
+  return (
+    <div className="md:col-span-3 flex items-center gap-2">
+      <span className="text-[11px] text-gray-400 tabular-nums w-5 text-right">{idx + 1}.</span>
+      <span className="font-medium text-sm">{name}</span>
+    </div>
+  );
+}
+
 function PairCell({
   mobileLabel,
   gtd,
@@ -176,6 +252,34 @@ function PairCell({
           onChange={(e) => onExp(e.target.value === '' ? null : Number(e.target.value))}
         />
       </div>
+    </div>
+  );
+}
+
+function MemoCell({ memo, onMemo }: { memo: string; onMemo: (v: string) => void }) {
+  return (
+    <div className="md:col-span-2">
+      <label className="md:hidden text-[11px] uppercase tracking-wide text-gray-500">비고</label>
+      <input
+        type="text"
+        className="input !py-1.5 !text-sm"
+        value={memo}
+        onChange={(e) => onMemo(e.target.value)}
+      />
+    </div>
+  );
+}
+
+function DeleteCell({ onDelete }: { onDelete: () => void }) {
+  return (
+    <div className="md:col-span-1 flex md:justify-end">
+      <button
+        type="button"
+        onClick={onDelete}
+        className="text-xs text-red-500 hover:underline px-2 py-1"
+      >
+        삭제
+      </button>
     </div>
   );
 }

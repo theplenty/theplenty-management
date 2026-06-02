@@ -12,6 +12,7 @@ import {
   MENU_CATEGORY_LABEL,
   MENU_CATEGORY_COLOR,
   MENU_MODE_LABEL,
+  MENU_OPTIONS,
 } from '../types';
 import clsx from 'clsx';
 
@@ -531,19 +532,24 @@ export default function Menus() {
             </h2>
 
             <div className="space-y-3">
-              {/* 메뉴명 */}
+              {/* 메뉴명 — 행사 식음메뉴와 동일한 목록 드롭다운 */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   메뉴명 <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
+                <select
                   value={form.name_ko}
                   onChange={(e) => setForm((f) => ({ ...f, name_ko: e.target.value }))}
-                  placeholder="예: A set, Coffee Break…"
                   className="input-field w-full"
                   autoFocus
-                />
+                >
+                  <option value="">메뉴를 선택하세요…</option>
+                  {MENU_OPTIONS.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* 카테고리 */}
