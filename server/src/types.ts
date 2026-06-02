@@ -89,7 +89,6 @@ export interface MiceInquiry {
   contacts: MiceContact[];
   call_date: string | null;
   inquiry_event_date_text: string;
-  event_memo: string;
   // 작성자: 최초 등록자 (변경 불가, 추적용)
   created_by_id: string;
   created_by_name: string;
@@ -174,6 +173,7 @@ export interface WeddingCustomer {
   desired_budget: string;
   source: WeddingSource | '';
   source_detail: WeddingSourceDetail | '';
+  search_keyword: string; // 마케팅 검색어 (자유 입력 + 기존 이력 자동완성)
   // (2) 문의세부정보 — 여러 건
   event_inquiries: WeddingEventInquiry[];
   // (3) 메모
@@ -229,7 +229,8 @@ export type Hall =
   | 'Leaf Room'
   | 'Ivy Room'
   | 'Petal Room'
-  | '로비';
+  | '로비'
+  | 'CAFE';
 
 export type MenuName =
   | 'A set'
@@ -247,7 +248,7 @@ export interface FoodItem {
   id: string;
   tenant_id?: string;
   event_id: string;
-  menu_name: MenuName;
+  menu_name: string; // 메뉴 마스터 name_ko 참조 (자유 문자열로 관리)
   // set/lunchbox 메뉴 — 계약 시점과 행사 직전 확정 시점을 분리해서 보관
   gtd_contract: number | null;
   exp_contract: number | null;
@@ -462,6 +463,41 @@ export interface CollaborationReply {
   replied_by_id: string;
   replied_by_name: string;
   replied_at: string | null;
+}
+
+// ===== 메뉴 마스터 =====
+// 판매 메뉴 카탈로그. 행사 식음 항목(event_food_items) 및 BOM(레시피) 연결 대상.
+export type MenuCategory = '전식' | '주식' | '후식' | '음료' | '주류' | '패키지';
+
+// 식음 항목 입력 모드 — 메뉴별로 어떤 수량 정보를 받을지 결정.
+//   set    : GTD/EXP 인원 (계약·확정) — 세트·뷔페 등
+//   coffee : 시간 라벨 + 서비스 시간 + 수량 — 커피 브레이크
+//   qty    : 단순 수량 — 디저트 플레이트·떡 등
+export type MenuMode = 'set' | 'coffee' | 'qty';
+
+// 메뉴 세부 요리 구성 항목 (BOM 단순화 버전)
+export interface MenuDetail {
+  id: string;
+  dish_name: string; // 요리명
+  quantity: string;  // 수량/단위 (예: '1인분', '1개')
+  notes: string;     // 비고 (선택)
+}
+
+export interface Menu {
+  id: string;
+  tenant_id?: string;
+  name_ko: string; // 메뉴명 (중복 불가)
+  category: MenuCategory;
+  mode: MenuMode; // 식음 항목 입력 모드
+  serving_size_default: number; // 기본 인분 (보통 1)
+  list_price: number | null; // 1인분 정가 (원)
+  is_active: boolean; // false = 소프트 비활성화 (데이터 보존)
+  notes: string; // 관리자(사장)만 보는 내부 메모
+  // 세부 요리 구성 — 관리자/매니저가 직접 커스터마이징.
+  // 기존 데이터 호환을 위해 optional. 미입력 시 [] 로 처리.
+  details?: MenuDetail[];
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CollaborationRequest {

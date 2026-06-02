@@ -67,7 +67,6 @@ export interface MiceInquiry {
   contacts: MiceContact[];
   call_date: string | null;
   inquiry_event_date_text: string;
-  event_memo: string;
   // 작성자: 최초 등록자 (변경 불가)
   created_by_id: string;
   created_by_name: string;
@@ -146,6 +145,7 @@ export interface WeddingCustomer {
   desired_budget: string;
   source: WeddingSource | '';
   source_detail: WeddingSourceDetail | '';
+  search_keyword: string; // 마케팅 검색어 (자유 입력 + 기존 이력 자동완성)
   event_inquiries: WeddingEventInquiry[];
   memo: string;
   created_at: string;
@@ -344,7 +344,8 @@ export type Hall =
   | 'Leaf Room'
   | 'Ivy Room'
   | 'Petal Room'
-  | '로비';
+  | '로비'
+  | 'CAFE';
 
 export const HALL_OPTIONS: Hall[] = [
   'Hall A+B',
@@ -354,6 +355,7 @@ export const HALL_OPTIONS: Hall[] = [
   'Ivy Room',
   'Petal Room',
   '로비',
+  'CAFE',
 ];
 
 export type MenuName =
@@ -381,11 +383,17 @@ export const MENU_OPTIONS: MenuName[] = [
   'Rice Cake Plate',
 ];
 
-// 메뉴 입력 모드 — 스펙에 따라 3종류
-export type MenuMode = 'set' | 'coffee' | 'qty';
-export function menuModeOf(name: MenuName): MenuMode {
-  if (name === 'Coffee Break') return 'coffee';
-  if (name === 'Dessert Plate(M)' || name === 'Dessert Plate(L)' || name === 'Rice Cake Plate')
+// menuModeOf — 메뉴 이름으로 입력 모드 결정.
+// 메뉴 마스터 도입 전 하드코딩 레거시 호환용. 마스터가 있으면 Menu.mode 우선 사용.
+export function menuModeOf(name: string): MenuMode {
+  if (name === 'Coffee Break' || name.toLowerCase().includes('coffee break')) return 'coffee';
+  if (
+    name === 'Dessert Plate(M)' ||
+    name === 'Dessert Plate(L)' ||
+    name === 'Rice Cake Plate' ||
+    name.includes('Dessert') ||
+    name.includes('디저트')
+  )
     return 'qty';
   return 'set';
 }
@@ -393,7 +401,7 @@ export function menuModeOf(name: MenuName): MenuMode {
 export interface FoodItem {
   id: string;
   event_id: string;
-  menu_name: MenuName;
+  menu_name: string; // 메뉴 마스터 name_ko 참조 (자유 문자열)
   // set/lunchbox 메뉴 — 계약 시점과 행사 직전 확정 시점을 분리하여 인원/식수 변화를 추적
   gtd_contract: number | null;
   exp_contract: number | null;
@@ -567,6 +575,67 @@ export interface EventReview {
   general_comment: string;
   final_revenue: number | null;
   created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ===== 메뉴 마스터 =====
+export type MenuCategory = '전식' | '주식' | '후식' | '음료' | '주류' | '패키지';
+
+// 식음 항목 입력 모드
+//   set    : GTD/EXP 인원 (계약·확정) — 세트·뷔페 등 기본값
+//   coffee : 시간 라벨 + 서비스 시간 + 수량 — 커피 브레이크
+//   qty    : 단순 수량 — 디저트 플레이트·떡 등
+export type MenuMode = 'set' | 'coffee' | 'qty';
+
+export const MENU_MODE_LABEL: Record<MenuMode, string> = {
+  set: 'GTD/EXP 인원 (세트)',
+  coffee: '시간·수량 (커피 브레이크)',
+  qty: '단순 수량 (디저트·떡)',
+};
+
+export const MENU_CATEGORIES: MenuCategory[] = ['전식', '주식', '후식', '음료', '주류', '패키지'];
+
+export const MENU_CATEGORY_LABEL: Record<MenuCategory, string> = {
+  전식: '전식 (Starter)',
+  주식: '주식 (Main)',
+  후식: '후식 (Dessert)',
+  음료: '음료 (Beverage)',
+  주류: '주류 (Alcohol)',
+  패키지: '패키지 (Package)',
+};
+
+// 카테고리별 배지 색상 (Tailwind)
+export const MENU_CATEGORY_COLOR: Record<MenuCategory, string> = {
+  전식: 'bg-yellow-100 text-yellow-800',
+  주식: 'bg-blue-100 text-blue-800',
+  후식: 'bg-pink-100 text-pink-800',
+  음료: 'bg-cyan-100 text-cyan-800',
+  주류: 'bg-purple-100 text-purple-800',
+  패키지: 'bg-green-100 text-green-800',
+};
+
+// 메뉴 세부 요리 구성 항목 (BOM의 단순화 버전)
+// 메뉴명 아래 실제로 제공되는 개별 요리들을 기록한다.
+export interface MenuDetail {
+  id: string;
+  dish_name: string; // 요리명
+  quantity: string;  // 수량/단위 (예: '1인분', '1개', '2종')
+  notes: string;     // 비고 (선택)
+}
+
+export interface Menu {
+  id: string;
+  name_ko: string;
+  category: MenuCategory;
+  mode: MenuMode; // 식음 항목 입력 모드
+  serving_size_default: number; // 기본 인분
+  list_price: number | null; // 1인분 정가
+  is_active: boolean;
+  notes: string; // 관리자(admin)만 표시
+  // 세부 요리 구성 — 관리자/매니저가 직접 입력.
+  // 기존 데이터에는 없을 수 있으므로 optional. 미입력 시 빈 배열로 처리.
+  details?: MenuDetail[];
   created_at: string;
   updated_at: string;
 }
