@@ -626,15 +626,18 @@ export interface MenuDetail {
 
 export interface Menu {
   id: string;
+  // 메뉴명 — MENU_OPTIONS 중 하나 (A set, Coffee Break 등)
+  // 같은 name_ko + 다른 category 조합으로 여러 행 허용 (e.g. A set/Appetizer, A set/Soup)
   name_ko: string;
-  category: MenuCategory;
-  mode: MenuMode; // 식음 항목 입력 모드
-  serving_size_default: number; // 기본 인분
-  list_price: number | null; // 1인분 정가
+  // 코스 카테고리 — 자유 입력 (Appetizer, Soup, Main, Dessert 등)
+  // 이전 데이터는 '전식/주식/후식' 등 값을 가질 수 있음 (하위 호환)
+  category: string;
+  mode: MenuMode; // 식음 항목 입력 모드 (name_ko 기준 자동 할당)
+  serving_size_default: number;
+  list_price: number | null; // 판매 단가 (원가율 계산 기준)
   is_active: boolean;
   notes: string; // 관리자(admin)만 표시
-  // 세부 요리 구성 — 관리자/매니저가 직접 입력.
-  // 기존 데이터에는 없을 수 있으므로 optional. 미입력 시 빈 배열로 처리.
+  // STEP 2: 코스별 원가 재료 구성
   details?: MenuDetail[];
   created_at: string;
   updated_at: string;
