@@ -612,25 +612,31 @@ interface CostGridProps {
 }
 
 function CostGrid({ menu, rows, dirty, saving, canWrite, onUpdate, onAdd, onRemove, onSave }: CostGridProps) {
-  const totalCost = rows.reduce((s, r) => s + (r.portion_cost ?? 0), 0);
-  const costPct = menu.list_price && totalCost > 0
-    ? ((totalCost / menu.list_price) * 100).toFixed(1) + '%'
+  // 현재 입력값은 모두 부가세 제외(VAT excl.) 기준
+  const totalExVat = rows.reduce((s, r) => s + (r.portion_cost ?? 0), 0);
+  const vatAmount  = totalExVat * 0.1;
+  const totalInVat = totalExVat * 1.1;
+  // 원가율: 부가세포함 총계 ÷ 판매단가
+  const costPct = menu.list_price && totalInVat > 0
+    ? ((totalInVat / menu.list_price) * 100).toFixed(1) + '%'
     : null;
 
   return (
     <div className="px-5 py-3 border-t-2 border-blue-200">
       <div className="flex items-center justify-between mb-2.5">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-blue-800">
             📋 {menu.name_ko} / {menu.category}
           </span>
           {dirty && (
             <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">미저장</span>
           )}
-          {totalCost > 0 && (
-            <span className="text-xs text-gray-600 bg-gray-100 rounded px-2 py-0.5">
-              원가 합계: <strong>{Math.round(totalCost).toLocaleString('ko-KR')}원</strong>
-              {costPct && <span className="ml-1 text-blue-600">({costPct})</span>}
+          {totalExVat > 0 && (
+            <span className="text-xs text-gray-600 bg-gray-100 rounded px-2 py-0.5 flex items-center gap-1.5">
+              <span>VAT제외 <strong>{Math.round(totalExVat).toLocaleString('ko-KR')}원</strong></span>
+              <span className="text-gray-300">|</span>
+              <span className="text-emerald-700">VAT포함 <strong>{Math.round(totalInVat).toLocaleString('ko-KR')}원</strong></span>
+              {costPct && <span className="text-blue-600 ml-0.5">({costPct})</span>}
             </span>
           )}
         </div>
@@ -656,8 +662,14 @@ function CostGrid({ menu, rows, dirty, saving, canWrite, onUpdate, onAdd, onRemo
               <th className="border border-gray-300 px-2 py-1.5 text-left text-xs font-semibold text-gray-600">식재료명</th>
               <th className="border border-gray-300 px-2 py-1.5 text-right text-xs font-semibold text-gray-600 w-20">수량</th>
               <th className="border border-gray-300 px-2 py-1.5 text-center text-xs font-semibold text-gray-600 w-16">단위</th>
-              <th className="border border-gray-300 px-2 py-1.5 text-right text-xs font-semibold text-gray-600 w-24">단가(원)</th>
-              <th className="border border-gray-300 px-2 py-1.5 text-right text-xs font-semibold text-gray-600 w-28">부분원가(원)</th>
+              <th className="border border-gray-300 px-2 py-1.5 text-right text-xs font-semibold text-gray-600 w-24">
+                단가(원)
+                <div className="text-[9px] font-normal text-gray-400 leading-none mt-0.5">VAT 제외</div>
+              </th>
+              <th className="border border-gray-300 px-2 py-1.5 text-right text-xs font-semibold text-gray-600 w-28">
+                부분원가(원)
+                <div className="text-[9px] font-normal text-gray-400 leading-none mt-0.5">VAT 제외</div>
+              </th>
               <th className="border border-gray-300 px-2 py-1.5 text-left text-xs font-semibold text-gray-600 w-32">비고</th>
               {canWrite && <th className="border border-gray-300 w-8 bg-slate-100"></th>}
             </tr>
@@ -683,14 +695,14 @@ function CostGrid({ menu, rows, dirty, saving, canWrite, onUpdate, onAdd, onRemo
                   {/* 단위 */}
                   <CostCell canWrite={canWrite} value={row.unit} placeholder="G"
                     align="center" onChange={(v) => onUpdate(row.id, 'unit', v)} />
-                  {/* 단가 */}
+                  {/* 단가 (VAT 제외) */}
                   <CostCell canWrite={canWrite}
                     value={row.unit_price != null ? String(row.unit_price) : ''}
                     placeholder="37.8" align="right" mono
                     onChange={(v) => onUpdate(row.id, 'unit_price', v)}
                     display={row.unit_price != null ? fmtCost(row.unit_price) : ''}
                   />
-                  {/* 부분원가 */}
+                  {/* 부분원가 (VAT 제외) */}
                   <CostCell canWrite={canWrite}
                     value={row.portion_cost != null ? String(row.portion_cost) : ''}
                     placeholder="2703" align="right" mono
@@ -711,18 +723,40 @@ function CostGrid({ menu, rows, dirty, saving, canWrite, onUpdate, onAdd, onRemo
                 </tr>
               ))
             )}
-            {/* 합계 행 */}
-            {rows.length > 0 && (
-              <tr className="bg-slate-50 font-semibold">
-                <td colSpan={5} className="border border-gray-300 px-2 py-1.5 text-right text-xs text-gray-600">합계</td>
-                <td className="border border-gray-300 px-2 py-1.5 text-right text-xs tabular-nums text-gray-800">
-                  {Math.round(totalCost).toLocaleString('ko-KR')}
+            {/* 합계 / 부가세 / 총계 행 */}
+            {rows.length > 0 && (<>
+              <tr className="bg-slate-50">
+                <td colSpan={5} className="border border-gray-300 px-2 py-1.5 text-right text-xs text-gray-500">
+                  부가세 제외 합계
                 </td>
-                <td colSpan={canWrite ? 2 : 1} className="border border-gray-300 px-2 py-1.5 text-xs text-gray-400">
-                  {costPct && <span>원가율 <strong className="text-blue-600">{costPct}</strong></span>}
+                <td className="border border-gray-300 px-2 py-1.5 text-right text-xs tabular-nums font-medium text-gray-700">
+                  {Math.round(totalExVat).toLocaleString('ko-KR')}
+                </td>
+                <td colSpan={canWrite ? 2 : 1} className="border border-gray-300 px-2 py-1.5 text-xs text-gray-400"></td>
+              </tr>
+              <tr className="bg-slate-50">
+                <td colSpan={5} className="border border-gray-300 px-2 py-1.5 text-right text-xs text-gray-500">
+                  부가세 (10%)
+                </td>
+                <td className="border border-gray-300 px-2 py-1.5 text-right text-xs tabular-nums text-gray-500">
+                  {Math.round(vatAmount).toLocaleString('ko-KR')}
+                </td>
+                <td colSpan={canWrite ? 2 : 1} className="border border-gray-300 px-2 py-1.5 text-xs text-gray-400"></td>
+              </tr>
+              <tr className="bg-emerald-50 font-semibold">
+                <td colSpan={5} className="border border-gray-300 px-2 py-1.5 text-right text-xs text-emerald-800">
+                  부가세 포함 총계
+                </td>
+                <td className="border border-gray-300 px-2 py-1.5 text-right text-xs tabular-nums text-emerald-800">
+                  {Math.round(totalInVat).toLocaleString('ko-KR')}
+                </td>
+                <td colSpan={canWrite ? 2 : 1} className="border border-gray-300 px-2 py-1.5 text-xs">
+                  {costPct && (
+                    <span className="text-gray-500">원가율 <strong className="text-blue-600">{costPct}</strong></span>
+                  )}
                 </td>
               </tr>
-            )}
+            </>)}
           </tbody>
         </table>
       </div>
