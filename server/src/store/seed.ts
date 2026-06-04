@@ -3,7 +3,7 @@
 
 import { nanoid } from 'nanoid';
 import { store, persist } from './mockStore.js';
-import type { User, MiceCustomer, WeddingCustomer, Menu, MenuEventType } from '../types.js';
+import type { User, MiceCustomer, WeddingCustomer, Menu, MenuEventType, MenuDept } from '../types.js';
 
 // 실제 super admin 이메일은 .env의 SUPER_ADMIN_EMAIL로 주입한다.
 // 코드에 박힌 fallback은 generic placeholder — Public repo 노출 방지.
@@ -205,18 +205,19 @@ function seedMenus() {
 
   const t = now();
   const M: MenuEventType = 'MICE';
+  const K: MenuDept = '주방';
   const items: Omit<Menu, 'id' | 'created_at' | 'updated_at'>[] = [
     // 구 스타일 시드 — 마이그레이션이 실행 시 자동 제거되고 BOM 데이터로 교체됨
-    { name_ko: 'A set', category: '주식', event_type: M, mode: 'set', serving_size_default: 1, list_price: 35000, is_active: true, notes: '' },
-    { name_ko: 'B set', category: '주식', event_type: M, mode: 'set', serving_size_default: 1, list_price: 45000, is_active: true, notes: '' },
-    { name_ko: 'C set', category: '주식', event_type: M, mode: 'set', serving_size_default: 1, list_price: 40000, is_active: true, notes: '' },
-    { name_ko: 'D set', category: '주식', event_type: M, mode: 'set', serving_size_default: 1, list_price: 65000, is_active: true, notes: '' },
-    { name_ko: 'Korean Lunch Box', category: '주식', event_type: M, mode: 'set', serving_size_default: 1, list_price: 18000, is_active: true, notes: '' },
-    { name_ko: 'Chinese Lunch Box', category: '주식', event_type: M, mode: 'set', serving_size_default: 1, list_price: 20000, is_active: true, notes: '' },
-    { name_ko: 'Coffee Break', category: '음료', event_type: M, mode: 'coffee', serving_size_default: 1, list_price: 12000, is_active: true, notes: '' },
-    { name_ko: 'Dessert Plate(M)', category: '후식', event_type: M, mode: 'qty', serving_size_default: 1, list_price: 8000, is_active: true, notes: '' },
-    { name_ko: 'Dessert Plate(L)', category: '후식', event_type: M, mode: 'qty', serving_size_default: 1, list_price: 12000, is_active: true, notes: '' },
-    { name_ko: 'Rice Cake Plate', category: '후식', event_type: M, mode: 'qty', serving_size_default: 1, list_price: 6000, is_active: true, notes: '' },
+    { name_ko: 'A set', category: '주식', event_type: M, dept: K, mode: 'set', serving_size_default: 1, list_price: 35000, is_active: true, notes: '' },
+    { name_ko: 'B set', category: '주식', event_type: M, dept: K, mode: 'set', serving_size_default: 1, list_price: 45000, is_active: true, notes: '' },
+    { name_ko: 'C set', category: '주식', event_type: M, dept: K, mode: 'set', serving_size_default: 1, list_price: 40000, is_active: true, notes: '' },
+    { name_ko: 'D set', category: '주식', event_type: M, dept: K, mode: 'set', serving_size_default: 1, list_price: 65000, is_active: true, notes: '' },
+    { name_ko: 'Korean Lunch Box', category: '주식', event_type: M, dept: K, mode: 'set', serving_size_default: 1, list_price: 18000, is_active: true, notes: '' },
+    { name_ko: 'Chinese Lunch Box', category: '주식', event_type: M, dept: K, mode: 'set', serving_size_default: 1, list_price: 20000, is_active: true, notes: '' },
+    { name_ko: 'Coffee Break', category: '음료', event_type: M, dept: K, mode: 'coffee', serving_size_default: 1, list_price: 12000, is_active: true, notes: '' },
+    { name_ko: 'Dessert Plate(M)', category: '후식', event_type: M, dept: K, mode: 'qty', serving_size_default: 1, list_price: 8000, is_active: true, notes: '' },
+    { name_ko: 'Dessert Plate(L)', category: '후식', event_type: M, dept: K, mode: 'qty', serving_size_default: 1, list_price: 12000, is_active: true, notes: '' },
+    { name_ko: 'Rice Cake Plate', category: '후식', event_type: M, dept: K, mode: 'qty', serving_size_default: 1, list_price: 6000, is_active: true, notes: '' },
   ];
 
   for (const item of items) {

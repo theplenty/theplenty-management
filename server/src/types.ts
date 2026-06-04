@@ -490,6 +490,9 @@ export interface MenuDetail {
 // 기업(MICE) / 웨딩(WEDDING) 구분 — 행사 유형과 매칭
 export type MenuEventType = 'MICE' | 'WEDDING';
 
+// 담당 부서 — 주방(식음 요리) / 연회(음료·서비스)
+export type MenuDept = '주방' | '연회';
+
 export interface Menu {
   id: string;
   tenant_id?: string;
@@ -500,6 +503,8 @@ export interface Menu {
   category: string;
   // 기업(MICE) / 웨딩(WEDDING) 구분 — 신규 필드, 미설정 시 마이그레이션이 'MICE'로 백필
   event_type: MenuEventType;
+  // 담당 부서 — 미설정 시 마이그레이션이 '주방'으로 백필
+  dept: MenuDept;
   mode: MenuMode;
   serving_size_default: number;
   list_price: number | null; // 메뉴 판매 단가 (원가율 계산 기준)

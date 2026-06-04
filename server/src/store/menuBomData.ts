@@ -8,6 +8,7 @@ export interface CourseBom {
   name_ko: string;
   category: string;
   mode: 'set' | 'coffee' | 'qty';
+  dept?: '주방' | '연회'; // optional — 미설정 시 마이그레이션이 '주방' 기본값 사용
   ingredients: IngRow[];
 }
 

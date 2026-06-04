@@ -7,6 +7,7 @@ import {
   type Menu,
   type MenuDetail,
   type MenuEventType,
+  type MenuDept,
   type MenuMode,
   MENU_OPTIONS,
   MENU_MODE_LABEL,
@@ -20,6 +21,7 @@ type MenuForm = {
   name_ko: string;
   category: string;
   event_type: MenuEventType;
+  dept: MenuDept;
   mode: MenuMode;
   serving_size_default: string;
   list_price: string;
@@ -28,7 +30,7 @@ type MenuForm = {
 };
 
 const EMPTY_FORM: MenuForm = {
-  name_ko: '', category: '', event_type: 'MICE', mode: 'set',
+  name_ko: '', category: '', event_type: 'MICE', dept: '주방', mode: 'set',
   serving_size_default: '1', list_price: '', notes: '', is_active: true,
 };
 
@@ -39,6 +41,11 @@ const EVENT_TYPE_LABEL: Record<MenuEventType, string> = {
 const EVENT_TYPE_COLOR: Record<MenuEventType, string> = {
   MICE: 'bg-blue-100 text-blue-700',
   WEDDING: 'bg-rose-100 text-rose-700',
+};
+
+const DEPT_COLOR: Record<MenuDept, string> = {
+  주방: 'bg-orange-100 text-orange-700',
+  연회: 'bg-purple-100 text-purple-700',
 };
 
 function fmtPrice(v: number | null) {
@@ -61,6 +68,7 @@ export default function Menus() {
 
   const [search, setSearch] = useState('');
   const [evtFilter, setEvtFilter] = useState<MenuEventType | ''>('');
+  const [deptFilter, setDeptFilter] = useState<MenuDept | ''>('');
   const [nameFilter, setNameFilter] = useState('');
   const [showInactive, setShowInactive] = useState(false);
 
@@ -94,6 +102,7 @@ export default function Menus() {
   const visible = menus.filter((m) => {
     if (!showInactive && !m.is_active) return false;
     if (evtFilter && m.event_type !== evtFilter) return false;
+    if (deptFilter && (m.dept ?? '주방') !== deptFilter) return false;
     if (nameFilter && m.name_ko !== nameFilter) return false;
     if (search.trim()) {
       const kw = search.trim().toLowerCase();
@@ -102,11 +111,12 @@ export default function Menus() {
     return true;
   });
 
-  // 메뉴명별 카운트 (현재 evtFilter 기준)
+  // 메뉴명별 카운트 (현재 evtFilter + deptFilter 기준)
   const nameCount: Record<string, number> = {};
   for (const m of menus) {
     if (!showInactive && !m.is_active) continue;
     if (evtFilter && m.event_type !== evtFilter) continue;
+    if (deptFilter && (m.dept ?? '주방') !== deptFilter) continue;
     nameCount[m.name_ko] = (nameCount[m.name_ko] ?? 0) + 1;
   }
   const totalCount = Object.values(nameCount).reduce((s, v) => s + v, 0);
@@ -118,9 +128,22 @@ export default function Menus() {
     evtCount[m.event_type] = (evtCount[m.event_type] ?? 0) + 1;
   }
 
+  // dept별 카운트
+  const deptCount: Record<string, number> = {};
+  for (const m of menus) {
+    if (!showInactive && !m.is_active) continue;
+    const d = m.dept ?? '주방';
+    deptCount[d] = (deptCount[d] ?? 0) + 1;
+  }
+
   function openAdd() {
     setEditTarget(null);
-    setForm({ ...EMPTY_FORM, event_type: (evtFilter as MenuEventType) || 'MICE', name_ko: nameFilter || '' });
+    setForm({
+      ...EMPTY_FORM,
+      event_type: (evtFilter as MenuEventType) || 'MICE',
+      dept: (deptFilter as MenuDept) || '주방',
+      name_ko: nameFilter || '',
+    });
     setFormError(null); setModalOpen(true);
   }
   function openEdit(m: Menu) {
@@ -128,6 +151,7 @@ export default function Menus() {
     setForm({
       name_ko: m.name_ko, category: m.category,
       event_type: m.event_type || 'MICE',
+      dept: m.dept ?? '주방',
       mode: m.mode ?? menuModeOf(m.name_ko),
       serving_size_default: String(m.serving_size_default),
       list_price: m.list_price != null ? String(m.list_price) : '',
@@ -150,6 +174,7 @@ export default function Menus() {
     const price = form.list_price.trim();
     const payload = {
       name_ko: name, category: cat, event_type: form.event_type,
+      dept: form.dept,
       mode: form.mode,
       serving_size_default: Number(form.serving_size_default) || 1,
       list_price: price ? Number(price.replace(/,/g, '')) : null,
@@ -220,7 +245,7 @@ export default function Menus() {
     finally { setDetailSaving(false); }
   }
 
-  const colCount = canWrite ? 9 : 8;
+  const colCount = canWrite ? 10 : 9;
 
   return (
     <div className="max-w-6xl mx-auto space-y-5">
@@ -248,7 +273,8 @@ export default function Menus() {
         </div>
 
         {/* 기업/웨딩 탭 */}
-        <div className="flex gap-1.5 flex-wrap">
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <span className="text-[11px] text-gray-400 font-medium w-8">구분</span>
           {([['', '전체', menus.filter(m => showInactive || m.is_active).length],
             ['MICE', '기업 (MICE)', evtCount['MICE'] ?? 0],
             ['WEDDING', '웨딩 (WEDDING)', evtCount['WEDDING'] ?? 0]] as [string, string, number][]).map(
@@ -256,6 +282,26 @@ export default function Menus() {
               <button key={val} onClick={() => { setEvtFilter(val as MenuEventType | ''); setNameFilter(''); }}
                 className={clsx('px-3 py-1 rounded-full text-xs font-medium transition',
                   evtFilter === val ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}>
+                {label} <span className="ml-1 opacity-70">{count}</span>
+              </button>
+            )
+          )}
+        </div>
+
+        {/* 부서 탭 */}
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <span className="text-[11px] text-gray-400 font-medium w-8">부서</span>
+          {([['', '전체', menus.filter(m => showInactive || m.is_active).length],
+            ['주방', '주방', deptCount['주방'] ?? 0],
+            ['연회', '연회', deptCount['연회'] ?? 0]] as [string, string, number][]).map(
+            ([val, label, count]) => (
+              <button key={val} onClick={() => setDeptFilter(val as MenuDept | '')}
+                className={clsx('px-3 py-1 rounded-full text-xs font-medium transition',
+                  deptFilter === val
+                    ? val === '주방' ? 'bg-orange-500 text-white'
+                      : val === '연회' ? 'bg-purple-600 text-white'
+                      : 'bg-gray-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}>
                 {label} <span className="ml-1 opacity-70">{count}</span>
               </button>
             )
@@ -297,6 +343,7 @@ export default function Menus() {
               <tr>
                 <th className="px-3 py-2.5 text-left font-semibold text-gray-600 w-8">#</th>
                 <th className="px-3 py-2.5 text-left font-semibold text-gray-600 w-20">구분</th>
+                <th className="px-3 py-2.5 text-left font-semibold text-gray-600 w-16">부서</th>
                 <th className="px-3 py-2.5 text-left font-semibold text-gray-600 w-40">메뉴명</th>
                 <th className="px-3 py-2.5 text-left font-semibold text-gray-600">코스 카테고리</th>
                 <th className="px-3 py-2.5 text-left font-semibold text-gray-600 w-20">입력방식</th>
@@ -314,6 +361,11 @@ export default function Menus() {
                     <td className="px-3 py-2">
                       <span className={clsx('text-[11px] px-1.5 py-0.5 rounded font-medium', EVENT_TYPE_COLOR[m.event_type || 'MICE'])}>
                         {m.event_type || 'MICE'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={clsx('text-[11px] px-1.5 py-0.5 rounded font-medium', DEPT_COLOR[m.dept ?? '주방'])}>
+                        {m.dept ?? '주방'}
                       </span>
                     </td>
                     <td className="px-3 py-2">
@@ -415,6 +467,26 @@ export default function Menus() {
                       className={clsx('flex-1 py-2 rounded border text-sm font-medium transition',
                         form.event_type === et ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50')}>
                       {EVENT_TYPE_LABEL[et]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 부서 (주방/연회) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  담당 부서 <span className="text-red-500">*</span>
+                </label>
+                <div className="flex gap-2">
+                  {(['주방', '연회'] as MenuDept[]).map((d) => (
+                    <button key={d} type="button"
+                      onClick={() => setForm((f) => ({ ...f, dept: d }))}
+                      className={clsx('flex-1 py-2 rounded border text-sm font-medium transition',
+                        form.dept === d
+                          ? d === '주방' ? 'border-orange-500 bg-orange-50 text-orange-700'
+                            : 'border-purple-500 bg-purple-50 text-purple-700'
+                          : 'border-gray-300 text-gray-600 hover:bg-gray-50')}>
+                      {d}
                     </button>
                   ))}
                 </div>

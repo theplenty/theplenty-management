@@ -463,7 +463,21 @@ function migrateMenuBOM() {
     console.log(`[migrate] menu details ${detailBackfilledIds.size}건 → 원가 필드 백필`);
   }
 
-  // 4) BOM 데이터 등록 (미존재 항목만) — persistDoc 로 Firestore에 즉시 기록
+  // 4) dept 필드 백필 — 미설정 항목 전체를 '주방' 으로
+  const deptBackfilledIds: string[] = [];
+  for (const m of store.menus) {
+    const raw = m as unknown as Record<string, unknown>;
+    if (raw.dept === undefined || raw.dept === null || raw.dept === '') {
+      raw.dept = '주방';
+      deptBackfilledIds.push(m.id);
+    }
+  }
+  if (deptBackfilledIds.length > 0) {
+    for (const id of deptBackfilledIds) persistDoc('menus', id);
+    console.log(`[migrate] menus ${deptBackfilledIds.length}건 → dept 백필 (주방)`);
+  }
+
+  // 5) BOM 데이터 등록 (미존재 항목만) — persistDoc 로 Firestore에 즉시 기록
   const t = new Date().toISOString();
   const newIds: string[] = [];
   for (const course of MICE_BOM) {
@@ -489,6 +503,7 @@ function migrateMenuBOM() {
       name_ko: course.name_ko,
       category: course.category,
       event_type: 'MICE',
+      dept: course.dept ?? '주방',
       mode: course.mode,
       serving_size_default: 1,
       list_price: null,
@@ -535,6 +550,7 @@ function migrateWeddingMenuBOM() {
       name_ko: course.name_ko,
       category: course.category,
       event_type: 'WEDDING',
+      dept: course.dept ?? '주방',
       mode: course.mode,
       serving_size_default: 1,
       list_price: null,

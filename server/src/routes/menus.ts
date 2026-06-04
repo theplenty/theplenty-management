@@ -2,13 +2,14 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { store, persistDoc } from '../store/mockStore.js';
 import { requireActiveRole, requireRoles } from '../middleware/auth.js';
-import type { MenuDetail, MenuEventType, MenuMode } from '../types.js';
+import type { MenuDetail, MenuEventType, MenuMode, MenuDept } from '../types.js';
 
 const router = Router();
 
 const WRITE_ROLES = ['admin', 'sales_mice', 'sales_wedding'] as const;
 const VALID_EVENT_TYPES: MenuEventType[] = ['MICE', 'WEDDING'];
 const VALID_MODES: MenuMode[] = ['set', 'coffee', 'qty'];
+const VALID_DEPTS: MenuDept[] = ['주방', '연회'];
 
 // ── GET /api/menus ────────────────────────────────────────────────────
 // query: q, name, event_type, active
@@ -51,12 +52,13 @@ router.get('/', requireActiveRole, (req, res) => {
 // ── POST /api/menus ───────────────────────────────────────────────────
 router.post('/', requireRoles(...WRITE_ROLES), (req, res) => {
   const {
-    name_ko, category, event_type, mode,
+    name_ko, category, event_type, dept, mode,
     serving_size_default, list_price, notes, is_active, details,
   } = req.body as {
     name_ko?: string;
     category?: string;
     event_type?: MenuEventType;
+    dept?: MenuDept;
     mode?: MenuMode;
     serving_size_default?: number;
     list_price?: number | null;
@@ -72,6 +74,7 @@ router.post('/', requireRoles(...WRITE_ROLES), (req, res) => {
   }
 
   const resolvedMode: MenuMode = mode && VALID_MODES.includes(mode) ? mode : 'set';
+  const resolvedDept: MenuDept = dept && VALID_DEPTS.includes(dept) ? dept : '주방';
   const trimmedName = name_ko.trim();
   const trimmedCat = category.trim();
 
@@ -88,6 +91,7 @@ router.post('/', requireRoles(...WRITE_ROLES), (req, res) => {
     name_ko: trimmedName,
     category: trimmedCat,
     event_type,
+    dept: resolvedDept,
     mode: resolvedMode,
     serving_size_default: Number(serving_size_default) || 1,
     list_price: list_price != null ? Number(list_price) : null,
@@ -109,12 +113,13 @@ router.patch('/:id', requireRoles(...WRITE_ROLES), (req, res) => {
   if (!menu) return res.status(404).json({ error: 'not_found' });
 
   const {
-    name_ko, category, event_type, mode,
+    name_ko, category, event_type, dept, mode,
     serving_size_default, list_price, notes, is_active, details,
   } = req.body as {
     name_ko?: string;
     category?: string;
     event_type?: MenuEventType;
+    dept?: MenuDept;
     mode?: MenuMode;
     serving_size_default?: number;
     list_price?: number | null;
@@ -143,6 +148,7 @@ router.patch('/:id', requireRoles(...WRITE_ROLES), (req, res) => {
   if (name_ko !== undefined) menu.name_ko = newName;
   if (category !== undefined) menu.category = newCat;
   if (event_type !== undefined && VALID_EVENT_TYPES.includes(event_type)) menu.event_type = event_type;
+  if (dept !== undefined && VALID_DEPTS.includes(dept)) menu.dept = dept;
   if (mode !== undefined && VALID_MODES.includes(mode)) menu.mode = mode;
   if (serving_size_default !== undefined) menu.serving_size_default = Number(serving_size_default) || 1;
   if (list_price !== undefined) menu.list_price = list_price != null ? Number(list_price) : null;
