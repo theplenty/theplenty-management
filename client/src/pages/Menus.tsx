@@ -34,6 +34,8 @@ const EMPTY_FORM: MenuForm = {
   serving_size_default: '1', list_price: '', notes: '', is_active: true,
 };
 
+const PAGE_SIZE = 20;
+
 const EVENT_TYPE_LABEL: Record<MenuEventType, string> = {
   MICE: '기업 (MICE)',
   WEDDING: '웨딩 (WEDDING)',
@@ -84,6 +86,7 @@ export default function Menus() {
   const [detailDirty, setDetailDirty] = useState(false);
 
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [page, setPage] = useState(1);
 
   async function load() {
     setLoading(true); setError(null);
@@ -94,6 +97,8 @@ export default function Menus() {
     finally { setLoading(false); }
   }
   useEffect(() => { void load(); }, []);
+  // 필터 변경 시 페이지 1로 리셋
+  useEffect(() => { setPage(1); }, [search, evtFilter, deptFilter, nameFilter, showInactive]);
 
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok }); setTimeout(() => setToast(null), 3000);
@@ -110,6 +115,48 @@ export default function Menus() {
     }
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const paged = visible.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  function exportToExcel() {
+    const headers = [
+      '#', '구분', '부서', '메뉴명', '코스 카테고리', '입력방식',
+      '판매단가(VAT제외)', 'VAT제외원가합계', 'VAT포함원가합계', '원가율(%)', '상태',
+    ];
+    const dataRows = visible.map((m, i) => {
+      const totalExVat = (m.details ?? []).reduce((s, d) => s + (d.portion_cost ?? 0), 0);
+      const totalInVat = totalExVat * 1.1;
+      const costPct = m.list_price && totalInVat > 0
+        ? ((totalInVat / m.list_price) * 100).toFixed(1) : '';
+      const modeLabel = m.mode === 'set' ? 'GTD/EXP' : m.mode === 'coffee' ? '커피' : '수량';
+      return [
+        i + 1,
+        m.event_type || 'MICE',
+        m.dept ?? '주방',
+        m.name_ko,
+        m.category,
+        modeLabel,
+        m.list_price ?? '',
+        Math.round(totalExVat) || '',
+        Math.round(totalInVat) || '',
+        costPct,
+        m.is_active ? '활성' : '비활성',
+      ];
+    });
+    const escape = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = '﻿' + [headers, ...dataRows].map((r) => r.map(escape).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const label = evtFilter ? `_${evtFilter}` : '';
+    const dept = deptFilter ? `_${deptFilter}` : '';
+    a.download = `메뉴마스터${label}${dept}_${today}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   // 메뉴명별 카운트 (현재 evtFilter + deptFilter 기준)
   const nameCount: Record<string, number> = {};
@@ -255,9 +302,15 @@ export default function Menus() {
           <h1 className="text-xl font-bold text-gray-900">메뉴 마스터</h1>
           <p className="text-sm text-gray-500 mt-0.5">메뉴별 코스 구성 및 BOM 원가 데이터</p>
         </div>
-        {canWrite && (
-          <button onClick={openAdd} className="btn-primary shrink-0">+ 코스 추가</button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={exportToExcel} disabled={visible.length === 0}
+            className="text-sm px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition flex items-center gap-1.5">
+            ⬇ 엑셀 다운로드
+          </button>
+          {canWrite && (
+            <button onClick={openAdd} className="btn-primary">+ 코스 추가</button>
+          )}
+        </div>
       </div>
 
       {/* 필터 바 */}
@@ -354,10 +407,10 @@ export default function Menus() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {visible.map((m, idx) => (
+              {paged.map((m, idx) => (
                 <Fragment key={m.id}>
                   <tr className={clsx('transition hover:bg-gray-50', !m.is_active && 'opacity-50')}>
-                    <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
+                    <td className="px-3 py-2 text-gray-400 text-xs">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="px-3 py-2">
                       <span className={clsx('text-[11px] px-1.5 py-0.5 rounded font-medium', EVENT_TYPE_COLOR[m.event_type || 'MICE'])}>
                         {m.event_type || 'MICE'}
@@ -438,8 +491,26 @@ export default function Menus() {
               ))}
             </tbody>
           </table>
-          <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-500 text-right">
-            {visible.length}건 표시 / 전체 {menus.length}건
+          <div className="px-4 py-2 border-t bg-gray-50 flex items-center justify-between gap-3">
+            <span className="text-xs text-gray-500">
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, visible.length)} /
+              {' '}{visible.length}건 (전체 {menus.length}건)
+            </span>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+                  className="px-2 py-1 rounded border text-xs text-gray-600 border-gray-300 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition">
+                  ←
+                </button>
+                <span className="text-xs text-gray-600 px-2 tabular-nums">
+                  {page} / {totalPages}
+                </span>
+                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                  className="px-2 py-1 rounded border text-xs text-gray-600 border-gray-300 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition">
+                  →
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
