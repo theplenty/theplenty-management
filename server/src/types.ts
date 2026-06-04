@@ -242,7 +242,8 @@ export type MenuName =
   | 'Coffee Break'
   | 'Dessert Plate(M)'
   | 'Dessert Plate(L)'
-  | 'Rice Cake Plate';
+  | 'Rice Cake Plate'
+  | '웨딩국수';
 
 export interface FoodItem {
   id: string;

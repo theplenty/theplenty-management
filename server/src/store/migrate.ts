@@ -13,6 +13,7 @@ import type {
   WeddingEventInquiry,
 } from '../types.js';
 import { MICE_BOM } from './menuBomData.js';
+import { WEDDING_BOM } from './menuWeddingBomData.js';
 
 const MICE_LEGACY_KEYS = [
   'progress_status',
@@ -506,6 +507,52 @@ function migrateMenuBOM() {
   }
 }
 
+// ── 웨딩(WEDDING) 메뉴 BOM 일괄 등록 — 2026년 4월 기준 ───────────────
+// 멱등: 이미 (name_ko + category + event_type='WEDDING') 조합이 존재하면 스킵.
+function migrateWeddingMenuBOM() {
+  const t = new Date().toISOString();
+  const newIds: string[] = [];
+  for (const course of WEDDING_BOM) {
+    const exists = store.menus.find(
+      (m) => m.name_ko === course.name_ko && m.category === course.category && m.event_type === 'WEDDING'
+    );
+    if (exists) continue;
+
+    const id = nanoid(10);
+    const details = course.ingredients.map(([name, qty, unit, unitPrice, portionCost]) => ({
+      id: nanoid(10),
+      dish_name: name as string,
+      quantity: String(qty),
+      unit: unit as string,
+      unit_price: unitPrice as number,
+      portion_cost: portionCost as number,
+      notes: '',
+    }));
+
+    store.menus.push({
+      id,
+      tenant_id: DEFAULT_TENANT_ID,
+      name_ko: course.name_ko,
+      category: course.category,
+      event_type: 'WEDDING',
+      mode: course.mode,
+      serving_size_default: 1,
+      list_price: null,
+      is_active: true,
+      notes: '',
+      details,
+      created_at: t,
+      updated_at: t,
+    });
+    newIds.push(id);
+  }
+
+  if (newIds.length > 0) {
+    for (const id of newIds) persistDoc('menus', id);
+    console.log(`[migrate] WEDDING BOM 메뉴 ${newIds.length}건 등록 완료 (웨딩 2026년 4월 기준)`);
+  }
+}
+
 export function runMigrations() {
   migrateTenants();
   migrateMiceCustomers();
@@ -515,4 +562,5 @@ export function runMigrations() {
   migrateFoodItems();
   migrateMenus();
   migrateMenuBOM();
+  migrateWeddingMenuBOM();
 }

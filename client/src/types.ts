@@ -368,7 +368,8 @@ export type MenuName =
   | 'Coffee Break'
   | 'Dessert Plate(M)'
   | 'Dessert Plate(L)'
-  | 'Rice Cake Plate';
+  | 'Rice Cake Plate'
+  | '웨딩국수';
 
 export const MENU_OPTIONS: MenuName[] = [
   'A set',
@@ -381,6 +382,7 @@ export const MENU_OPTIONS: MenuName[] = [
   'Dessert Plate(M)',
   'Dessert Plate(L)',
   'Rice Cake Plate',
+  '웨딩국수',
 ];
 
 // menuModeOf — 메뉴 이름으로 입력 모드 결정.
@@ -391,6 +393,7 @@ export function menuModeOf(name: string): MenuMode {
     name === 'Dessert Plate(M)' ||
     name === 'Dessert Plate(L)' ||
     name === 'Rice Cake Plate' ||
+    name === '웨딩국수' ||
     name.includes('Dessert') ||
     name.includes('디저트')
   )
