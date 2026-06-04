@@ -53,7 +53,7 @@ router.get('/', requireActiveRole, (req, res) => {
 router.post('/', requireRoles(...WRITE_ROLES), (req, res) => {
   const {
     name_ko, category, event_type, dept, mode,
-    serving_size_default, list_price, notes, is_active, details,
+    serving_size_default, list_price, notes, is_active, details, invoice_labels,
   } = req.body as {
     name_ko?: string;
     category?: string;
@@ -65,6 +65,7 @@ router.post('/', requireRoles(...WRITE_ROLES), (req, res) => {
     notes?: string;
     is_active?: boolean;
     details?: MenuDetail[];
+    invoice_labels?: string[];
   };
 
   if (!name_ko?.trim()) return res.status(400).json({ error: 'name_required' });
@@ -84,6 +85,9 @@ router.post('/', requireRoles(...WRITE_ROLES), (req, res) => {
   if (dup) return res.status(409).json({ error: 'duplicate_entry', id: dup.id });
 
   const resolvedDetails: MenuDetail[] = Array.isArray(details) ? details : [];
+  const resolvedLabels: string[] = Array.isArray(invoice_labels)
+    ? invoice_labels.map((l) => l.trim()).filter(Boolean)
+    : [];
   const now = new Date().toISOString();
   const menu = {
     id: nanoid(10),
@@ -97,6 +101,7 @@ router.post('/', requireRoles(...WRITE_ROLES), (req, res) => {
     list_price: list_price != null ? Number(list_price) : null,
     is_active: is_active !== false,
     notes: notes?.trim() ?? '',
+    invoice_labels: resolvedLabels,
     details: resolvedDetails,
     created_at: now,
     updated_at: now,
@@ -114,7 +119,7 @@ router.patch('/:id', requireRoles(...WRITE_ROLES), (req, res) => {
 
   const {
     name_ko, category, event_type, dept, mode,
-    serving_size_default, list_price, notes, is_active, details,
+    serving_size_default, list_price, notes, is_active, details, invoice_labels,
   } = req.body as {
     name_ko?: string;
     category?: string;
@@ -126,6 +131,7 @@ router.patch('/:id', requireRoles(...WRITE_ROLES), (req, res) => {
     notes?: string;
     is_active?: boolean;
     details?: MenuDetail[];
+    invoice_labels?: string[];
   };
 
   const newName = name_ko !== undefined ? name_ko.trim() : menu.name_ko;
@@ -155,6 +161,11 @@ router.patch('/:id', requireRoles(...WRITE_ROLES), (req, res) => {
   if (notes !== undefined) menu.notes = notes.trim();
   if (is_active !== undefined) menu.is_active = Boolean(is_active);
   if (details !== undefined) menu.details = Array.isArray(details) ? details : [];
+  if (invoice_labels !== undefined) {
+    menu.invoice_labels = Array.isArray(invoice_labels)
+      ? invoice_labels.map((l) => l.trim()).filter(Boolean)
+      : [];
+  }
 
   menu.updated_at = new Date().toISOString();
   persistDoc('menus', menu.id);

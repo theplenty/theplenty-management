@@ -510,6 +510,9 @@ export interface Menu {
   list_price: number | null; // 메뉴 판매 단가 (원가율 계산 기준)
   is_active: boolean;
   notes: string;
+  // 인보이스 표기명 alias — 실제 인보이스 Description과 name_ko가 다를 때 매핑용
+  // 예: name_ko='A set', invoice_labels=['Dinner -Western Set A', 'Western Set A']
+  invoice_labels?: string[];
   // BOM: 코스별 식자재 원가 구성
   details?: MenuDetail[];
   created_at: string;

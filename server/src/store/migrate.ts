@@ -478,7 +478,21 @@ function migrateMenuBOM() {
     console.log(`[migrate] menus ${deptBackfilledIds.length}건 → dept 백필 (주방)`);
   }
 
-  // 5) BOM 데이터 등록 (미존재 항목만) — persistDoc 로 Firestore에 즉시 기록
+  // 5) invoice_labels 백필 — 미설정 항목에 빈 배열 부여
+  const labelBackfilledIds: string[] = [];
+  for (const m of store.menus) {
+    const raw = m as unknown as Record<string, unknown>;
+    if (!Array.isArray(raw.invoice_labels)) {
+      raw.invoice_labels = [];
+      labelBackfilledIds.push(m.id);
+    }
+  }
+  if (labelBackfilledIds.length > 0) {
+    for (const id of labelBackfilledIds) persistDoc('menus', id);
+    console.log(`[migrate] menus ${labelBackfilledIds.length}건 → invoice_labels 백필`);
+  }
+
+  // 6) BOM 데이터 등록 (미존재 항목만) — persistDoc 로 Firestore에 즉시 기록
   const t = new Date().toISOString();
   const newIds: string[] = [];
   for (const course of MICE_BOM) {

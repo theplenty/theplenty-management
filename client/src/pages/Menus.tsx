@@ -27,11 +27,13 @@ type MenuForm = {
   list_price: string;
   notes: string;
   is_active: boolean;
+  invoice_labels: string[];
 };
 
 const EMPTY_FORM: MenuForm = {
   name_ko: '', category: '', event_type: 'MICE', dept: '주방', mode: 'set',
   serving_size_default: '1', list_price: '', notes: '', is_active: true,
+  invoice_labels: [],
 };
 
 const PAGE_SIZE = 20;
@@ -79,6 +81,7 @@ export default function Menus() {
   const [form, setForm] = useState<MenuForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [labelInput, setLabelInput] = useState('');
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailRows, setDetailRows] = useState<MenuDetail[]>([]);
@@ -203,10 +206,11 @@ export default function Menus() {
       serving_size_default: String(m.serving_size_default),
       list_price: m.list_price != null ? String(m.list_price) : '',
       notes: m.notes || '', is_active: m.is_active,
+      invoice_labels: m.invoice_labels ?? [],
     });
     setFormError(null); setModalOpen(true);
   }
-  function closeModal() { setModalOpen(false); setEditTarget(null); setFormError(null); }
+  function closeModal() { setModalOpen(false); setEditTarget(null); setFormError(null); setLabelInput(''); }
 
   async function handleSave() {
     const name = form.name_ko.trim();
@@ -226,6 +230,7 @@ export default function Menus() {
       serving_size_default: Number(form.serving_size_default) || 1,
       list_price: price ? Number(price.replace(/,/g, '')) : null,
       notes: form.notes.trim(), is_active: form.is_active,
+      invoice_labels: form.invoice_labels,
     };
     setSaving(true); setFormError(null);
     try {
@@ -422,10 +427,18 @@ export default function Menus() {
                       </span>
                     </td>
                     <td className="px-3 py-2">
-                      <span className={clsx('font-medium text-gray-900 text-sm', !m.is_active && 'line-through text-gray-400')}>
-                        {m.name_ko}
-                      </span>
-                      {isAdmin && m.notes && <span className="ml-1 text-xs text-amber-600 cursor-default" title={m.notes}>📝</span>}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={clsx('font-medium text-gray-900 text-sm', !m.is_active && 'line-through text-gray-400')}>
+                          {m.name_ko}
+                        </span>
+                        {(m.invoice_labels?.length ?? 0) > 0 && (
+                          <span className="text-[10px] bg-indigo-50 text-indigo-500 border border-indigo-200 rounded px-1.5 py-0.5 cursor-default"
+                            title={m.invoice_labels!.join('\n')}>
+                            alias {m.invoice_labels!.length}
+                          </span>
+                        )}
+                        {isAdmin && m.notes && <span className="text-xs text-amber-600 cursor-default" title={m.notes}>📝</span>}
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
@@ -634,6 +647,62 @@ export default function Menus() {
                     className="input-field w-full resize-none" />
                 </div>
               )}
+
+              {/* 인보이스 표기명 alias */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  인보이스 표기명
+                  <span className="ml-1 text-xs font-normal text-gray-400">(인보이스 Description과 다를 때 등록)</span>
+                </label>
+                {/* 기존 태그 목록 */}
+                {form.invoice_labels.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {form.invoice_labels.map((label) => (
+                      <span key={label}
+                        className="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full px-2.5 py-0.5">
+                        {label}
+                        <button type="button"
+                          onClick={() => setForm((f) => ({ ...f, invoice_labels: f.invoice_labels.filter((l) => l !== label) }))}
+                          className="text-indigo-400 hover:text-red-500 transition text-xs leading-none">
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* 추가 입력 */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={labelInput}
+                    onChange={(e) => setLabelInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const v = labelInput.trim();
+                        if (v && !form.invoice_labels.includes(v)) {
+                          setForm((f) => ({ ...f, invoice_labels: [...f.invoice_labels, v] }));
+                        }
+                        setLabelInput('');
+                      }
+                    }}
+                    placeholder="예: Dinner -Western Set A"
+                    className="input-field flex-1 text-sm"
+                  />
+                  <button type="button"
+                    onClick={() => {
+                      const v = labelInput.trim();
+                      if (v && !form.invoice_labels.includes(v)) {
+                        setForm((f) => ({ ...f, invoice_labels: [...f.invoice_labels, v] }));
+                      }
+                      setLabelInput('');
+                    }}
+                    className="px-3 py-1.5 text-xs rounded border border-indigo-300 text-indigo-600 hover:bg-indigo-50 transition shrink-0">
+                    + 추가
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">Enter 또는 + 추가 버튼으로 등록. 인보이스 파싱 시 이 표기명으로도 메뉴를 찾습니다.</p>
+              </div>
 
               {editTarget && (
                 <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
