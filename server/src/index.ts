@@ -32,9 +32,11 @@ import activityLogRouter from './routes/activityLog.js';
 import holidaysRouter from './routes/holidays.js';
 import collaborationRequestsRouter from './routes/collaborationRequests.js';
 import summaryShareRouter from './routes/summaryShare.js';
+import menusRouter from './routes/menus.js';
 import { attachUser, attachTenant } from './middleware/auth.js';
 import { runSeed } from './store/seed.js';
 import { runMigrations } from './store/migrate.js';
+import { ensureHydrated } from './store/mockStore.js';
 
 export const app = express();
 
@@ -68,6 +70,7 @@ app.use('/api/admin/activity-log', activityLogRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/collaborations', collaborationRequestsRouter);
 app.use('/api/calendar-summary', summaryShareRouter);
+app.use('/api/menus', menusRouter);
 // 한국 공휴일 (구글 공식 캘린더 프록시) — 공개 정보, 별도 권한 체크 없음
 app.use('/api/holidays', holidaysRouter);
 
@@ -81,8 +84,20 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   res.status(500).json({ error: 'server_error' });
 });
 
-runMigrations();
-runSeed();
+// Firestore 모드: hydrate 완료 후 마이그레이션/시드 실행
+// JSON 모드: 파일이 이미 로드된 상태이므로 즉시 실행
+const _backend = (process.env.STORE_BACKEND || 'json').toLowerCase();
+if (_backend === 'firestore') {
+  ensureHydrated()
+    .then(() => {
+      runMigrations();
+      runSeed();
+    })
+    .catch((e: unknown) => console.error('[init] hydrate 후 초기화 실패:', e));
+} else {
+  runMigrations();
+  runSeed();
+}
 
 // Cloud Functions v2 export — Firebase Hosting의 /api/** rewrite가 이 함수로 라우팅됨.
 // 로컬 dev에서는 src/server.ts가 app.listen()을 호출.

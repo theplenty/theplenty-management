@@ -1,7 +1,7 @@
 // 기존 데이터 파일을 신규 스키마로 한 번만 변환한다. 멱등.
 
 import { nanoid } from 'nanoid';
-import { store, persist, persistDoc } from './mockStore.js';
+import { store, persist, persistDoc, persistDelete } from './mockStore.js';
 import { DEFAULT_TENANT_ID } from '../types.js';
 import type {
   MiceContact,
@@ -418,34 +418,34 @@ function migrateMenus() {
 // ── 메뉴 BOM 일괄 등록 (기업/MICE — 2026년 4월 기준) ─────────────────
 // 멱등: 이미 (name_ko + category + event_type='MICE') 조합이 존재하면 스킵.
 // 구 스타일 카테고리(전식/주식/후식/음료/주류/패키지)로 된 메뉴는 BOM 등록 전 제거.
+// 주의: persist()는 Firestore 모드에서 no-op. 각 doc 단위로 persistDoc/persistDelete 사용.
 function migrateMenuBOM() {
   const OLD_CATS = new Set(['전식', '주식', '후식', '음료', '주류', '패키지']);
 
-  // 1) 구 스타일 카테고리 제거
-  const before = store.menus.length;
-  store.menus = store.menus.filter((m) => !OLD_CATS.has(m.category));
-  const removed = before - store.menus.length;
-  if (removed > 0) {
-    persist('menus');
-    console.log(`[migrate] 구 카테고리 메뉴 ${removed}건 제거`);
+  // 1) 구 스타일 카테고리 제거 — persistDelete 로 Firestore에도 반영
+  const toRemove = store.menus.filter((m) => OLD_CATS.has(m.category));
+  if (toRemove.length > 0) {
+    store.menus = store.menus.filter((m) => !OLD_CATS.has(m.category));
+    for (const m of toRemove) persistDelete('menus', m.id);
+    console.log(`[migrate] 구 카테고리 메뉴 ${toRemove.length}건 제거`);
   }
 
-  // 2) 기존 event_type 필드 백필 (없는 것은 'MICE' 로)
-  let backfilled = 0;
+  // 2) 기존 event_type 필드 백필 (없는 것은 'MICE' 로) — persistDoc 로 Firestore 반영
+  const backfilledIds: string[] = [];
   for (const m of store.menus) {
     const raw = m as unknown as Record<string, unknown>;
     if (!raw.event_type) {
       raw.event_type = 'MICE';
-      backfilled++;
+      backfilledIds.push(m.id);
     }
   }
-  if (backfilled > 0) {
-    persist('menus');
-    console.log(`[migrate] menus ${backfilled}건 → event_type 백필`);
+  if (backfilledIds.length > 0) {
+    for (const id of backfilledIds) persistDoc('menus', id);
+    console.log(`[migrate] menus ${backfilledIds.length}건 → event_type 백필`);
   }
 
   // 3) MenuDetail 확장 필드 백필 (unit/unit_price/portion_cost 없으면 기본값)
-  let detailBackfilled = 0;
+  const detailBackfilledIds = new Set<string>();
   for (const m of store.menus) {
     if (!Array.isArray(m.details)) continue;
     for (const d of m.details) {
@@ -454,23 +454,24 @@ function migrateMenuBOM() {
       if (raw.unit === undefined) { raw.unit = ''; changed = true; }
       if (raw.unit_price === undefined) { raw.unit_price = null; changed = true; }
       if (raw.portion_cost === undefined) { raw.portion_cost = null; changed = true; }
-      if (changed) detailBackfilled++;
+      if (changed) detailBackfilledIds.add(m.id);
     }
   }
-  if (detailBackfilled > 0) {
-    persist('menus');
-    console.log(`[migrate] menu details ${detailBackfilled}건 → 원가 필드 백필`);
+  if (detailBackfilledIds.size > 0) {
+    for (const id of detailBackfilledIds) persistDoc('menus', id);
+    console.log(`[migrate] menu details ${detailBackfilledIds.size}건 → 원가 필드 백필`);
   }
 
-  // 4) BOM 데이터 등록 (미존재 항목만)
+  // 4) BOM 데이터 등록 (미존재 항목만) — persistDoc 로 Firestore에 즉시 기록
   const t = new Date().toISOString();
-  let created = 0;
+  const newIds: string[] = [];
   for (const course of MICE_BOM) {
     const exists = store.menus.find(
       (m) => m.name_ko === course.name_ko && m.category === course.category && m.event_type === 'MICE'
     );
     if (exists) continue;
 
+    const id = nanoid(10);
     const details = course.ingredients.map(([name, qty, unit, unitPrice, portionCost]) => ({
       id: nanoid(10),
       dish_name: name as string,
@@ -482,7 +483,7 @@ function migrateMenuBOM() {
     }));
 
     store.menus.push({
-      id: nanoid(10),
+      id,
       tenant_id: DEFAULT_TENANT_ID,
       name_ko: course.name_ko,
       category: course.category,
@@ -496,12 +497,12 @@ function migrateMenuBOM() {
       created_at: t,
       updated_at: t,
     });
-    created++;
+    newIds.push(id);
   }
 
-  if (created > 0) {
-    persist('menus');
-    console.log(`[migrate] MICE BOM 메뉴 ${created}건 등록 완료 (기업 2026년 4월 기준)`);
+  if (newIds.length > 0) {
+    for (const id of newIds) persistDoc('menus', id);
+    console.log(`[migrate] MICE BOM 메뉴 ${newIds.length}건 등록 완료 (기업 2026년 4월 기준)`);
   }
 }
 
