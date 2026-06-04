@@ -14,6 +14,7 @@ import type {
 } from '../types.js';
 import { MICE_BOM } from './menuBomData.js';
 import { WEDDING_BOM } from './menuWeddingBomData.js';
+import { MICE_BEV_BOM, WEDDING_BEV_BOM } from './menuBanquetBomData.js';
 
 const MICE_LEGACY_KEYS = [
   'progress_status',
@@ -506,9 +507,9 @@ function migrateMenuBOM() {
       dept: course.dept ?? '주방',
       mode: course.mode,
       serving_size_default: 1,
-      list_price: null,
+      list_price: course.list_price ?? null,
       is_active: true,
-      notes: '',
+      notes: course.notes ?? '',
       details,
       created_at: t,
       updated_at: t,
@@ -553,9 +554,9 @@ function migrateWeddingMenuBOM() {
       dept: course.dept ?? '주방',
       mode: course.mode,
       serving_size_default: 1,
-      list_price: null,
+      list_price: course.list_price ?? null,
       is_active: true,
-      notes: '',
+      notes: course.notes ?? '',
       details,
       created_at: t,
       updated_at: t,
@@ -569,6 +570,62 @@ function migrateWeddingMenuBOM() {
   }
 }
 
+// ── 연회팀 음료 BOM 일괄 등록 (MICE + WEDDING) ─────────────────────────
+// 멱등: 이미 (name_ko + category + event_type) 조합이 존재하면 스킵.
+// 원본 금액은 VAT 포함 → ÷1.1 하여 저장 (UI에서 ×1.1로 VAT 포함 합계 표시).
+function migrateBanquetBevBOM() {
+  const t = new Date().toISOString();
+  const newIds: string[] = [];
+
+  const bevGroups: Array<{ bom: typeof MICE_BEV_BOM; event_type: 'MICE' | 'WEDDING' }> = [
+    { bom: MICE_BEV_BOM, event_type: 'MICE' },
+    { bom: WEDDING_BEV_BOM, event_type: 'WEDDING' },
+  ];
+
+  for (const { bom, event_type } of bevGroups) {
+    for (const course of bom) {
+      const exists = store.menus.find(
+        (m) => m.name_ko === course.name_ko && m.category === course.category && m.event_type === event_type
+      );
+      if (exists) continue;
+
+      const id = nanoid(10);
+      const details = course.ingredients.map(([name, qty, unit, unitPrice, portionCost]) => ({
+        id: nanoid(10),
+        dish_name: name as string,
+        quantity: String(qty),
+        unit: unit as string,
+        unit_price: unitPrice as number,
+        portion_cost: portionCost as number,
+        notes: '',
+      }));
+
+      store.menus.push({
+        id,
+        tenant_id: DEFAULT_TENANT_ID,
+        name_ko: course.name_ko,
+        category: course.category,
+        event_type,
+        dept: course.dept ?? '연회',
+        mode: course.mode,
+        serving_size_default: 1,
+        list_price: course.list_price ?? null,
+        is_active: true,
+        notes: course.notes ?? '',
+        details,
+        created_at: t,
+        updated_at: t,
+      });
+      newIds.push(id);
+    }
+  }
+
+  if (newIds.length > 0) {
+    for (const id of newIds) persistDoc('menus', id);
+    console.log(`[migrate] 연회 음료 BOM ${newIds.length}건 등록 완료 (MICE ${MICE_BEV_BOM.length}종 + WEDDING ${WEDDING_BEV_BOM.length}종)`);
+  }
+}
+
 export function runMigrations() {
   migrateTenants();
   migrateMiceCustomers();
@@ -579,4 +636,5 @@ export function runMigrations() {
   migrateMenus();
   migrateMenuBOM();
   migrateWeddingMenuBOM();
+  migrateBanquetBevBOM();
 }

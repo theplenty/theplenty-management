@@ -9,6 +9,8 @@ export interface CourseBom {
   category: string;
   mode: 'set' | 'coffee' | 'qty';
   dept?: '주방' | '연회'; // optional — 미설정 시 마이그레이션이 '주방' 기본값 사용
+  list_price?: number | null; // 판매 단가 (VAT 제외). 미지정 시 null.
+  notes?: string;              // 메뉴 비고
   ingredients: IngRow[];
 }
 
