@@ -59,6 +59,7 @@ export default function FoodMenuInput({ items, onChange }: Props) {
           }}
         >
           <option value="">+ 식음 메뉴 추가 (선택 시 즉시 추가, 중복 가능)</option>
+          <option value="식사없음">식사없음</option>
           {MENU_OPTIONS.map((name) => (
             <option key={name} value={name}>
               {name}
@@ -76,6 +77,16 @@ export default function FoodMenuInput({ items, onChange }: Props) {
       ) : (
         <div className="space-y-2">
           {items.map((r, idx) => {
+            // 식사없음은 수량 입력 없이 단순 라벨 행으로 표시
+            if (r.menu_name === '식사없음') {
+              return (
+                <NoMealRow
+                  key={r.id}
+                  idx={idx}
+                  onDelete={() => deleteRow(r.id)}
+                />
+              );
+            }
             const mode = menuModeOf(r.menu_name);
             return (
               <FoodRow
@@ -201,6 +212,24 @@ function FoodRow({
       </div>
       <MemoCell memo={item.memo} onMemo={(v) => onUpdate({ memo: v })} />
       <DeleteCell onDelete={onDelete} />
+    </div>
+  );
+}
+
+// ── 식사없음 행 ───────────────────────────────────────────────────────
+function NoMealRow({ idx, onDelete }: { idx: number; onDelete: () => void }) {
+  return (
+    <div className="flex items-center gap-2 border border-orange-200 rounded-md p-2 bg-orange-50/40">
+      <span className="text-[11px] text-gray-400 tabular-nums w-5 text-right">{idx + 1}.</span>
+      <span className="font-medium text-sm text-orange-700">🚫 식사없음</span>
+      <div className="flex-1" />
+      <button
+        type="button"
+        onClick={onDelete}
+        className="text-xs text-red-500 hover:underline px-2 py-1"
+      >
+        삭제
+      </button>
     </div>
   );
 }
