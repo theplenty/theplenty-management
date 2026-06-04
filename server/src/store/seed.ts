@@ -3,7 +3,7 @@
 
 import { nanoid } from 'nanoid';
 import { store, persist } from './mockStore.js';
-import type { User, MiceCustomer, WeddingCustomer } from '../types.js';
+import type { User, MiceCustomer, WeddingCustomer, Menu, MenuEventType } from '../types.js';
 
 // 실제 super admin 이메일은 .env의 SUPER_ADMIN_EMAIL로 주입한다.
 // 코드에 박힌 fallback은 generic placeholder — Public repo 노출 방지.
@@ -51,7 +51,6 @@ function seedMiceCustomers() {
           ],
           call_date: '2026-04-10',
           inquiry_event_date_text: '2026-06-20',
-          event_memo: '',
           created_by_id: '',
           created_by_name: 'Sarah (관리자)',
           assigned_manager_id: '',
@@ -78,7 +77,6 @@ function seedMiceCustomers() {
           ],
           call_date: '2026-04-15',
           inquiry_event_date_text: '2026-09-05 (예정)',
-          event_memo: '',
           created_by_id: '',
           created_by_name: 'Sarah (관리자)',
           assigned_manager_id: '',
@@ -105,7 +103,6 @@ function seedMiceCustomers() {
           ],
           call_date: '2026-04-05',
           inquiry_event_date_text: '미정',
-          event_memo: '같은 날짜 다른 행사 확정',
           created_by_id: '',
           created_by_name: 'Sarah (관리자)',
           assigned_manager_id: '',
@@ -145,6 +142,7 @@ function seedWeddingCustomers() {
       desired_budget: '약 8,000만원',
       source: '컨설팅',
       source_detail: '컨설팅',
+      search_keyword: '',
       event_inquiries: [
         {
           id: nanoid(10),
@@ -177,6 +175,7 @@ function seedWeddingCustomers() {
       desired_budget: '6,000만원 이하',
       source: '가톨릭동문(교직원, 관계자)',
       source_detail: '지인추천',
+      search_keyword: '사당귀',
       event_inquiries: [
         {
           id: nanoid(10),
@@ -201,8 +200,35 @@ function seedWeddingCustomers() {
   console.log(`[seed] WEDDING 고객 ${store.wedding_customers.length}건 시드 완료`);
 }
 
+function seedMenus() {
+  if (store.menus.length > 0) return;
+
+  const t = now();
+  const M: MenuEventType = 'MICE';
+  const items: Omit<Menu, 'id' | 'created_at' | 'updated_at'>[] = [
+    // 구 스타일 시드 — 마이그레이션이 실행 시 자동 제거되고 BOM 데이터로 교체됨
+    { name_ko: 'A set', category: '주식', event_type: M, mode: 'set', serving_size_default: 1, list_price: 35000, is_active: true, notes: '' },
+    { name_ko: 'B set', category: '주식', event_type: M, mode: 'set', serving_size_default: 1, list_price: 45000, is_active: true, notes: '' },
+    { name_ko: 'C set', category: '주식', event_type: M, mode: 'set', serving_size_default: 1, list_price: 40000, is_active: true, notes: '' },
+    { name_ko: 'D set', category: '주식', event_type: M, mode: 'set', serving_size_default: 1, list_price: 65000, is_active: true, notes: '' },
+    { name_ko: 'Korean Lunch Box', category: '주식', event_type: M, mode: 'set', serving_size_default: 1, list_price: 18000, is_active: true, notes: '' },
+    { name_ko: 'Chinese Lunch Box', category: '주식', event_type: M, mode: 'set', serving_size_default: 1, list_price: 20000, is_active: true, notes: '' },
+    { name_ko: 'Coffee Break', category: '음료', event_type: M, mode: 'coffee', serving_size_default: 1, list_price: 12000, is_active: true, notes: '' },
+    { name_ko: 'Dessert Plate(M)', category: '후식', event_type: M, mode: 'qty', serving_size_default: 1, list_price: 8000, is_active: true, notes: '' },
+    { name_ko: 'Dessert Plate(L)', category: '후식', event_type: M, mode: 'qty', serving_size_default: 1, list_price: 12000, is_active: true, notes: '' },
+    { name_ko: 'Rice Cake Plate', category: '후식', event_type: M, mode: 'qty', serving_size_default: 1, list_price: 6000, is_active: true, notes: '' },
+  ];
+
+  for (const item of items) {
+    store.menus.push({ ...item, id: nanoid(10), created_at: t, updated_at: t });
+  }
+  persist('menus');
+  console.log(`[seed] menus ${store.menus.length}건 시드 완료`);
+}
+
 export function runSeed() {
   seedUsers();
+  seedMenus();
   // 고객정보 / 행사정보는 사용자가 직접 입력하기로 함 — 자동 시드 비활성화.
   // 필요 시 호출 복구.
   void seedMiceCustomers;

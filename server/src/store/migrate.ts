@@ -1,7 +1,7 @@
 // 기존 데이터 파일을 신규 스키마로 한 번만 변환한다. 멱등.
 
 import { nanoid } from 'nanoid';
-import { store, persist } from './mockStore.js';
+import { store, persist, persistDoc } from './mockStore.js';
 import { DEFAULT_TENANT_ID } from '../types.js';
 import type {
   MiceContact,
@@ -12,6 +12,7 @@ import type {
   WeddingCustomer,
   WeddingEventInquiry,
 } from '../types.js';
+import { MICE_BOM } from './menuBomData.js';
 
 const MICE_LEGACY_KEYS = [
   'progress_status',
@@ -68,7 +69,6 @@ function migrateMiceCustomers() {
         call_date: (raw.call_date as string) || null,
         inquiry_event_date_text:
           (raw.inquiry_event_date as string) || (raw.inquiry_event_month as string) || '',
-        event_memo: (raw.lost_reason as string) || '',
         created_by_id: '',
         created_by_name: '시스템 마이그레이션',
         assigned_manager_id: '',
@@ -98,8 +98,12 @@ function migrateMiceCustomers() {
     // 2) 신규 스키마 — 각 inquiry 내부 보정
     let dirty = false;
     for (const inq of c.inquiries as unknown as Record<string, unknown>[]) {
-      if ('lost_reason' in inq && !('event_memo' in inq)) {
-        inq.event_memo = inq.lost_reason ?? '';
+      // event_memo(행사관련메모) 필드 폐기 — 남아있는 옛 값/이전 lost_reason 키 정리.
+      if ('event_memo' in inq) {
+        delete inq.event_memo;
+        dirty = true;
+      }
+      if ('lost_reason' in inq) {
         delete inq.lost_reason;
         dirty = true;
       }
@@ -184,6 +188,7 @@ function migrateWeddingCustomers() {
         desired_budget: c.desired_budget,
         source: '',
         source_detail: '',
+        search_keyword: '',
         event_inquiries: [inquiry],
         memo: c.memo,
         created_at: c.created_at,
@@ -197,8 +202,12 @@ function migrateWeddingCustomers() {
       continue;
     }
 
-    // 신규 스키마 — assigned_manager_id/name 없는 옛 행 보정
+    // 신규 스키마 — search_keyword 누락 행 백필 + assigned_manager_id/name 없는 옛 행 보정
     let dirty = false;
+    if (!('search_keyword' in raw)) {
+      raw.search_keyword = '';
+      dirty = true;
+    }
     for (const inq of c.event_inquiries as unknown as Record<string, unknown>[]) {
       if (!('assigned_manager_id' in inq)) {
         inq.assigned_manager_id = '';
@@ -240,9 +249,21 @@ function migrateEvents() {
   let count = 0;
   let foodSplitCount = 0;
   let tenCount = 0;
+  let hallsDedupCount = 0;
+  const hallsDedupIds: string[] = [];
   const userById = new Map(store.users.map((u) => [u.id, u.name]));
   for (const e of store.events) {
     const raw = e as unknown as Record<string, unknown>;
+    // 사용홀 중복 제거 — Excel import 등으로 ['Hall A+B', 'Leaf Room', 'Hall A+B'] 같은 중복 발생 가능.
+    // persist('events')는 JSON만 갱신하므로, Firestore까지 반영하기 위해 persistDoc을 별도 호출한다.
+    if (Array.isArray(raw.halls)) {
+      const deduped = [...new Set(raw.halls as string[])];
+      if (deduped.length !== (raw.halls as string[]).length) {
+        raw.halls = deduped;
+        hallsDedupCount++;
+        hallsDedupIds.push(e.id);
+      }
+    }
     if (typeof raw.created_by_name !== 'string' || !raw.created_by_name) {
       raw.created_by_name = userById.get(e.created_by) || '';
       count++;
@@ -271,12 +292,17 @@ function migrateEvents() {
       if (!('food_exp_final' in raw)) raw.food_exp_final = null;
     }
   }
-  if (count > 0 || foodSplitCount > 0 || tenCount > 0) {
-    persist('events');
+  if (count > 0 || foodSplitCount > 0 || tenCount > 0 || hallsDedupCount > 0) {
+    persist('events'); // JSON 파일 갱신
     if (count > 0) console.log(`[migrate] events ${count}건 → created_by_name 필드 추가`);
     if (foodSplitCount > 0)
       console.log(`[migrate] events ${foodSplitCount}건 → 식음 GTD/EXP 계약·최종 분리`);
     if (tenCount > 0) console.log(`[migrate] events ${tenCount}건 → TEN 상태를 INQ 로 이전`);
+    if (hallsDedupCount > 0) {
+      console.log(`[migrate] events ${hallsDedupCount}건 → 사용홀 중복 제거 (Firestore 반영 중)`);
+      // persist()는 JSON만 갱신하므로, 변경된 건만 persistDoc으로 Firestore에도 기록
+      for (const id of hallsDedupIds) persistDoc('events', id);
+    }
   }
 }
 
@@ -343,6 +369,7 @@ function migrateTenants() {
     'api_keys',
     'collaboration_requests',
     'summary_shares',
+    'menus',
   ] as const;
 
   for (const coll of collections) {
@@ -361,6 +388,123 @@ function migrateTenants() {
   }
 }
 
+function migrateMenus() {
+  let count = 0;
+  for (const m of store.menus) {
+    const raw = m as unknown as Record<string, unknown>;
+    if (!('mode' in raw)) {
+      const name = ((raw.name_ko as string) || '').toLowerCase();
+      if (name.includes('coffee break')) {
+        raw.mode = 'coffee';
+      } else if (
+        name.includes('dessert') ||
+        name.includes('rice cake') ||
+        name.includes('디저트') ||
+        name.includes('케이크')
+      ) {
+        raw.mode = 'qty';
+      } else {
+        raw.mode = 'set';
+      }
+      count++;
+    }
+  }
+  if (count > 0) {
+    persist('menus');
+    console.log(`[migrate] menus ${count}건 → mode 필드 백필`);
+  }
+}
+
+// ── 메뉴 BOM 일괄 등록 (기업/MICE — 2026년 4월 기준) ─────────────────
+// 멱등: 이미 (name_ko + category + event_type='MICE') 조합이 존재하면 스킵.
+// 구 스타일 카테고리(전식/주식/후식/음료/주류/패키지)로 된 메뉴는 BOM 등록 전 제거.
+function migrateMenuBOM() {
+  const OLD_CATS = new Set(['전식', '주식', '후식', '음료', '주류', '패키지']);
+
+  // 1) 구 스타일 카테고리 제거
+  const before = store.menus.length;
+  store.menus = store.menus.filter((m) => !OLD_CATS.has(m.category));
+  const removed = before - store.menus.length;
+  if (removed > 0) {
+    persist('menus');
+    console.log(`[migrate] 구 카테고리 메뉴 ${removed}건 제거`);
+  }
+
+  // 2) 기존 event_type 필드 백필 (없는 것은 'MICE' 로)
+  let backfilled = 0;
+  for (const m of store.menus) {
+    const raw = m as unknown as Record<string, unknown>;
+    if (!raw.event_type) {
+      raw.event_type = 'MICE';
+      backfilled++;
+    }
+  }
+  if (backfilled > 0) {
+    persist('menus');
+    console.log(`[migrate] menus ${backfilled}건 → event_type 백필`);
+  }
+
+  // 3) MenuDetail 확장 필드 백필 (unit/unit_price/portion_cost 없으면 기본값)
+  let detailBackfilled = 0;
+  for (const m of store.menus) {
+    if (!Array.isArray(m.details)) continue;
+    for (const d of m.details) {
+      const raw = d as unknown as Record<string, unknown>;
+      let changed = false;
+      if (raw.unit === undefined) { raw.unit = ''; changed = true; }
+      if (raw.unit_price === undefined) { raw.unit_price = null; changed = true; }
+      if (raw.portion_cost === undefined) { raw.portion_cost = null; changed = true; }
+      if (changed) detailBackfilled++;
+    }
+  }
+  if (detailBackfilled > 0) {
+    persist('menus');
+    console.log(`[migrate] menu details ${detailBackfilled}건 → 원가 필드 백필`);
+  }
+
+  // 4) BOM 데이터 등록 (미존재 항목만)
+  const t = new Date().toISOString();
+  let created = 0;
+  for (const course of MICE_BOM) {
+    const exists = store.menus.find(
+      (m) => m.name_ko === course.name_ko && m.category === course.category && m.event_type === 'MICE'
+    );
+    if (exists) continue;
+
+    const details = course.ingredients.map(([name, qty, unit, unitPrice, portionCost]) => ({
+      id: nanoid(10),
+      dish_name: name as string,
+      quantity: String(qty),
+      unit: unit as string,
+      unit_price: unitPrice as number,
+      portion_cost: portionCost as number,
+      notes: '',
+    }));
+
+    store.menus.push({
+      id: nanoid(10),
+      tenant_id: DEFAULT_TENANT_ID,
+      name_ko: course.name_ko,
+      category: course.category,
+      event_type: 'MICE',
+      mode: course.mode,
+      serving_size_default: 1,
+      list_price: null,
+      is_active: true,
+      notes: '',
+      details,
+      created_at: t,
+      updated_at: t,
+    });
+    created++;
+  }
+
+  if (created > 0) {
+    persist('menus');
+    console.log(`[migrate] MICE BOM 메뉴 ${created}건 등록 완료 (기업 2026년 4월 기준)`);
+  }
+}
+
 export function runMigrations() {
   migrateTenants();
   migrateMiceCustomers();
@@ -368,4 +512,6 @@ export function runMigrations() {
   migrateEventReviews();
   migrateEvents();
   migrateFoodItems();
+  migrateMenus();
+  migrateMenuBOM();
 }

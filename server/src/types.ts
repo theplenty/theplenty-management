@@ -475,29 +475,36 @@ export type MenuCategory = '전식' | '주식' | '후식' | '음료' | '주류' 
 //   qty    : 단순 수량 — 디저트 플레이트·떡 등
 export type MenuMode = 'set' | 'coffee' | 'qty';
 
-// 메뉴 세부 요리 구성 항목 (BOM 단순화 버전)
+// 메뉴 코스별 식자재 원가 구성 항목 (BOM)
 export interface MenuDetail {
   id: string;
-  dish_name: string; // 요리명
-  quantity: string;  // 수량/단위 (예: '1인분', '1개')
-  notes: string;     // 비고 (선택)
+  dish_name: string;           // 식재료명
+  quantity: string;            // 수량 (표시용 문자열)
+  unit: string;                // 단위 (G, ML, EA …)
+  unit_price: number | null;   // 단가 (원/단위)
+  portion_cost: number | null; // 부분 원가 (원)
+  notes: string;               // 비고
 }
+
+// 기업(MICE) / 웨딩(WEDDING) 구분 — 행사 유형과 매칭
+export type MenuEventType = 'MICE' | 'WEDDING';
 
 export interface Menu {
   id: string;
   tenant_id?: string;
   // 메뉴명 — MENU_OPTIONS 중 하나 (A set, Coffee Break 등)
-  // 같은 name_ko + 다른 category 조합으로 여러 행 허용 (e.g. A set/Appetizer, A set/Soup)
+  // 같은 name_ko + 다른 category 조합으로 여러 행 허용
   name_ko: string;
   // 코스 카테고리 — 자유 입력 (Appetizer, Soup, Main, Dessert 등)
-  // 이전 데이터는 '전식/주식/후식/음료/주류/패키지' 값을 가질 수 있음 (하위 호환)
   category: string;
-  mode: MenuMode; // 식음 항목 입력 모드 (name_ko 기준 자동 할당)
-  serving_size_default: number; // 기본 인분
-  list_price: number | null; // 판매 단가 (원가율 계산 기준)
+  // 기업(MICE) / 웨딩(WEDDING) 구분 — 신규 필드, 미설정 시 마이그레이션이 'MICE'로 백필
+  event_type: MenuEventType;
+  mode: MenuMode;
+  serving_size_default: number;
+  list_price: number | null; // 메뉴 판매 단가 (원가율 계산 기준)
   is_active: boolean;
-  notes: string; // 관리자만 보는 내부 메모
-  // STEP 2: 코스별 원가 재료 구성 — MenuDetail로 식자재 원가 입력
+  notes: string;
+  // BOM: 코스별 식자재 원가 구성
   details?: MenuDetail[];
   created_at: string;
   updated_at: string;
