@@ -443,6 +443,13 @@ export interface Event {
   deleted_at?: string | null;
   deleted_by_id?: string | null;
   deleted_by_name?: string | null;
+  // 매출 관련 필드
+  contract_amount?: number | null;
+  sales_total_amount?: number | null;
+  discount_rate?: number | null;
+  discount_reason?: string;
+  contract_date?: string | null;
+  gateway_fee?: number | null;
 }
 
 // ===== 휴지통 =====
@@ -740,6 +747,32 @@ export interface SalesTarget {
   mice_revenue_forecast: number | null;
   total_revenue_forecast: number | null;
   created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ===== 매출 항목 마스터 (Revenue Items) =====
+export type RevenueCategory = '공간' | '식음' | '장비' | '장식' | '기타';
+
+export interface RevenueItem {
+  id: string;
+  code: string;
+  name_ko: string;
+  category: RevenueCategory;
+  default_account: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ===== 행사별 세부 매출 라인 =====
+export interface EventRevenueLine {
+  id: string;
+  event_id: string;
+  revenue_item_id: string;
+  amount: number | null;
+  note: string;
   created_at: string;
   updated_at: string;
 }

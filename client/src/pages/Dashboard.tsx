@@ -27,6 +27,7 @@ import {
   weddingConsultationByMonth,
   weddingConsultationByYear,
   weddingInflowSummary,
+  weddingKeywordBreakdown,
   weddingSourceBreakdown,
   weddingYearlyTotals,
   type MiceInflowRow,
@@ -173,6 +174,10 @@ export default function Dashboard() {
   );
   const sourceDetailBreakdown = useMemo(
     () => weddingSourceBreakdown(wedding, year, true),
+    [wedding, year]
+  );
+  const keywordBreakdown = useMemo(
+    () => weddingKeywordBreakdown(wedding, year),
     [wedding, year]
   );
 
@@ -443,9 +448,14 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        <Card title={`${year}년 유입 세부경로 (마케팅 채널)`} className="mb-6">
-          <SourceTable rows={sourceDetailBreakdown} />
-        </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <Card title={`${year}년 유입 세부경로 (마케팅 채널)`}>
+            <SourceTable rows={sourceDetailBreakdown} />
+          </Card>
+          <Card title={`${year}년 검색어 유입 현황`}>
+            <SourceTable rows={keywordBreakdown} firstColLabel="검색어" />
+          </Card>
+        </div>
 
         {sourceBreakdown.length > 0 && (
           <Card title={`${year}년 유입경로별 차트`}>
@@ -1006,6 +1016,7 @@ function SimpleTable({
 
 function SourceTable({
   rows,
+  firstColLabel = '유입경로',
 }: {
   rows: Array<{
     source: string;
@@ -1015,6 +1026,7 @@ function SourceTable({
     def_rate: number | null;
     los_rate: number | null;
   }>;
+  firstColLabel?: string;
 }) {
   if (rows.length === 0) {
     return (
@@ -1023,7 +1035,7 @@ function SourceTable({
       </div>
     );
   }
-  const head = ['유입경로', '전체', 'DEF', 'DEF율', 'LOS', 'LOS율'];
+  const head = [firstColLabel, '전체', 'DEF', 'DEF율', 'LOS', 'LOS율'];
   return (
     <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
       <thead>

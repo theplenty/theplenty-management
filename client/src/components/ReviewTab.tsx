@@ -126,8 +126,15 @@ export default function ReviewTab({ eventId, canWrite, eventStartDatetime, event
     );
   }
 
+  // 행사 당일(자정 이후)이면 작성 가능 — 실제 시작 시각은 무관.
   const started = eventStartDatetime
-    ? new Date(eventStartDatetime).getTime() < Date.now()
+    ? (() => {
+        const evDate = eventStartDatetime.slice(0, 10); // YYYY-MM-DD
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+        return todayStr >= evDate;
+      })()
     : false;
   const eligibleToWrite = canWrite && eventStatus === 'DEF' && started;
 
@@ -248,11 +255,11 @@ export default function ReviewTab({ eventId, canWrite, eventStartDatetime, event
     return (
       <div className="border rounded-md p-6 text-center bg-yellow-50 border-yellow-200">
         <div className="text-sm text-yellow-800">
-          행사리뷰는 <strong>DEF 상태 + 행사 시작 후</strong>에 작성할 수 있습니다.
+          행사리뷰는 <strong>DEF 상태 + 행사 당일(자정 이후)</strong>부터 작성할 수 있습니다.
         </div>
         <div className="text-xs text-yellow-700 mt-2">
           현재 상태: {eventStatus}
-          {eventStartDatetime && ` · 시작 ${started ? '완료' : '예정'}: ${fmt(eventStartDatetime)}`}
+          {eventStartDatetime && ` · 행사일: ${eventStartDatetime.slice(0, 10)}`}
         </div>
       </div>
     );

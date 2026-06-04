@@ -33,6 +33,8 @@ import holidaysRouter from './routes/holidays.js';
 import collaborationRequestsRouter from './routes/collaborationRequests.js';
 import summaryShareRouter from './routes/summaryShare.js';
 import menusRouter from './routes/menus.js';
+import revenueItemsRouter from './routes/revenueItems.js';
+import eventRevenueRouter from './routes/eventRevenue.js';
 import { attachUser, attachTenant } from './middleware/auth.js';
 import { runSeed } from './store/seed.js';
 import { runMigrations } from './store/migrate.js';
@@ -71,6 +73,9 @@ app.use('/api/search', searchRouter);
 app.use('/api/collaborations', collaborationRequestsRouter);
 app.use('/api/calendar-summary', summaryShareRouter);
 app.use('/api/menus', menusRouter);
+app.use('/api/revenue-items', revenueItemsRouter);
+app.use('/api/events', eventRevenueRouter);
+app.use('/api/revenue', eventRevenueRouter);
 // 한국 공휴일 (구글 공식 캘린더 프록시) — 공개 정보, 별도 권한 체크 없음
 app.use('/api/holidays', holidaysRouter);
 

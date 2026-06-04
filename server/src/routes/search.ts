@@ -114,7 +114,7 @@ function buildMiceDigits(c: MiceCustomer): string {
     c.memo,
   ];
   for (const inq of c.inquiries || []) {
-    parts.push(inq.inquiry_event_date_text, inq.event_memo, inq.call_date);
+    parts.push(inq.inquiry_event_date_text, inq.call_date);
     for (const ct of inq.contacts || []) {
       parts.push(ct.name, ct.phone, ct.email);
     }

@@ -19,6 +19,9 @@ import type {
   CollaborationRequest,
   SummaryShare,
   Tenant,
+  Menu,
+  RevenueItem,
+  EventRevenueLine,
 } from '../types.js';
 import { DEFAULT_TENANT_ID } from '../types.js';
 
@@ -51,6 +54,9 @@ interface DB {
   api_keys: ApiKey[];
   collaboration_requests: CollaborationRequest[];
   summary_shares: SummaryShare[];
+  menus: Menu[];
+  revenue_items: RevenueItem[];
+  event_revenue_lines: EventRevenueLine[];
 }
 
 const COLLECTIONS: (keyof DB)[] = [
@@ -71,6 +77,9 @@ const COLLECTIONS: (keyof DB)[] = [
   'api_keys',
   'collaboration_requests',
   'summary_shares',
+  'menus',
+  'revenue_items',
+  'event_revenue_lines',
 ];
 
 function safeReadJSON<T>(file: string): T | null {
@@ -181,6 +190,9 @@ const db: DB = {
   api_keys: loadCollection('api_keys'),
   collaboration_requests: loadCollection('collaboration_requests'),
   summary_shares: loadCollection('summary_shares'),
+  menus: loadCollection('menus'),
+  revenue_items: loadCollection('revenue_items'),
+  event_revenue_lines: loadCollection('event_revenue_lines'),
 };
 
 export function getCollection<K extends keyof DB>(name: K): DB[K] {

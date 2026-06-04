@@ -39,7 +39,6 @@ export interface MiceFlatRow {
   progress_status: string;
   call_date: string | null;
   inquiry_event_date_text: string;
-  event_memo: string;
   created_by_name: string;
   // 담당자 단위
   contact_name: string;
@@ -62,7 +61,6 @@ export const MICE_FLAT_COLUMNS: ColumnDef<MiceFlatRow>[] = [
   { header: '진행상황', key: 'progress_status', width: 10 },
   { header: '통화일자', key: 'call_date', width: 14 },
   { header: '문의 행사일', key: 'inquiry_event_date_text', width: 18 },
-  { header: '행사관련메모', key: 'event_memo', width: 24 },
   { header: '작성자', key: 'created_by_name', width: 16 },
   // 담당자 단위
   { header: '담당자', key: 'contact_name', width: 14 },
@@ -90,7 +88,6 @@ export function buildMiceFlatRows(customers: MiceCustomer[]): MiceFlatRow[] {
         progress_status: '',
         call_date: null,
         inquiry_event_date_text: '',
-        event_memo: '',
         created_by_name: '',
         contact_name: '',
         email: '',
@@ -106,7 +103,6 @@ export function buildMiceFlatRows(customers: MiceCustomer[]): MiceFlatRow[] {
         progress_status: inq.progress_status,
         call_date: inq.call_date,
         inquiry_event_date_text: inq.inquiry_event_date_text,
-        event_memo: inq.event_memo,
         created_by_name: inq.created_by_name,
       };
       const contacts = inq.contacts.length ? inq.contacts : [{ id: '', name: '', email: '', phone: '' }];
@@ -198,8 +194,7 @@ export function groupMiceFlatRows(
       !!r.email ||
       !!r.phone ||
       !!r.call_date ||
-      !!r.inquiry_event_date_text ||
-      !!r.event_memo;
+      !!r.inquiry_event_date_text;
     if (!hasInquiry) continue;
 
     // 문의# 결정 — 명시된 값 우선, 없으면 자동 증가
@@ -223,7 +218,6 @@ export function groupMiceFlatRows(
         contacts: [],
         call_date: r.call_date || null,
         inquiry_event_date_text: r.inquiry_event_date_text || '',
-        event_memo: r.event_memo || '',
         created_by_id: '',
         created_by_name: r.created_by_name || fallbackAuthorName,
         // 담당자 미지정 시 서버가 작성자에서 fallback — Excel import 단계에서는 비워둔다
@@ -275,6 +269,7 @@ export interface WeddingFlatRow {
   desired_budget: string;
   source: string;
   source_detail: string;
+  search_keyword: string;
   // (2) 문의세부정보 (예식 후보)
   wedding_datetime: string | null;
   guaranteed_guest_count: number | null;
@@ -304,6 +299,7 @@ export const WEDDING_FLAT_COLUMNS: ColumnDef<WeddingFlatRow>[] = [
   { header: '희망예산', key: 'desired_budget', width: 16 },
   { header: '유입경로', key: 'source', width: 22 },
   { header: '유입 세부경로', key: 'source_detail', width: 18 },
+  { header: '검색어', key: 'search_keyword', width: 18 },
   // (2) 문의세부정보
   { header: '예식날짜 및 시간', key: 'wedding_datetime', width: 20 },
   { header: '예식 보증인원', key: 'guaranteed_guest_count', width: 12 },
@@ -335,6 +331,7 @@ export function buildWeddingFlatRows(customers: WeddingCustomer[]): WeddingFlatR
       desired_budget: c.desired_budget,
       source: c.source,
       source_detail: c.source_detail,
+      search_keyword: c.search_keyword || '',
     };
     if (c.event_inquiries.length === 0) {
       rows.push({
@@ -411,6 +408,7 @@ export function groupWeddingFlatRows(
         source: ((r.source as WeddingSource | '') || '') as WeddingSource | '',
         source_detail: ((r.source_detail as WeddingSourceDetail | '') ||
           '') as WeddingSourceDetail | '',
+        search_keyword: r.search_keyword || '',
         event_inquiries: [],
         memo: r.memo || '',
       };

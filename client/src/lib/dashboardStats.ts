@@ -89,7 +89,6 @@ export interface MiceInflowRow {
   call_date: string | null;
   inquiry_event_date_text: string;
   progress_status: MiceInquiryStatus;
-  event_memo: string;
   customer_memo: string;
   // 신규유입 판정 시각 (call_date || created_at)
   inflow_at: string;
@@ -115,7 +114,6 @@ export function flattenMiceInflows(customers: MiceCustomer[]): MiceInflowRow[] {
         call_date: inq.call_date,
         inquiry_event_date_text: inq.inquiry_event_date_text,
         progress_status: inq.progress_status,
-        event_memo: inq.event_memo,
         customer_memo: c.memo,
         inflow_at: miceInflowDate(inq),
       });
@@ -345,6 +343,38 @@ export function weddingSourceBreakdown(
   for (const [source, e] of map.entries()) {
     rows.push({
       source,
+      total: e.total,
+      def_count: e.def,
+      los_count: e.los,
+      def_rate: e.total > 0 ? Math.round((e.def / e.total) * 1000) / 10 : null,
+      los_rate: e.total > 0 ? Math.round((e.los / e.total) * 1000) / 10 : null,
+    });
+  }
+  return rows.sort((a, b) => b.total - a.total);
+}
+
+// 검색어별 유입 현황 — 연도(신규문의일자) 기준. 띄어쓰기·대소문자 변형은 한 항목으로 통합.
+export function weddingKeywordBreakdown(
+  customers: WeddingCustomer[],
+  year: number
+): SourceBreakdownRow[] {
+  const bound = thisYearBound(year);
+  const map = new Map<string, { display: string; total: number; def: number; los: number }>();
+  for (const c of customers) {
+    if (!inRange(c.inquiry_date, bound)) continue;
+    const raw = (c.search_keyword || '').trim().replace(/\s+/g, ' ');
+    if (!raw) continue;
+    const key = raw.toLowerCase();
+    const e = map.get(key) || { display: raw, total: 0, def: 0, los: 0 };
+    e.total++;
+    if (c.progress_status === 'DEF') e.def++;
+    if (c.progress_status === 'LOS') e.los++;
+    map.set(key, e);
+  }
+  const rows: SourceBreakdownRow[] = [];
+  for (const e of map.values()) {
+    rows.push({
+      source: e.display,
       total: e.total,
       def_count: e.def,
       los_count: e.los,

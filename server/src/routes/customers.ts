@@ -313,52 +313,65 @@ function normalizeContacts(input: unknown): MiceContact[] {
     .filter((c) => c.name || c.email || c.phone);
 }
 
+// 내용 없는 빈 문의(placeholder)인지 판단.
+// MICE 고객 중 다수가 문의 0건이라, 고객정보 수정 모달이 열릴 때 빈 문의 카드가 자동 추가된다.
+// 그 placeholder 가 저장되면 created_at=now 로 잡혀 대시보드 신규유입에 잘못 집계되므로 저장 단계에서 제거한다.
+// 담당자/통화일자/문의행사일이 모두 없고 진행상황·채널이 기본값(INQ/INCALL)이면 사용자가 실제로 입력하지 않은 빈 카드로 본다.
+function isBlankMiceInquiry(inq: MiceInquiry): boolean {
+  const hasContact = inq.contacts.length > 0;
+  const hasCall = !!inq.call_date;
+  const hasDateText = !!(inq.inquiry_event_date_text && inq.inquiry_event_date_text.trim());
+  const nonDefaultStatus = inq.progress_status !== 'INQ';
+  const nonDefaultChannel = inq.inquiry_channel !== 'INCALL';
+  return !hasContact && !hasCall && !hasDateText && !nonDefaultStatus && !nonDefaultChannel;
+}
+
 function normalizeMiceInquiries(
   input: unknown,
   fallbackUserId: string,
   fallbackUserName: string
 ): MiceInquiry[] {
   if (!Array.isArray(input)) return [];
-  return input.map((raw) => {
-    const o = raw as Partial<MiceInquiry> & {
-      lost_reason?: string;
-      contact_name?: string;
-      email?: string;
-      phone?: string;
-    };
-    // 신규 스키마(contacts[]) 우선. 없으면 옛 단일 필드를 한 명의 담당자로 변환.
-    let contacts = normalizeContacts(o.contacts);
-    if (contacts.length === 0 && (o.contact_name || o.email || o.phone)) {
-      contacts = [
-        {
-          id: nanoid(10),
-          name: o.contact_name || '',
-          email: o.email || '',
-          phone: o.phone || '',
-        },
-      ];
-    }
-    // 작성자: 한 번 정해지면 유지. 담당자: 미지정이면 작성자에서 fallback (옛 데이터 호환).
-    const createdById = o.created_by_id || fallbackUserId;
-    const createdByName = o.created_by_name || fallbackUserName;
-    // 유입 채널 — 없으면 'INCALL' 로 기본값 (기존 데이터 호환)
-    const channel: MiceInquiry['inquiry_channel'] =
-      o.inquiry_channel === 'OUTCALL' ? 'OUTCALL' : 'INCALL';
-    return {
-      id: o.id || nanoid(10),
-      progress_status: (o.progress_status as MiceInquiry['progress_status']) || 'INQ',
-      inquiry_channel: channel,
-      contacts,
-      call_date: o.call_date ?? null,
-      inquiry_event_date_text: o.inquiry_event_date_text || '',
-      event_memo: o.event_memo || o.lost_reason || '',
-      created_by_id: createdById,
-      created_by_name: createdByName,
-      assigned_manager_id: o.assigned_manager_id || createdById,
-      assigned_manager_name: o.assigned_manager_name || createdByName,
-      created_at: o.created_at || new Date().toISOString(),
-    };
-  });
+  return input
+    .map((raw) => {
+      const o = raw as Partial<MiceInquiry> & {
+        contact_name?: string;
+        email?: string;
+        phone?: string;
+      };
+      // 신규 스키마(contacts[]) 우선. 없으면 옛 단일 필드를 한 명의 담당자로 변환.
+      let contacts = normalizeContacts(o.contacts);
+      if (contacts.length === 0 && (o.contact_name || o.email || o.phone)) {
+        contacts = [
+          {
+            id: nanoid(10),
+            name: o.contact_name || '',
+            email: o.email || '',
+            phone: o.phone || '',
+          },
+        ];
+      }
+      // 작성자: 한 번 정해지면 유지. 담당자: 미지정이면 작성자에서 fallback (옛 데이터 호환).
+      const createdById = o.created_by_id || fallbackUserId;
+      const createdByName = o.created_by_name || fallbackUserName;
+      // 유입 채널 — 없으면 'INCALL' 로 기본값 (기존 데이터 호환)
+      const channel: MiceInquiry['inquiry_channel'] =
+        o.inquiry_channel === 'OUTCALL' ? 'OUTCALL' : 'INCALL';
+      return {
+        id: o.id || nanoid(10),
+        progress_status: (o.progress_status as MiceInquiry['progress_status']) || 'INQ',
+        inquiry_channel: channel,
+        contacts,
+        call_date: o.call_date ?? null,
+        inquiry_event_date_text: o.inquiry_event_date_text || '',
+        created_by_id: createdById,
+        created_by_name: createdByName,
+        assigned_manager_id: o.assigned_manager_id || createdById,
+        assigned_manager_name: o.assigned_manager_name || createdByName,
+        created_at: o.created_at || new Date().toISOString(),
+      };
+    })
+    .filter((inq) => !isBlankMiceInquiry(inq));
 }
 
 router.get('/mice', (req, res) => {
@@ -479,6 +492,7 @@ const WEDDING_FIELD_LABELS: Record<string, string> = {
   desired_consultation_date: '희망상담일자',
   source: '유입경로',
   source_detail: '유입세부경로',
+  search_keyword: '검색어',
   desired_budget: '희망예산',
   competing_venues: '비교웨딩홀',
   groom_name: '신랑이름',
@@ -549,6 +563,7 @@ router.post('/wedding', (req, res) => {
     desired_budget: body.desired_budget || '',
     source: (body.source as WeddingCustomer['source']) || '',
     source_detail: (body.source_detail as WeddingCustomer['source_detail']) || '',
+    search_keyword: body.search_keyword || '',
     event_inquiries: normalizeWeddingInquiries(body.event_inquiries, req.user!.id, req.user!.name),
     memo: body.memo || '',
     created_at: now,
@@ -593,6 +608,7 @@ router.patch('/wedding/:id', (req, res) => {
     'desired_budget',
     'source',
     'source_detail',
+    'search_keyword',
     'memo',
   ];
   for (const k of SCALAR_KEYS) {
@@ -789,6 +805,7 @@ router.post('/wedding/_bulk-upsert', (req, res) => {
     'desired_budget',
     'source',
     'source_detail',
+    'search_keyword',
     'memo',
   ];
 
@@ -870,6 +887,7 @@ router.post('/wedding/_bulk-upsert', (req, res) => {
         desired_budget: r.desired_budget || '',
         source: (r.source as WeddingCustomer['source']) || '',
         source_detail: (r.source_detail as WeddingCustomer['source_detail']) || '',
+        search_keyword: r.search_keyword || '',
         event_inquiries: normalizeWeddingInquiries(
           r.event_inquiries,
           req.user!.id,

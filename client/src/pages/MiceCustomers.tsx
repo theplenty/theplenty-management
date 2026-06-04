@@ -23,7 +23,7 @@ import { Field, StatusBadge } from '../components/Field';
 import ExcelButtons from '../components/ExcelButtons';
 import ChangeLogPanel from '../components/ChangeLogPanel';
 import TableColumnMenu from '../components/TableColumnMenu';
-import Pagination, { usePaginated, PAGE_SIZE } from '../components/Pagination';
+import Pagination, { usePaginated } from '../components/Pagination';
 import { useTableControls, compareSortValues } from '../lib/useTableControls';
 import {
   buildMiceFlatRows,
@@ -170,7 +170,6 @@ function emptyInquiry(authorId: string, authorName: string): MiceInquiry {
     contacts: [emptyContact()],
     call_date: null,
     inquiry_event_date_text: '',
-    event_memo: '',
     created_by_id: authorId,
     created_by_name: authorName,
     // 신규 문의의 담당자 기본값 = 작성자 (사용자가 드롭다운에서 바꿀 수 있음)
@@ -459,8 +458,8 @@ export default function MiceCustomers() {
     return [...filtered].sort((a, b) => compareSortValues(col.sortValue!(a), col.sortValue!(b), tc.sort.dir));
   }, [filtered, tc.sort, allColumns]);
 
-  // 페이지네이션 — 20개씩
-  const { page, setPage, pageItems } = usePaginated(sortedFiltered, [
+  // 페이지네이션 — 기본 40개씩 (40/60/80/100 선택 가능)
+  const { page, setPage, pageItems, pageSize, setPageSize } = usePaginated(sortedFiltered, [
     debouncedQuery,
     tc.sort.key,
     tc.sort.dir,
@@ -572,7 +571,7 @@ export default function MiceCustomers() {
           pageItems.map((c, i) => {
             const last = lastInquiryOf(c);
             const contacts = lastContactsLabel(c);
-            const rowNo = page * PAGE_SIZE + i + 1;
+            const rowNo = page * pageSize + i + 1;
             return (
               <div
                 key={c.id}
@@ -671,7 +670,7 @@ export default function MiceCustomers() {
                     className="border-t hover:bg-blue-50 cursor-pointer"
                   >
                     <td className="px-2 py-2 text-right text-xs text-gray-400 tabular-nums">
-                      {page * PAGE_SIZE + i + 1}
+                      {page * pageSize + i + 1}
                     </td>
                     {visibleColumns.map((col) => (
                       <td key={col.key} className={`px-3 py-2 ${col.tdClassName || ''}`}>
@@ -696,7 +695,13 @@ export default function MiceCustomers() {
         </div>
       </div>
 
-      <Pagination total={sortedFiltered.length} page={page} onChange={setPage} />
+      <Pagination
+        total={sortedFiltered.length}
+        page={page}
+        onChange={setPage}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+      />
 
       <Modal
         open={open}
@@ -943,13 +948,6 @@ export default function MiceCustomers() {
                       onChange={(e) =>
                         updateInquiry(inq.id, { inquiry_event_date_text: e.target.value })
                       }
-                    />
-                  </Field>
-                  <Field label="행사관련메모" className="md:col-span-2">
-                    <input
-                      className="input"
-                      value={inq.event_memo}
-                      onChange={(e) => updateInquiry(inq.id, { event_memo: e.target.value })}
                     />
                   </Field>
                 </div>

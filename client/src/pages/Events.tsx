@@ -4,7 +4,6 @@ import { canCreateEvent, isAdmin } from '../auth/permissions';
 import { useAuth } from '../auth/AuthContext';
 import {
   EVENT_STATUS_OPTIONS,
-  MENU_OPTIONS,
   STATUS_HEX,
   isCancelledStatus,
   type Cancellation,
@@ -15,13 +14,12 @@ import {
   type CustomerType,
   type FoodItem,
   type Invoice,
-  type MenuName,
 } from '../types';
 import { StatusBadge } from '../components/Field';
 import ExcelButtons from '../components/ExcelButtons';
 import EventFormModal from '../components/EventFormModal';
 import TableColumnMenu from '../components/TableColumnMenu';
-import Pagination, { usePaginated, PAGE_SIZE } from '../components/Pagination';
+import Pagination, { usePaginated } from '../components/Pagination';
 import { useTableControls, compareSortValues } from '../lib/useTableControls';
 import { fuzzyMatch } from '../lib/koreanSearch';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
@@ -185,24 +183,14 @@ function sumFoodField(
 }
 
 // "Korean lunch box, Coffee Break" 같은 콤마 구분 요약 텍스트를 실제 메뉴명 배열로 파싱.
-// 대소문자·공백·전각 구분자를 모두 허용, 알려진 MENU_OPTIONS에 매칭되는 항목만 채택.
-const MENU_BY_LOWER = new Map<string, MenuName>(MENU_OPTIONS.map((m) => [m.toLowerCase(), m]));
+// 메뉴 마스터 도입 이후: 화이트리스트 제거 — 비어있지 않은 모든 항목을 menu_name으로 채택.
 function parseFoodItemsSummary(v: unknown): Partial<FoodItem>[] {
   if (v == null) return [];
   const s = String(v).trim();
   if (!s) return [];
   // 콤마(,), 슬래시(/), 세미콜론(;), 전각 콤마(、) 모두 구분자로 허용
   const parts = s.split(/[,/;、]/).map((p) => p.trim()).filter(Boolean);
-  const out: Partial<FoodItem>[] = [];
-  for (const p of parts) {
-    const canonical = MENU_BY_LOWER.get(p.toLowerCase());
-    if (canonical) {
-      out.push({ menu_name: canonical });
-    } else {
-      console.warn(`[excel import] 알 수 없는 식음 메뉴 — 건너뜀: "${p}"`);
-    }
-  }
-  return out;
+  return parts.map((p) => ({ menu_name: p }));
 }
 
 // 엑셀에 사람이 손으로 입력한 다양한 datetime 형식을 ISO local 형태로 정규화.
@@ -272,7 +260,7 @@ const EVENT_COLUMNS: ColumnDef<EventWithFood>[] = [
     key: 'halls',
     width: 24,
     format: (v) => (Array.isArray(v) ? v.join(' / ') : ''),
-    parse: (v) => (typeof v === 'string' ? v.split(/\s*\/\s*/).filter(Boolean) : []),
+    parse: (v) => (typeof v === 'string' ? [...new Set(v.split(/\s*\/\s*/).filter(Boolean))] : []),
   },
   {
     header: '시작일시',
@@ -526,8 +514,8 @@ export default function Events() {
     );
   }, [filtered, tc.sort]);
 
-  // 페이지네이션 — 20개씩. 검색/필터/정렬 변경 시 page 0 으로 리셋.
-  const { page, setPage, pageItems } = usePaginated(sortedFiltered, [
+  // 페이지네이션 — 기본 40개씩 (40/60/80/100 선택 가능). 검색/필터/정렬 변경 시 page 0 으로 리셋.
+  const { page, setPage, pageItems, pageSize, setPageSize } = usePaginated(sortedFiltered, [
     debouncedQuery,
     filterType,
     filterStatus,
@@ -731,7 +719,7 @@ export default function Events() {
             const halls = e.halls.join(' / ');
             const startFmt = fmtRange(e.start_datetime, e.end_datetime);
             const foodSummary = (e.food_items || []).map((f) => f.menu_name).join(', ');
-            const rowNo = page * PAGE_SIZE + i + 1;
+            const rowNo = page * pageSize + i + 1;
             return (
               <div
                 key={e.id}
@@ -865,7 +853,7 @@ export default function Events() {
                     className="border-t hover:bg-blue-50 cursor-pointer"
                   >
                     <td className="px-2 py-2 text-right text-xs text-gray-400 tabular-nums">
-                      {page * PAGE_SIZE + i + 1}
+                      {page * pageSize + i + 1}
                     </td>
                     {visibleColumns.map((col) => (
                       <td key={col.key} className="px-3 py-2">
@@ -891,7 +879,13 @@ export default function Events() {
         </div>
       </div>
 
-      <Pagination total={sortedFiltered.length} page={page} onChange={setPage} />
+      <Pagination
+        total={sortedFiltered.length}
+        page={page}
+        onChange={setPage}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+      />
 
       <EventFormModal
         open={modalOpen}

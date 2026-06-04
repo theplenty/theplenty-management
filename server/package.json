@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "obsidian": "tsx scripts/obsidian-export.ts",
     "build": "tsc -p .",
     "start": "node dist/server.js",
     "serve": "npm run build && firebase emulators:start --only functions",

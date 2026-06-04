@@ -170,9 +170,29 @@ export function canDeleteCollaboration(role: Role | undefined): boolean {
   return role === 'admin';
 }
 
+// ===== 메뉴 마스터 =====
+// 조회: 활성 사용자 전원 가능.
+// 등록·수정·비활성화: 사장(admin) + 세일즈 매니저만.
+export function canWriteMenu(role: Role | undefined): boolean {
+  return role === 'admin' || role === 'sales_mice' || role === 'sales_wedding';
+}
+export function canSeeMenu(role: Role | undefined): boolean {
+  return isActive(role);
+}
+
 // ===== 행사 삭제 =====
 // 휴지통 안전망이 있으므로 활성 사용자 모두 행사·고객 soft-delete 가능.
 // 전체비우기(clearAllEvents) 등 mass 작업은 admin only.
 export function canSoftDelete(role: Role | undefined): boolean {
   return isActive(role);
+}
+
+// ===== 매출 관리 =====
+// 조회: pending/disabled 제외 모든 활성 사용자 가능.
+// 수정: admin 전용.
+export function canWriteRevenue(role: Role | undefined): boolean {
+  return role === 'admin';
+}
+export function canSeeRevenue(role: Role | undefined): boolean {
+  return !!role && role !== 'pending' && role !== 'disabled';
 }

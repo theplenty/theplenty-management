@@ -330,14 +330,6 @@ function MiceInquiryCard({
           ))}
         </div>
       )}
-      {inq.event_memo && (
-        <div className="text-xs">
-          <div className="text-gray-500 mb-0.5">메모</div>
-          <div className="text-gray-900 whitespace-pre-wrap bg-gray-50 border rounded p-1.5">
-            {inq.event_memo}
-          </div>
-        </div>
-      )}
       {inq.call_date && (
         <div className="text-[11px] text-gray-500 mt-1">최근 통화: {inq.call_date}</div>
       )}

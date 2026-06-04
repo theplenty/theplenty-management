@@ -462,9 +462,6 @@ function CustomerDetailView({ customer }: { customer: AnyCustomer }) {
                         .join(' / ')}
                     </div>
                   )}
-                  {inq.event_memo && (
-                    <div className="text-gray-500 mt-1 whitespace-pre-wrap">{inq.event_memo}</div>
-                  )}
                 </li>
               ))}
             </ul>

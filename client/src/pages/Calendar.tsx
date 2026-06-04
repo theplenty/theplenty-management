@@ -650,12 +650,36 @@ export default function Calendar() {
             }
             const ev = arg.event.extendedProps.event as EventWithFood | undefined;
             if (!ev) return;
-            const halls = ev.halls.join(' / ') || '홀 미지정';
-            const foods = (ev.food_items || []).map((f) => f.menu_name).join(', ');
-            // 메뉴 행 합계로 표시 — 없으면 옛 이벤트 단위 값으로 fallback
-            const gtd = `${sumField(ev, 'gtd_contract')}/${sumField(ev, 'gtd_final')}`;
-            const exp = `${sumField(ev, 'exp_contract')}/${sumField(ev, 'exp_final')}`;
-            arg.el.title = `[${ev.status}] ${ev.event_name}\n${halls}\nGTD ${gtd} (계약/최종) · EXP ${exp}\n${foods}`;
+            const hallStr = ev.halls.join(' / ') || '홀 미지정';
+            const foodStr = (ev.food_items || []).map((f) => f.menu_name).join(', ');
+            const gtdC = sumField(ev, 'gtd_contract');
+            const gtdF = sumField(ev, 'gtd_final');
+            const expC = sumField(ev, 'exp_contract');
+            const expF = sumField(ev, 'exp_final');
+            // 마우스 오버 툴팁
+            arg.el.title = `[${ev.status}] ${ev.event_name}\n${hallStr}\nGTD ${gtdC}/${gtdF} (계약/최종) · EXP ${expC}/${expF}\n${foodStr}`;
+            // 리스트 뷰: 행사명 셀 아래에 홀·GTD/EXP·메뉴를 DOM 추가
+            if (arg.view.type.startsWith('list')) {
+              const titleCell = arg.el.querySelector('.fc-list-event-title');
+              if (!titleCell) return;
+              const extra = document.createElement('div');
+              extra.style.cssText = 'margin-top:2px;line-height:1.4';
+              const lines: string[] = [];
+              if (ev.halls.length > 0) {
+                lines.push(`<div style="font-size:11px;color:#6b7280">${ev.halls.join(' / ')}</div>`);
+              }
+              const hasNums = [gtdC, gtdF, expC, expF].some((v) => v !== '-');
+              if (hasNums) {
+                lines.push(`<div style="font-size:11px;color:#9ca3af;font-variant-numeric:tabular-nums">GTD ${gtdC} / ${gtdF} · EXP ${expC} / ${expF}</div>`);
+              }
+              if (foodStr) {
+                lines.push(`<div style="font-size:11px;color:#9ca3af">${foodStr}</div>`);
+              }
+              if (lines.length > 0) {
+                extra.innerHTML = lines.join('');
+                titleCell.appendChild(extra);
+              }
+            }
           }}
           loading={(isLoading) => setLoading(isLoading)}
         />

@@ -11,6 +11,8 @@ import {
   canManageUsers,
   canManageApiKeys,
   canManageTrash,
+  canSeeMenu,
+  canSeeRevenue,
 } from '../auth/permissions';
 import clsx from 'clsx';
 import GlobalSearch from './GlobalSearch';
@@ -74,6 +76,8 @@ export default function Layout() {
       visible: !!user && canSeeCollaboration(role),
     },
     { to: '/files', label: '첨부파일 관리', visible: !!user },
+    { to: '/menus', label: '🍽️ 메뉴 마스터', visible: !!user && canSeeMenu(role) },
+    { to: '/revenue', label: '💰 매출 관리', visible: !!user && canSeeRevenue(role) },
     // 관리자 전용 탭 — admin role 만 노출.
     { to: '/admin/users', label: '사용자 관리', visible: !!user && canManageUsers(role) },
     { to: '/admin/api-keys', label: '외부 API 키', visible: !!user && canManageApiKeys(role) },

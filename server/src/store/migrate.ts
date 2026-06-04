@@ -640,6 +640,28 @@ function migrateBanquetBevBOM() {
   }
 }
 
+function migrateEventRevenueFields() {
+  const ids: string[] = [];
+  for (const e of store.events) {
+    const raw = e as unknown as Record<string, unknown>;
+    let changed = false;
+    for (const f of ['contract_amount','sales_total_amount','discount_rate','gateway_fee']) {
+      if (!(f in raw)) { raw[f] = null; changed = true; }
+    }
+    for (const f of ['discount_reason']) {
+      if (!(f in raw)) { raw[f] = ''; changed = true; }
+    }
+    for (const f of ['contract_date']) {
+      if (!(f in raw)) { raw[f] = null; changed = true; }
+    }
+    if (changed) ids.push(e.id);
+  }
+  if (ids.length > 0) {
+    for (const id of ids) persistDoc('events', id);
+    console.log(`[migrate] events ${ids.length}건 → 매출 필드 백필`);
+  }
+}
+
 export function runMigrations() {
   migrateTenants();
   migrateMiceCustomers();
@@ -651,4 +673,5 @@ export function runMigrations() {
   migrateMenuBOM();
   migrateWeddingMenuBOM();
   migrateBanquetBevBOM();
+  migrateEventRevenueFields();
 }

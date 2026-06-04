@@ -309,6 +309,13 @@ export interface Event {
   deleted_at?: string | null;
   deleted_by_id?: string | null;
   deleted_by_name?: string | null;
+  // ===== 매출 정보 (A3) =====
+  contract_amount?: number | null;      // 계약서 금액 (할인 전)
+  sales_total_amount?: number | null;   // 실제 매출 (할인 후)
+  discount_rate?: number | null;        // 할인율 (0.1 = 10%)
+  discount_reason?: string;             // 할인 사유
+  contract_date?: string | null;        // 계약일
+  gateway_fee?: number | null;          // 가톨릭대 대관료 (별도 지급)
 }
 
 export interface Invoice {
@@ -553,5 +560,33 @@ export interface CollaborationRequest {
   // --- 상태 / 메타 ---
   status: CollabStatus;
   reply_due_at: string; // created_at + 24h (카운트다운 기준)
+  updated_at: string;
+}
+
+// ===== 매출 항목 마스터 (Revenue Items) =====
+export type RevenueCategory = '공간' | '식음' | '장비' | '장식' | '기타';
+
+export interface RevenueItem {
+  id: string;
+  tenant_id?: string;
+  code: string;
+  name_ko: string;
+  category: RevenueCategory;
+  default_account: string;  // 회계 계정 코드
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ===== 행사별 세부 매출 라인 (Event Revenue Lines) =====
+export interface EventRevenueLine {
+  id: string;
+  tenant_id?: string;
+  event_id: string;
+  revenue_item_id: string;
+  amount: number | null;
+  note: string;
+  created_at: string;
   updated_at: string;
 }

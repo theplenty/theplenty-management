@@ -20,6 +20,8 @@ import CalendarSummary from './pages/CalendarSummary';
 import ActivityLog from './pages/ActivityLog';
 import ErrorBoundary from './components/ErrorBoundary';
 import Dashboard from './pages/Dashboard';
+import Menus from './pages/Menus';
+import Revenue from './pages/Revenue';
 import PublicCalendar from './pages/PublicCalendar';
 import PublicSummary from './pages/PublicSummary';
 import ApiDocs from './pages/ApiDocs';
@@ -138,6 +140,17 @@ function ProtectedRoutes() {
         />
 
         <Route path="/files" element={<Files />} />
+        {/* 메뉴 마스터 — 활성 사용자 전원 조회 가능. 등록·수정은 페이지 내부에서 권한 게이트. */}
+        <Route path="/menus" element={<Menus />} />
+        {/* 매출 관리 — 조회: 활성 사용자 전원. 수정: admin only (페이지 내부 게이트). */}
+        <Route
+          path="/revenue"
+          element={
+            <ProtectedRoute allow={['admin', 'sales_mice', 'sales_wedding', 'banquet', 'kitchen']}>
+              <Revenue />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/collaborations"
           element={

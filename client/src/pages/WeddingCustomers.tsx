@@ -24,7 +24,7 @@ import { Field, StatusBadge } from '../components/Field';
 import ExcelButtons from '../components/ExcelButtons';
 import ChangeLogPanel from '../components/ChangeLogPanel';
 import TableColumnMenu from '../components/TableColumnMenu';
-import Pagination, { usePaginated, PAGE_SIZE } from '../components/Pagination';
+import Pagination, { usePaginated } from '../components/Pagination';
 import { useTableControls, compareSortValues } from '../lib/useTableControls';
 import {
   buildWeddingFlatRows,
@@ -199,6 +199,7 @@ function emptyForm(authorId: string, authorName: string): FormState {
     desired_budget: '',
     source: '',
     source_detail: '',
+    search_keyword: '',
     event_inquiries: [emptyEventInquiry(authorId, authorName)],
     memo: '',
   };
@@ -292,6 +293,7 @@ export default function WeddingCustomers() {
         c.progress_status,
         c.source,
         c.source_detail,
+        c.search_keyword,
         c.competing_venues,
         c.desired_budget,
         c.memo,
@@ -322,6 +324,19 @@ export default function WeddingCustomers() {
     [filtered, debouncedQuery]
   );
 
+  // 검색어 자동완성 후보 — 기존에 입력된 distinct 검색어 (띄어쓰기/대소문자 변형 통합).
+  // datalist 로 노출되어 '사'만 쳐도 '사당귀' 같은 기존 값이 보인다 → 표기 일관성 유지.
+  const keywordSuggestions = useMemo(() => {
+    const byNorm = new Map<string, string>(); // 정규화 키 → 대표 원본
+    for (const c of items) {
+      const raw = (c.search_keyword || '').trim().replace(/\s+/g, ' ');
+      if (!raw) continue;
+      const norm = raw.toLowerCase();
+      if (!byNorm.has(norm)) byNorm.set(norm, raw);
+    }
+    return Array.from(byNorm.values()).sort((a, b) => a.localeCompare(b, 'ko'));
+  }, [items]);
+
   function openNew() {
     setEditingId(null);
     setForm(emptyForm(authorId, authorName));
@@ -345,6 +360,7 @@ export default function WeddingCustomers() {
       desired_budget: c.desired_budget,
       source: c.source,
       source_detail: c.source_detail,
+      search_keyword: c.search_keyword || '',
       event_inquiries: c.event_inquiries.length
         ? c.event_inquiries.map((i) => ({ ...i }))
         : [emptyEventInquiry(authorId, authorName)],
@@ -457,8 +473,8 @@ export default function WeddingCustomers() {
     return [...filtered].sort((a, b) => compareSortValues(col.sortValue!(a), col.sortValue!(b), tc.sort.dir));
   }, [filtered, tc.sort, allColumns]);
 
-  // 페이지네이션 — 20개씩
-  const { page, setPage, pageItems } = usePaginated(sortedFiltered, [
+  // 페이지네이션 — 기본 40개씩 (40/60/80/100 선택 가능)
+  const { page, setPage, pageItems, pageSize, setPageSize } = usePaginated(sortedFiltered, [
     debouncedQuery,
     tc.sort.key,
     tc.sort.dir,
@@ -574,7 +590,7 @@ export default function WeddingCustomers() {
             >
               <div className="flex items-start justify-between gap-2 mb-1">
                 <span className="font-semibold text-gray-900 truncate">
-                  <span className="text-gray-400 font-normal mr-1.5">#{page * PAGE_SIZE + i + 1}</span>
+                  <span className="text-gray-400 font-normal mr-1.5">#{page * pageSize + i + 1}</span>
                   {c.wedding_event_name || '(이름 없음)'}
                 </span>
                 <StatusBadge value={c.progress_status} variant={c.progress_status} />
@@ -651,7 +667,7 @@ export default function WeddingCustomers() {
                     className="border-t hover:bg-pink-50 cursor-pointer"
                   >
                     <td className="px-2 py-2 text-right text-xs text-gray-400 tabular-nums">
-                      {page * PAGE_SIZE + i + 1}
+                      {page * pageSize + i + 1}
                     </td>
                     {visibleColumns.map((col) => (
                       <td key={col.key} className={`px-3 py-2 ${col.tdClassName || ''}`}>
@@ -676,7 +692,13 @@ export default function WeddingCustomers() {
         </div>
       </div>
 
-      <Pagination total={sortedFiltered.length} page={page} onChange={setPage} />
+      <Pagination
+        total={sortedFiltered.length}
+        page={page}
+        onChange={setPage}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+      />
 
       <Modal
         open={open}
@@ -814,13 +836,19 @@ export default function WeddingCustomers() {
                 ))}
               </select>
             </Field>
-            <Field label="비교웨딩홀">
+            <Field label="검색어" hint="고객 유입 검색어 (자유 입력). '사'만 입력해도 기존 '사당귀' 등이 자동완성됩니다.">
               <input
                 className="input"
-                value={form.competing_venues}
-                placeholder="아펠가모 / 그랜드인터컨"
-                onChange={(e) => setForm({ ...form, competing_venues: e.target.value })}
+                list="wedding-keyword-suggestions"
+                value={form.search_keyword}
+                placeholder="예: 사당귀"
+                onChange={(e) => setForm({ ...form, search_keyword: e.target.value })}
               />
+              <datalist id="wedding-keyword-suggestions">
+                {keywordSuggestions.map((k) => (
+                  <option key={k} value={k} />
+                ))}
+              </datalist>
             </Field>
             <Field label="희망예산">
               <input
@@ -828,6 +856,14 @@ export default function WeddingCustomers() {
                 value={form.desired_budget}
                 placeholder="예: 7,000만원"
                 onChange={(e) => setForm({ ...form, desired_budget: e.target.value })}
+              />
+            </Field>
+            <Field label="비교웨딩홀">
+              <input
+                className="input"
+                value={form.competing_venues}
+                placeholder="아펠가모 / 그랜드인터컨"
+                onChange={(e) => setForm({ ...form, competing_venues: e.target.value })}
               />
             </Field>
             <Field label="최초 인폼 코멘트" className="md:col-span-2">

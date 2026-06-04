@@ -249,7 +249,7 @@ router.post('/_bulk-upsert', (req, res) => {
       // 스칼라 필드 갱신
       if (r.status !== undefined) existing.status = r.status as EventStatus;
       if (r.usage_type !== undefined) existing.usage_type = r.usage_type;
-      if (r.halls !== undefined) existing.halls = r.halls;
+      if (r.halls !== undefined) existing.halls = [...new Set(r.halls)];
       if (r.start_datetime !== undefined) existing.start_datetime = r.start_datetime;
       if (r.end_datetime !== undefined) existing.end_datetime = r.end_datetime;
       if (r.event_name !== undefined) existing.event_name = r.event_name;
@@ -282,7 +282,7 @@ router.post('/_bulk-upsert', (req, res) => {
           req.user!.name,
         status: (r.status as EventStatus) || 'INQ',
         usage_type: r.usage_type ?? null,
-        halls: r.halls || [],
+        halls: [...new Set(r.halls || [])],
         start_datetime: r.start_datetime || now,
         end_datetime: r.end_datetime || now,
         event_name: eventName,
@@ -390,7 +390,7 @@ router.post('/', (req, res) => {
     created_by_name: overrideCreatedByName || req.user!.name,
     status: (body.status as EventStatus) || 'INQ',
     usage_type: body.usage_type ?? null,
-    halls: body.halls || [],
+    halls: [...new Set(body.halls || [])],
     start_datetime: body.start_datetime || now,
     end_datetime: body.end_datetime || now,
     event_name: body.event_name || '',

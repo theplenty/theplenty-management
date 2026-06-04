@@ -6,6 +6,14 @@ import koLocale from '@fullcalendar/core/locales/ko';
 import type { EventInput } from '@fullcalendar/core';
 import { STATUS_HEX, type EventStatus } from '../types';
 
+// FullCalendar의 .fc-daygrid-event 에 white-space:nowrap 이 기본 적용되어
+// 커스텀 eventContent 내부 텍스트가 잘림. 공유 캘린더 전용으로 오버라이드.
+const FC_OVERRIDE_CSS = `
+  .pub-fc .fc-daygrid-event        { white-space: normal !important; height: auto !important; }
+  .pub-fc .fc-event-main           { overflow: visible !important; white-space: normal !important; }
+  .pub-fc .fc-daygrid-event-harness{ height: auto !important; }
+`;
+
 interface PublicEvent {
   id: string;
   event_type: 'MICE' | 'WEDDING';
@@ -65,6 +73,7 @@ export default function PublicCalendar() {
       backgroundColor: STATUS_HEX[ev.status],
       borderColor: STATUS_HEX[ev.status],
       textColor: '#ffffff',
+      extendedProps: { halls: ev.halls },
     }));
   }, [events]);
 
@@ -95,6 +104,9 @@ export default function PublicCalendar() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8">
+      {/* FullCalendar 이벤트 블록 CSS 오버라이드 — pub-fc 스코프 */}
+      <style>{FC_OVERRIDE_CSS}</style>
+
       <div className="max-w-5xl mx-auto">
         <div className="bg-white rounded-2xl shadow p-6">
           <div className="flex items-center justify-between mb-4 border-b pb-3">
@@ -110,35 +122,60 @@ export default function PublicCalendar() {
               </h1>
               {share.label && <div className="text-xs text-gray-400 mt-0.5">{share.label}</div>}
             </div>
+            {/* DEF(확정)만 표시하므로 범례도 DEF 단독 */}
             <div className="flex gap-2 text-xs flex-wrap">
-              <Legend label="INQ" color={STATUS_HEX.INQ} />
-              <Legend label="DEF" color={STATUS_HEX.DEF} />
-              <Legend label="LOS" color={STATUS_HEX.LOS} />
+              <Legend label="DEF (확정)" color={STATUS_HEX.DEF} />
             </div>
           </div>
 
-          <FullCalendar
-            plugins={[dayGridPlugin]}
-            initialView="dayGridMonth"
-            initialDate={startDate}
-            locale={koLocale}
-            // 헤더 화살표 / 다른 뷰 버튼 모두 숨김 — 해당 월 고정
-            headerToolbar={false}
-            // 그래도 한 번 더 잠금: 이 범위 밖으로 navigate 시도 자체를 막음
-            validRange={{ start: startDate, end: endDate }}
-            height="auto"
-            editable={false}
-            selectable={false}
-            dayMaxEvents
-            events={fcEvents}
-            eventClick={(info) => {
-              // 외부 공유: 행사 상세 조회 차단
-              info.jsEvent.preventDefault();
-            }}
-          />
+          {/* pub-fc: CSS 오버라이드 스코프 */}
+          <div className="pub-fc">
+            <FullCalendar
+              plugins={[dayGridPlugin]}
+              initialView="dayGridMonth"
+              initialDate={startDate}
+              locale={koLocale}
+              // 헤더 화살표 / 다른 뷰 버튼 모두 숨김 — 해당 월 고정
+              headerToolbar={false}
+              // 그래도 한 번 더 잠금: 이 범위 밖으로 navigate 시도 자체를 막음
+              validRange={{ start: startDate, end: endDate }}
+              height="auto"
+              editable={false}
+              selectable={false}
+              dayMaxEvents={false}
+              events={fcEvents}
+              eventContent={(arg) => {
+                const halls = (arg.event.extendedProps.halls as string[]) || [];
+                return (
+                  <div style={{ padding: '2px 4px', lineHeight: 1.4, width: '100%' }}>
+                    {/* 시간 */}
+                    {arg.timeText && (
+                      <div style={{ fontSize: '0.72em', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {arg.timeText}
+                      </div>
+                    )}
+                    {/* 행사명 — 긴 경우 줄바꿈 */}
+                    <div style={{ fontSize: '0.82em', fontWeight: 600, whiteSpace: 'normal', wordBreak: 'keep-all' }}>
+                      {arg.event.title}
+                    </div>
+                    {/* 사용홀 — 전체 표시, 말줄임 없음 */}
+                    {halls.length > 0 && (
+                      <div style={{ fontSize: '0.72em', opacity: 0.92, whiteSpace: 'normal', wordBreak: 'keep-all', marginTop: 2 }}>
+                        {halls.join(' · ')}
+                      </div>
+                    )}
+                  </div>
+                );
+              }}
+              eventClick={(info) => {
+                // 외부 공유: 행사 상세 조회 차단
+                info.jsEvent.preventDefault();
+              }}
+            />
+          </div>
 
           <div className="mt-4 text-[11px] text-gray-400 text-center">
-            본 페이지는 외부 공유용 읽기 전용 화면입니다. 행사 상세 정보는 표시되지 않습니다.
+            본 페이지는 외부 공유용 읽기 전용 화면입니다. 확정(DEF) 행사만 표시됩니다.
           </div>
         </div>
       </div>

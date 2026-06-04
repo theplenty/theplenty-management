@@ -3,7 +3,8 @@
 
 import { nanoid } from 'nanoid';
 import { store, persist } from './mockStore.js';
-import type { User, MiceCustomer, WeddingCustomer, Menu, MenuEventType, MenuDept } from '../types.js';
+import type { User, MiceCustomer, WeddingCustomer, Menu, MenuEventType, MenuDept, RevenueItem } from '../types.js';
+import { DEFAULT_TENANT_ID } from '../types.js';
 
 // 실제 super admin 이메일은 .env의 SUPER_ADMIN_EMAIL로 주입한다.
 // 코드에 박힌 fallback은 generic placeholder — Public repo 노출 방지.
@@ -227,9 +228,33 @@ function seedMenus() {
   console.log(`[seed] menus ${store.menus.length}건 시드 완료`);
 }
 
+function seedRevenueItems() {
+  if (store.revenue_items.length > 0) return;
+  const t = now();
+  const items: Array<Omit<RevenueItem, 'id' | 'created_at' | 'updated_at'>> = [
+    { code: 'CONV',      name_ko: '컨벤션이용료',   category: '공간', default_account: '4010', sort_order: 1,  is_active: true, tenant_id: DEFAULT_TENANT_ID },
+    { code: 'FOOD',      name_ko: 'Food',           category: '식음', default_account: '4020', sort_order: 2,  is_active: true, tenant_id: DEFAULT_TENANT_ID },
+    { code: 'CB',        name_ko: 'Coffee Break',   category: '식음', default_account: '4021', sort_order: 3,  is_active: true, tenant_id: DEFAULT_TENANT_ID },
+    { code: 'SNACK',     name_ko: 'Snack Plate',    category: '식음', default_account: '4022', sort_order: 4,  is_active: true, tenant_id: DEFAULT_TENANT_ID },
+    { code: 'BEV',       name_ko: 'Bev.',           category: '식음', default_account: '4023', sort_order: 5,  is_active: true, tenant_id: DEFAULT_TENANT_ID },
+    { code: 'CORKAGE',   name_ko: 'Corkage',        category: '식음', default_account: '4024', sort_order: 6,  is_active: true, tenant_id: DEFAULT_TENANT_ID },
+    { code: 'MEDIAWALL', name_ko: 'Media Wall/LCD', category: '장비', default_account: '4030', sort_order: 7,  is_active: true, tenant_id: DEFAULT_TENANT_ID },
+    { code: 'BOOTH',     name_ko: 'Booth',          category: '장비', default_account: '4031', sort_order: 8,  is_active: true, tenant_id: DEFAULT_TENANT_ID },
+    { code: 'STAGE',     name_ko: 'Stage/catering', category: '장비', default_account: '4032', sort_order: 9,  is_active: true, tenant_id: DEFAULT_TENANT_ID },
+    { code: 'SYSTEM',    name_ko: 'System',         category: '장비', default_account: '4033', sort_order: 10, is_active: true, tenant_id: DEFAULT_TENANT_ID },
+    { code: 'FLOWER',    name_ko: 'Flower',         category: '장식', default_account: '4040', sort_order: 11, is_active: true, tenant_id: DEFAULT_TENANT_ID },
+  ];
+  for (const item of items) {
+    store.revenue_items.push({ ...item, id: nanoid(10), created_at: t, updated_at: t } as RevenueItem);
+  }
+  persist('revenue_items');
+  console.log(`[seed] revenue_items ${store.revenue_items.length}건 시드 완료`);
+}
+
 export function runSeed() {
   seedUsers();
   seedMenus();
+  seedRevenueItems();
   // 고객정보 / 행사정보는 사용자가 직접 입력하기로 함 — 자동 시드 비활성화.
   // 필요 시 호출 복구.
   void seedMiceCustomers;

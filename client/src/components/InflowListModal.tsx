@@ -75,14 +75,13 @@ export default function InflowListModal({
                 <Th>통화일자</Th>
                 <Th>문의행사일</Th>
                 <Th>진행상황</Th>
-                <Th>행사관련메모</Th>
                 <Th>비고</Th>
               </tr>
             </thead>
             <tbody>
               {(miceRows || []).length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center text-gray-400 py-8">
+                  <td colSpan={9} className="text-center text-gray-400 py-8">
                     해당 조건에 맞는 신규유입이 없습니다.
                   </td>
                 </tr>
@@ -98,9 +97,6 @@ export default function InflowListModal({
                     <Td>{r.inquiry_event_date_text || '-'}</Td>
                     <Td>
                       <StatusBadge value={r.progress_status} variant={r.progress_status} />
-                    </Td>
-                    <Td className="max-w-[14rem] truncate" title={r.event_memo}>
-                      {r.event_memo || '-'}
                     </Td>
                     <Td className="max-w-[14rem] truncate" title={r.customer_memo}>
                       {r.customer_memo || '-'}

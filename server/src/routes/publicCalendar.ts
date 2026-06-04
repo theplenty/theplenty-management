@@ -52,8 +52,8 @@ router.get('/calendar/:token', (req, res) => {
       // 시작/종료가 해당 월과 조금이라도 겹치면 노출
       if (evEnd < start || evStart >= end) return false;
       if (event_type_filter !== 'ALL' && e.event_type !== event_type_filter) return false;
-      // LOS 행사는 외부 공유에서 제외 (운영상 안전)
-      if (e.status === 'LOS') return false;
+      // 외부 공유는 DEF(확정) 행사만 표시
+      if (e.status !== 'DEF') return false;
       return true;
     })
     // 외부에 노출되지 않아야 할 정보 제거 — 행사 식별과 일정만 남김

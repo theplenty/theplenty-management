@@ -505,7 +505,6 @@ function MiceDrillTable({
             <th className="text-left px-3 py-2 font-semibold border-b">진행</th>
             <th className="text-left px-3 py-2 font-semibold border-b">통화/생성</th>
             <th className="text-left px-3 py-2 font-semibold border-b">행사일</th>
-            <th className="text-left px-3 py-2 font-semibold border-b">메모</th>
           </tr>
         </thead>
         <tbody>
@@ -546,9 +545,6 @@ function MiceDrillTable({
               </td>
               <td className="px-3 py-2 text-gray-600">
                 {it.inquiry.inquiry_event_date_text || '-'}
-              </td>
-              <td className="px-3 py-2 max-w-[16rem] truncate text-gray-600" title={it.inquiry.event_memo}>
-                {it.inquiry.event_memo || '-'}
               </td>
             </tr>
           ))}
