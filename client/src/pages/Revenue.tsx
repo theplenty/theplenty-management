@@ -1,9 +1,15 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { canWriteRevenue } from '../auth/permissions';
 import { api } from '../lib/api';
 import type { Event, EventRevenueLine, RevenueItem, RevenueCategory } from '../types';
 import clsx from 'clsx';
+
+const PAGE_SIZE = 50;
+
+type SortCol = 'date' | 'contract_amount' | 'discount_rate' | 'sales_total' | 'gateway_fee' | 'grand_total';
+type SortDir = 'asc' | 'desc';
 
 // ───────────────────────────────────────────────
 // Local Types
@@ -75,6 +81,7 @@ export default function Revenue() {
   const { user } = useAuth();
   const role = user?.role;
   const canWrite = canWriteRevenue(role);
+  const navigate = useNavigate();
 
   // ─── State ───
   const [events, setEvents] = useState<Event[]>([]);
@@ -86,6 +93,11 @@ export default function Revenue() {
   const [yearFilter, setYearFilter] = useState<number>(currentYear);
   const [monthFilter, setMonthFilter] = useState<'' | number>('');
   const [typeFilter, setTypeFilter] = useState<'' | 'MICE' | 'WEDDING'>('');
+
+  // ─── Sort & Page ───
+  const [sortCol, setSortCol] = useState<SortCol>('date');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [page, setPage] = useState(1);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [lineMap, setLineMap] = useState<Record<string, EventRevenueLine[]>>({});
@@ -132,6 +144,61 @@ export default function Revenue() {
     if (typeFilter !== '' && e.event_type !== typeFilter) return false;
     return true;
   });
+
+  // 필터/정렬 변경 시 페이지 리셋
+  useEffect(() => { setPage(1); }, [yearFilter, monthFilter, typeFilter, sortCol, sortDir]);
+
+  // ─── Sorted events ───
+  const sortedEvents = [...filteredEvents].sort((a, b) => {
+    let va: number, vb: number;
+    switch (sortCol) {
+      case 'date':
+        va = new Date(a.start_datetime).getTime();
+        vb = new Date(b.start_datetime).getTime();
+        break;
+      case 'contract_amount':
+        va = a.contract_amount ?? 0;
+        vb = b.contract_amount ?? 0;
+        break;
+      case 'discount_rate':
+        va = a.discount_rate ?? 0;
+        vb = b.discount_rate ?? 0;
+        break;
+      case 'sales_total':
+        va = a.sales_total_amount ?? 0;
+        vb = b.sales_total_amount ?? 0;
+        break;
+      case 'gateway_fee':
+        va = a.gateway_fee ?? 0;
+        vb = b.gateway_fee ?? 0;
+        break;
+      case 'grand_total':
+        va = (a.sales_total_amount ?? 0) + (a.gateway_fee ?? 0);
+        vb = (b.sales_total_amount ?? 0) + (b.gateway_fee ?? 0);
+        break;
+      default:
+        return 0;
+    }
+    return sortDir === 'asc' ? va - vb : vb - va;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sortedEvents.length / PAGE_SIZE));
+  const pagedEvents = sortedEvents.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // ─── Sort toggle helper ───
+  function toggleSort(col: SortCol) {
+    if (sortCol === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  }
+
+  function SortIcon({ col }: { col: SortCol }) {
+    if (sortCol !== col) return <span className="ml-1 text-gray-300">⇅</span>;
+    return <span className="ml-1 text-blue-500">{sortDir === 'asc' ? '↑' : '↓'}</span>;
+  }
 
   // ─── Summary stats ───
   const statEventCount = filteredEvents.length;
@@ -597,24 +664,62 @@ export default function Revenue() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
-                {['#', '행사일', '행사명', '구분', '계약일', '계약금액', '할인율', '실매출', '대관료', '매출계', '상태', ''].map((h) => (
-                  <th key={h} className="px-3 py-2.5 text-left font-medium text-gray-600 whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600 w-10">#</th>
+                <th
+                  className="px-3 py-2.5 text-left font-medium text-gray-600 whitespace-nowrap cursor-pointer hover:text-blue-600 select-none"
+                  onClick={() => toggleSort('date')}
+                >
+                  행사일<SortIcon col="date" />
+                </th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600">행사명</th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600">구분</th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600">계약일</th>
+                <th
+                  className="px-3 py-2.5 text-right font-medium text-gray-600 whitespace-nowrap cursor-pointer hover:text-blue-600 select-none"
+                  onClick={() => toggleSort('contract_amount')}
+                >
+                  계약금액<SortIcon col="contract_amount" />
+                </th>
+                <th
+                  className="px-3 py-2.5 text-right font-medium text-gray-600 whitespace-nowrap cursor-pointer hover:text-blue-600 select-none"
+                  onClick={() => toggleSort('discount_rate')}
+                >
+                  할인율<SortIcon col="discount_rate" />
+                </th>
+                <th
+                  className="px-3 py-2.5 text-right font-medium text-gray-600 whitespace-nowrap cursor-pointer hover:text-blue-600 select-none"
+                  onClick={() => toggleSort('sales_total')}
+                >
+                  실매출<SortIcon col="sales_total" />
+                </th>
+                <th
+                  className="px-3 py-2.5 text-right font-medium text-gray-600 whitespace-nowrap cursor-pointer hover:text-blue-600 select-none"
+                  onClick={() => toggleSort('gateway_fee')}
+                >
+                  대관료<SortIcon col="gateway_fee" />
+                </th>
+                <th
+                  className="px-3 py-2.5 text-right font-medium text-gray-600 whitespace-nowrap cursor-pointer hover:text-blue-600 select-none"
+                  onClick={() => toggleSort('grand_total')}
+                >
+                  매출계<SortIcon col="grand_total" />
+                </th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600">상태</th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600 w-20"></th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filteredEvents.length === 0 && (
+              {pagedEvents.length === 0 && (
                 <tr>
                   <td colSpan={12} className="py-12 text-center text-gray-400">
                     조회된 행사가 없습니다.
                   </td>
                 </tr>
               )}
-              {filteredEvents.map((ev, idx) => {
+              {pagedEvents.map((ev, idx) => {
                 const isExpanded = expandedId === ev.id;
                 const salesSum = sumOrNull(ev.sales_total_amount, ev.gateway_fee);
+                const rowNum = (page - 1) * PAGE_SIZE + idx + 1;
 
                 return (
                   <Fragment key={ev.id}>
@@ -626,12 +731,25 @@ export default function Revenue() {
                       )}
                       onClick={() => handleExpand(ev)}
                     >
-                      <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
+                      <td className="px-3 py-2 text-gray-500">{rowNum}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         {ev.start_datetime.slice(0, 10)}
                       </td>
-                      <td className="px-3 py-2 font-medium max-w-[200px] truncate">
-                        {ev.event_name}
+                      <td className="px-3 py-2 font-medium max-w-[220px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate">{ev.event_name}</span>
+                          <button
+                            type="button"
+                            title="행사정보 보기"
+                            className="flex-shrink-0 text-gray-300 hover:text-blue-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/events?focus=${ev.id}`);
+                            }}
+                          >
+                            ↗
+                          </button>
+                        </div>
                       </td>
                       <td className="px-3 py-2">
                         <span
@@ -684,7 +802,7 @@ export default function Revenue() {
                             handleExpand(ev);
                           }}
                         >
-                          {isExpanded ? '닫기' : '상세'}
+                          {isExpanded ? '닫기' : '매출'}
                         </button>
                       </td>
                     </tr>
@@ -718,6 +836,54 @@ export default function Revenue() {
           </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white rounded border px-4 py-2.5">
+          <span className="text-sm text-gray-500">
+            {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, sortedEvents.length)} / {sortedEvents.length}건
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+              onClick={() => setPage(1)}
+              disabled={page === 1}
+              title="처음으로"
+            >
+              ««
+            </button>
+            <button
+              type="button"
+              className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              ‹
+            </button>
+            <span className="px-3 py-1 text-sm font-medium text-gray-700">
+              {page} / {totalPages}
+            </span>
+            <button
+              type="button"
+              className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+            >
+              ›
+            </button>
+            <button
+              type="button"
+              className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+              onClick={() => setPage(totalPages)}
+              disabled={page === totalPages}
+              title="마지막으로"
+            >
+              »»
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Import modal */}
       {importModal && (
