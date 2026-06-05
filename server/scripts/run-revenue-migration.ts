@@ -56,14 +56,40 @@ type FSRevenueItem = { id: string; code: string; [key: string]: unknown };
 const revenueItems: FSRevenueItem[] = riSnap.docs.map((d) => ({ id: d.id, ...d.data() } as FSRevenueItem));
 console.log(`[init] revenue_items: ${revenueItems.length}건`);
 
+// ── revenue_items 없으면 자동 시드 ───────────────────────────────────────────
+const REVENUE_ITEMS_SEED = [
+  { code: 'CONV',      name_ko: '컨벤션이용료',   category: '공간', default_account: '4010', sort_order: 1  },
+  { code: 'FOOD',      name_ko: 'Food',           category: '식음', default_account: '4020', sort_order: 2  },
+  { code: 'CB',        name_ko: 'Coffee Break',   category: '식음', default_account: '4021', sort_order: 3  },
+  { code: 'SNACK',     name_ko: 'Snack Plate',    category: '식음', default_account: '4022', sort_order: 4  },
+  { code: 'BEV',       name_ko: 'Bev.',           category: '식음', default_account: '4023', sort_order: 5  },
+  { code: 'CORKAGE',   name_ko: 'Corkage',        category: '식음', default_account: '4024', sort_order: 6  },
+  { code: 'MEDIAWALL', name_ko: 'Media Wall/LCD', category: '장비', default_account: '4030', sort_order: 7  },
+  { code: 'BOOTH',     name_ko: 'Booth',          category: '장비', default_account: '4031', sort_order: 8  },
+  { code: 'STAGE',     name_ko: 'Stage/catering', category: '장비', default_account: '4032', sort_order: 9  },
+  { code: 'SYSTEM',    name_ko: 'System',         category: '장비', default_account: '4033', sort_order: 10 },
+  { code: 'FLOWER',    name_ko: 'Flower',         category: '장식', default_account: '4040', sort_order: 11 },
+];
+
+if (revenueItems.length === 0 && !DRY_RUN) {
+  console.log('[seed] revenue_items 비어있음 → Firestore에 시드 데이터 등록 중...');
+  const seedBatch = firestore.batch();
+  const seedNow = new Date().toISOString();
+  for (const item of REVENUE_ITEMS_SEED) {
+    const id = nanoid(10);
+    const ref = firestore.collection('revenue_items').doc(id);
+    seedBatch.set(ref, { id, ...item, is_active: true, created_at: seedNow, updated_at: seedNow });
+    revenueItems.push({ id, code: item.code } as FSRevenueItem);
+  }
+  await seedBatch.commit();
+  console.log(`[seed] revenue_items ${REVENUE_ITEMS_SEED.length}건 등록 완료`);
+} else if (revenueItems.length === 0 && DRY_RUN) {
+  console.log('[DRY] revenue_items 비어있음 → 실행 시 자동 시드 예정');
+}
+
 // code → id 맵
 const codeToId: Record<string, string> = {};
 for (const ri of revenueItems) codeToId[ri.code] = ri.id;
-
-if (revenueItems.length === 0) {
-  console.error('[ERROR] revenue_items가 비어있습니다. 시드 먼저 실행 필요 (서버 1회 시작).');
-  process.exit(1);
-}
 
 // ── 단어 겹침 점수 ────────────────────────────────────────────────────────────
 function overlap(a: string, b: string): number {
@@ -77,13 +103,16 @@ function overlap(a: string, b: string): number {
 // ── 매칭 + Firestore 업데이트 ─────────────────────────────────────────────────
 let matched = 0, skipped = 0, unmatched = 0, errors = 0;
 const unmatchedRows: string[] = [];
+const processedEventIds = new Set<string>(); // 이번 실행에서 이미 처리한 event ID 추적
 const now = new Date().toISOString();
 
 for (const row of excelRows) {
   if (!row.date || row.status === 'LOS') continue;
 
-  // 같은 날짜 후보
-  const candidates = events.filter((e) => e.start_datetime?.startsWith(row.date));
+  // 같은 날짜 후보 (이번 실행에서 이미 처리한 이벤트 제외)
+  const candidates = events.filter(
+    (e) => e.start_datetime?.startsWith(row.date) && !processedEventIds.has(e.id)
+  );
   if (candidates.length === 0) {
     unmatched++;
     unmatchedRows.push(`${row.date} | ${row.event_name}`);
@@ -108,6 +137,7 @@ for (const row of excelRows) {
 
   if (DRY_RUN) {
     console.log(`[DRY] 매칭: "${row.event_name}" → "${target.event_name}" (${row.date}) | 계약 ${row.contract_amount?.toLocaleString()} | 실매출 ${row.sales_total_amount?.toLocaleString()}`);
+    processedEventIds.add(target.id);
     matched++;
     continue;
   }
@@ -152,6 +182,7 @@ for (const row of excelRows) {
     }
 
     await batch.commit();
+    processedEventIds.add(target.id);
     matched++;
 
     if (matched % 10 === 0) {
