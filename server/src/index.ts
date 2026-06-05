@@ -1,3 +1,4 @@
+// build: 2026-06-05
 // .env는 두 곳 모두 시도:
 //   1) 프로젝트 루트 ../../.env  (로컬 dev 환경)
 //   2) server/.env               (Cloud Functions 배포 환경)
