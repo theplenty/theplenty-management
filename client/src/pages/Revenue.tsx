@@ -218,7 +218,12 @@ export default function Revenue() {
     // Load lines if not cached
     if (!lineMap[ev.id]) {
       try {
-        const lines = await api.get<EventRevenueLine[]>(`/api/events/${ev.id}/revenue`);
+        const resp = await api.get<{
+          event: Event;
+          revenue_lines: EventRevenueLine[];
+          revenue_items: RevenueItem[];
+        }>(`/api/events/${ev.id}/revenue`);
+        const lines = Array.isArray(resp.revenue_lines) ? resp.revenue_lines : [];
         setLineMap((prev) => ({ ...prev, [ev.id]: lines }));
         initEditForm(ev, lines);
       } catch {
