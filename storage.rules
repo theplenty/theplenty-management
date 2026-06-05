@@ -1,8 +1,14 @@
 rules_version = '2';
 
-// Storage 보안 규칙 — 백엔드 Admin SDK만 접근.
+// Firebase Storage 보안 규칙
+// - events/** : 로그인한 사용자가 업로드 가능 (클라이언트 SDK 직접 업로드)
+// - 읽기(다운로드)는 서버 Admin SDK(Signed URL)만 — 클라이언트에서 직접 URL 접근 불가.
 service firebase.storage {
   match /b/{bucket}/o {
+    match /events/{allPaths=**} {
+      allow write: if request.auth != null;
+      allow read:  if false;
+    }
     match /{allPaths=**} {
       allow read, write: if false;
     }

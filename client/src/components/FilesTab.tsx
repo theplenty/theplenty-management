@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { uploadFileToStorage } from '../lib/firebase';
 import { EVENT_FILE_TYPE_LABEL, type EventFile, type EventFileType } from '../types';
 
 interface Props {
-  eventId: string | null; // null = 신규 행사 → 저장 후 첨부 가능
+  eventId: string | null;
   canWrite: boolean;
 }
 
@@ -24,10 +25,17 @@ function fmtDateTime(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** 파일 확장자 추출 (예: ".pdf") */
+function extOf(filename: string): string {
+  const i = filename.lastIndexOf('.');
+  return i >= 0 ? filename.slice(i) : '';
+}
+
 export default function FilesTab({ eventId, canWrite }: Props) {
   const [files, setFiles] = useState<EventFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadPct, setUploadPct] = useState(0);
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadType, setUploadType] = useState<EventFileType>('estimate');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +52,7 @@ export default function FilesTab({ eventId, canWrite }: Props) {
       setLoading(false);
     }
   }
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -57,38 +66,24 @@ export default function FilesTab({ eventId, canWrite }: Props) {
       return;
     }
     setUploading(true);
-    setUploadStatus('서버에서 업로드 URL 요청 중...');
+    setUploadPct(0);
+    setUploadStatus('Storage에 업로드 중...');
     try {
-      // STEP 1: 서버에서 Signed Upload URL 발급
-      const { upload_url, storage_key } = await api.post<{
-        upload_url: string;
-        storage_key: string;
-      }>(`/api/events/${eventId}/files/upload-url`, {
-        filename: file.name,
-        mimetype: file.type || 'application/octet-stream',
-        file_type: uploadType,
+      // STEP 1: Firebase Storage에 직접 업로드 (Firebase Hosting 완전 우회)
+      const uuid = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+      const storagePath = `events/${eventId}/${uuid}${extOf(file.name)}`;
+
+      await uploadFileToStorage(storagePath, file, (pct) => {
+        setUploadPct(pct);
+        setUploadStatus(`Storage에 업로드 중... ${pct}%`);
       });
 
-      // STEP 2: Firebase Storage에 직접 PUT (Firebase Hosting 우회)
-      setUploadStatus('파일 업로드 중...');
-      const putRes = await fetch(upload_url, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': file.type || 'application/octet-stream',
-        },
-      });
-      if (!putRes.ok) {
-        const text = await putRes.text().catch(() => '');
-        throw new Error(`Storage 업로드 실패 (${putRes.status})${text ? ': ' + text.slice(0, 200) : ''}`);
-      }
-
-      // STEP 3: 서버에 업로드 완료 통보 → DB 레코드 생성
+      // STEP 2: 서버에 업로드 완료 통보 → DB 레코드 생성
       setUploadStatus('완료 처리 중...');
       const { file: created } = await api.post<{ file: EventFile }>(
         `/api/events/${eventId}/files/confirm`,
         {
-          storage_key,
+          storage_key: storagePath,
           filename: file.name,
           mimetype: file.type || 'application/octet-stream',
           file_type: uploadType,
@@ -100,6 +95,7 @@ export default function FilesTab({ eventId, canWrite }: Props) {
       console.error('[FilesTab] upload error:', err);
     } finally {
       setUploading(false);
+      setUploadPct(0);
       setUploadStatus('');
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -164,12 +160,16 @@ export default function FilesTab({ eventId, canWrite }: Props) {
             />
           </div>
           {uploading && (
-            <div className="text-xs text-gray-500 flex items-center gap-1">
-              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-              </svg>
-              {uploadStatus || '업로드 중...'}
+            <div className="flex items-center gap-2 min-w-[140px]">
+              {uploadPct > 0 && (
+                <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 transition-all"
+                    style={{ width: `${uploadPct}%` }}
+                  />
+                </div>
+              )}
+              <span className="text-xs text-gray-500">{uploadStatus || '처리 중...'}</span>
             </div>
           )}
         </div>

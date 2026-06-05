@@ -1,6 +1,7 @@
 // 행사 첨부파일 관리 — Firebase Storage 기반 (Phase 5).
-// 업로드 방식: Signed URL (클라이언트가 Firebase Hosting 우회 → Storage 직접 PUT).
-// 다운로드는 signed URL로 redirect (10분 유효).
+// 업로드: 클라이언트가 Firebase Storage SDK로 직접 PUT (Firebase Hosting 우회).
+//         업로드 완료 후 /confirm 엔드포인트로 DB 레코드 생성 요청.
+// 다운로드: Admin SDK Signed URL로 redirect (10분 유효).
 
 import { Router } from 'express';
 import path from 'node:path';
@@ -32,12 +33,6 @@ function canWriteFile(role: string, fileType: EventFileType): boolean {
   return role === 'sales_mice' || role === 'sales_wedding';
 }
 
-// Storage 객체 키 생성: events/<event_id>/<random>.<ext>
-function buildStorageKey(eventId: string, originalName: string): string {
-  const ext = path.extname(originalName) || '';
-  return `events/${eventId}/${nanoid(16)}${ext}`;
-}
-
 // 클라이언트 응답용 — DB에 저장된 file_url(storage path)을 /download 라우트로 변환.
 function toClientFile(f: EventFile): EventFile {
   return {
@@ -47,52 +42,7 @@ function toClientFile(f: EventFile): EventFile {
 }
 
 // ──────────────────────────────────────────────────────────
-// STEP 1: Signed Upload URL 발급
-//   POST /api/events/:eventId/files/upload-url
-//   body: { filename, mimetype, file_type }
-//   returns: { upload_url, storage_key }  ← 클라이언트가 PUT
-// ──────────────────────────────────────────────────────────
-router.post('/:eventId/files/upload-url', async (req: Request, res: Response) => {
-  const ev = store.events.find((e) => e.id === req.params.eventId);
-  if (!ev) return res.status(404).json({ error: 'event_not_found' });
-
-  const { filename, mimetype, file_type: rawType } = req.body as {
-    filename?: string;
-    mimetype?: string;
-    file_type?: string;
-  };
-
-  if (!filename) return res.status(400).json({ error: 'filename_required' });
-
-  const file_type = sanitizeFileType(rawType);
-  if (!canWriteFile(req.user!.role, file_type)) {
-    return res.status(403).json({ error: 'forbidden' });
-  }
-
-  const contentType = mimetype || 'application/octet-stream';
-  const storageKey = buildStorageKey(ev.id, filename);
-
-  try {
-    const { firebaseStorage } = await import('../lib/firebase.js');
-    const bucket = firebaseStorage.bucket();
-    console.log(`[upload-url] bucket=${bucket.name}, key=${storageKey}`);
-
-    const [signedUrl] = await bucket.file(storageKey).getSignedUrl({
-      action: 'write',
-      expires: Date.now() + 15 * 60 * 1000, // 15분 유효
-      contentType,
-    });
-
-    console.log(`[upload-url] Signed URL 발급 완료: ${filename}`);
-    res.json({ upload_url: signedUrl, storage_key: storageKey });
-  } catch (e) {
-    console.error('[upload-url] Signed URL 생성 실패:', e);
-    res.status(500).json({ error: 'signed_url_failed', detail: (e as Error).message });
-  }
-});
-
-// ──────────────────────────────────────────────────────────
-// STEP 2: 업로드 완료 확인 (DB 레코드 생성)
+// 업로드 완료 확인 (DB 레코드 생성)
 //   POST /api/events/:eventId/files/confirm
 //   body: { storage_key, filename, mimetype, file_type }
 //   returns: { file }
@@ -109,6 +59,12 @@ router.post('/:eventId/files/confirm', async (req: Request, res: Response) => {
 
   if (!storage_key || !filename) {
     return res.status(400).json({ error: 'storage_key_and_filename_required' });
+  }
+
+  // storage_key가 올바른 경로인지 검증 (path injection 방지)
+  const expectedPrefix = `events/${ev.id}/`;
+  if (!storage_key.startsWith(expectedPrefix)) {
+    return res.status(400).json({ error: 'invalid_storage_key' });
   }
 
   const file_type = sanitizeFileType(rawType);
@@ -153,7 +109,7 @@ router.get('/:eventId/files', (req, res) => {
   res.json({ files });
 });
 
-// 다운로드 — Firebase Storage에서 signed URL 생성 후 redirect.
+// 다운로드 — Admin SDK로 Signed Read URL 생성 후 redirect.
 router.get('/:eventId/files/:fileId/download', async (req, res) => {
   const ev = store.events.find((e) => e.id === req.params.eventId);
   if (!ev) return res.status(404).json({ error: 'event_not_found' });

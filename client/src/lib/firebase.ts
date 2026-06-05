@@ -13,6 +13,12 @@ import {
   type User as FirebaseUser,
   type Auth,
 } from 'firebase/auth';
+import {
+  getStorage,
+  ref,
+  uploadBytesResumable,
+  type FirebaseStorage,
+} from 'firebase/storage';
 
 const cfg = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -90,4 +96,42 @@ export function onTokenChange(cb: (user: FirebaseUser | null) => void): () => vo
   if (!FIREBASE_CONFIGURED) return () => {};
   const auth = getFirebaseAuth();
   return onIdTokenChanged(auth, cb);
+}
+
+// ── Firebase Storage ──────────────────────────────────────────────────────────
+let _storage: FirebaseStorage | null = null;
+
+export function getFirebaseStorage(): FirebaseStorage {
+  if (!_storage) _storage = getStorage(getFirebaseApp());
+  return _storage;
+}
+
+/**
+ * Firebase Storage에 파일을 직접 업로드 (Firebase Hosting 우회).
+ * @param storagePath  예: "events/<eventId>/<uuid>.pdf"
+ * @param file         업로드할 File 객체
+ * @param onProgress   0~100 진행률 콜백 (선택)
+ */
+export function uploadFileToStorage(
+  storagePath: string,
+  file: File,
+  onProgress?: (pct: number) => void
+): Promise<void> {
+  const storage = getFirebaseStorage();
+  const storageRef = ref(storage, storagePath);
+  const task = uploadBytesResumable(storageRef, file, {
+    contentType: file.type || 'application/octet-stream',
+  });
+  return new Promise((resolve, reject) => {
+    task.on(
+      'state_changed',
+      (snap) => {
+        if (snap.totalBytes > 0) {
+          onProgress?.(Math.round((snap.bytesTransferred / snap.totalBytes) * 100));
+        }
+      },
+      reject,
+      resolve
+    );
+  });
 }
