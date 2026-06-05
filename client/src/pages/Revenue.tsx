@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { canWriteRevenue } from '../auth/permissions';
 import { api } from '../lib/api';
-import type { Event, EventRevenueLine, RevenueItem, RevenueCategory } from '../types';
+import type { Event, EventWithFood, EventRevenueLine, RevenueItem, RevenueCategory, Invoice } from '../types';
 import clsx from 'clsx';
 
 const PAGE_SIZE = 50;
@@ -84,7 +84,7 @@ export default function Revenue() {
   const navigate = useNavigate();
 
   // ─── State ───
-  const [events, setEvents] = useState<Event[]>([]);
+  const [events, setEvents] = useState<EventWithFood[]>([]);
   const [revenueItems, setRevenueItems] = useState<RevenueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,11 +117,11 @@ export default function Revenue() {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      api.get<{ events: Event[] }>('/api/events'),
+      api.get<{ events: EventWithFood[] }>('/api/events'),
       api.get<RevenueItem[]>('/api/revenue-items'),
     ])
       .then(([evRes, items]) => {
-        const evList = (evRes.events ?? (evRes as unknown as Event[]));
+        const evList = (evRes.events ?? (evRes as unknown as EventWithFood[]));
         // DEF, TEN 만 표시 (TEN은 서버에서 올 수 있으므로 string 비교)
         setEvents(evList.filter((e) => (e.status as string) === 'DEF' || (e.status as string) === 'TEN'));
         setRevenueItems(Array.isArray(items) ? items : []);
@@ -517,8 +517,8 @@ export default function Revenue() {
       setImportRows([]);
       showToast(`${validRows.length}건 가져오기 완료`);
       // Reload events
-      const evRes = await api.get<{ events: Event[] }>('/api/events');
-      const evList = evRes.events ?? (evRes as unknown as Event[]);
+      const evRes = await api.get<{ events: EventWithFood[] }>('/api/events');
+      const evList = evRes.events ?? (evRes as unknown as EventWithFood[]);
       setEvents(evList.filter((e) => (e.status as string) === 'DEF' || (e.status as string) === 'TEN'));
       setLineMap({});
     } catch {
@@ -818,6 +818,7 @@ export default function Revenue() {
                         <td colSpan={12} className="bg-blue-50/20 border-t border-b border-blue-100 p-4">
                           <ExpandedPanel
                             ev={ev}
+                            invoice={ev.invoice ?? null}
                             editForm={editForm}
                             setEditForm={setEditForm}
                             revenueItems={revenueItems}
@@ -911,7 +912,8 @@ export default function Revenue() {
 // ───────────────────────────────────────────────
 
 interface ExpandedPanelProps {
-  ev: Event;
+  ev: EventWithFood;
+  invoice: Invoice | null;
   editForm: RevenueEditForm;
   setEditForm: React.Dispatch<React.SetStateAction<RevenueEditForm | null>>;
   revenueItems: RevenueItem[];
@@ -925,6 +927,7 @@ interface ExpandedPanelProps {
 
 function ExpandedPanel({
   ev,
+  invoice,
   editForm,
   setEditForm,
   revenueItems,
@@ -1053,6 +1056,54 @@ function ExpandedPanel({
             )}
           </div>
         </div>
+      </div>
+
+      {/* 가톨릭대관료 입금현황 (행사정보 연동, 읽기 전용) */}
+      <div>
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-2">
+          가톨릭대관료 입금현황
+          <span className="text-xs font-normal text-gray-400 normal-case">(행사정보 &gt; 가톨릭대관료 탭에서 수정)</span>
+        </div>
+        {!invoice ? (
+          <div className="text-sm text-gray-400 italic">등록된 입금 정보가 없습니다.</div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 bg-amber-50/40 border border-amber-100 rounded p-3">
+            <div>
+              <div className="text-xs text-gray-500 mb-0.5">입금상태</div>
+              <div className="text-sm font-medium text-gray-800">
+                {invoice.payment_status || '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-0.5">입금자명</div>
+              <div className="text-sm text-gray-800">{invoice.depositor_name || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-0.5">입금액</div>
+              <div className="text-sm font-medium text-gray-800">
+                {invoice.payment_amount != null
+                  ? invoice.payment_amount.toLocaleString('ko-KR') + '원'
+                  : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-0.5">입금일자</div>
+              <div className="text-sm text-gray-800">{invoice.payment_date || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-0.5">계산서 발행</div>
+              <div className="text-sm text-gray-800">{invoice.invoice_type || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-0.5">계산서 발행상태</div>
+              <div className="text-sm text-gray-800">{invoice.invoice_issue_status || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-0.5">세금계산서 발행일자</div>
+              <div className="text-sm text-gray-800">{invoice.tax_invoice_issue_date || '—'}</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Revenue Items */}
