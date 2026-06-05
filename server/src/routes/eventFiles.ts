@@ -1,9 +1,8 @@
 // 행사 첨부파일 관리 — Firebase Storage 기반 (Phase 5).
-// busboy로 multipart 파싱 (multer 대신 — Cloud Functions v2 호환성).
+// 업로드 방식: Signed URL (클라이언트가 Firebase Hosting 우회 → Storage 직접 PUT).
 // 다운로드는 signed URL로 redirect (10분 유효).
 
 import { Router } from 'express';
-import Busboy from 'busboy';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { store, persistDoc, persistDelete } from '../store/mockStore.js';
@@ -39,68 +38,7 @@ function buildStorageKey(eventId: string, originalName: string): string {
   return `events/${eventId}/${nanoid(16)}${ext}`;
 }
 
-// multipart/form-data 파싱 (busboy 직접 사용 — Cloud Functions v2에서 multer보다 안정적)
-interface ParsedMultipart {
-  file?: { buffer: Buffer; mimetype: string; filename: string };
-  fields: Record<string, string>;
-}
-function parseMultipart(req: Request): Promise<ParsedMultipart> {
-  return new Promise((resolve, reject) => {
-    let bb: ReturnType<typeof Busboy>;
-    try {
-      bb = Busboy({ headers: req.headers });
-    } catch (e) {
-      return reject(new Error(`Busboy 초기화 실패: ${(e as Error).message}`));
-    }
-
-    let fileData: ParsedMultipart['file'] | undefined;
-    const fields: Record<string, string> = {};
-    let settled = false;
-
-    const done = (err?: Error) => {
-      if (settled) return;
-      settled = true;
-      if (err) reject(err);
-      else resolve({ file: fileData, fields });
-    };
-
-    bb.on('file', (name, stream, info) => {
-      if (name === 'file') {
-        const chunks: Buffer[] = [];
-        let size = 0;
-        stream.on('data', (chunk: Buffer) => {
-          size += chunk.length;
-          if (size > 25 * 1024 * 1024) {
-            stream.destroy(new Error('파일 크기 초과 (25MB 제한)'));
-            return;
-          }
-          chunks.push(chunk);
-        });
-        stream.on('end', () => {
-          fileData = {
-            buffer: Buffer.concat(chunks),
-            mimetype: info.mimeType || 'application/octet-stream',
-            filename: info.filename || 'upload',
-          };
-        });
-        stream.on('error', (e: Error) => done(e));
-      } else {
-        stream.resume(); // 불필요한 필드는 drain
-      }
-    });
-
-    bb.on('field', (name, value) => {
-      fields[name] = value;
-    });
-
-    bb.on('finish', () => done());
-    bb.on('error', (e: Error) => done(e));
-
-    req.pipe(bb);
-  });
-}
-
-// 클라이언트 응답용 — DB에 저장된 file_url(storage path)을 클릭 가능한 download URL로 변환.
+// 클라이언트 응답용 — DB에 저장된 file_url(storage path)을 /download 라우트로 변환.
 function toClientFile(f: EventFile): EventFile {
   return {
     ...f,
@@ -108,68 +46,102 @@ function toClientFile(f: EventFile): EventFile {
   };
 }
 
-// 업로드 — busboy로 multipart 파싱 → Firebase Storage에 저장.
-router.post('/:eventId/files', async (req: Request, res: Response) => {
+// ──────────────────────────────────────────────────────────
+// STEP 1: Signed Upload URL 발급
+//   POST /api/events/:eventId/files/upload-url
+//   body: { filename, mimetype, file_type }
+//   returns: { upload_url, storage_key }  ← 클라이언트가 PUT
+// ──────────────────────────────────────────────────────────
+router.post('/:eventId/files/upload-url', async (req: Request, res: Response) => {
   const ev = store.events.find((e) => e.id === req.params.eventId);
   if (!ev) return res.status(404).json({ error: 'event_not_found' });
 
-  // multipart 파싱
-  let parsed: ParsedMultipart;
-  try {
-    parsed = await parseMultipart(req);
-  } catch (e) {
-    console.error('[upload] multipart 파싱 실패:', e);
-    return res.status(400).json({ error: 'parse_failed', detail: (e as Error).message });
-  }
+  const { filename, mimetype, file_type: rawType } = req.body as {
+    filename?: string;
+    mimetype?: string;
+    file_type?: string;
+  };
 
-  const { file: f, fields } = parsed;
-  if (!f || !f.buffer.length) {
-    return res.status(400).json({ error: 'no_file' });
-  }
+  if (!filename) return res.status(400).json({ error: 'filename_required' });
 
-  const file_type = sanitizeFileType(fields.file_type);
+  const file_type = sanitizeFileType(rawType);
   if (!canWriteFile(req.user!.role, file_type)) {
     return res.status(403).json({ error: 'forbidden' });
   }
 
-  const originalName = f.filename;
-  const storageKey = buildStorageKey(ev.id, originalName);
-
-  console.log(`[upload] 시작: ${originalName} (${f.buffer.length} bytes, type=${file_type}, key=${storageKey})`);
+  const contentType = mimetype || 'application/octet-stream';
+  const storageKey = buildStorageKey(ev.id, filename);
 
   try {
     const { firebaseStorage } = await import('../lib/firebase.js');
     const bucket = firebaseStorage.bucket();
-    console.log(`[upload] bucket name: ${bucket.name}`);
-    await bucket.file(storageKey).save(f.buffer, {
-      contentType: f.mimetype,
-      metadata: {
-        metadata: {
-          original_name: originalName,
-          uploaded_by: req.user!.id,
-          event_id: ev.id,
-          file_type,
-        },
-      },
+    console.log(`[upload-url] bucket=${bucket.name}, key=${storageKey}`);
+
+    const [signedUrl] = await bucket.file(storageKey).getSignedUrl({
+      action: 'write',
+      expires: Date.now() + 15 * 60 * 1000, // 15분 유효
+      contentType,
     });
-    console.log(`[upload] Storage 저장 완료: ${storageKey}`);
+
+    console.log(`[upload-url] Signed URL 발급 완료: ${filename}`);
+    res.json({ upload_url: signedUrl, storage_key: storageKey });
   } catch (e) {
-    console.error('[upload] Firebase Storage 저장 실패:', e);
-    return res.status(500).json({ error: 'storage_failed', detail: (e as Error).message });
+    console.error('[upload-url] Signed URL 생성 실패:', e);
+    res.status(500).json({ error: 'signed_url_failed', detail: (e as Error).message });
+  }
+});
+
+// ──────────────────────────────────────────────────────────
+// STEP 2: 업로드 완료 확인 (DB 레코드 생성)
+//   POST /api/events/:eventId/files/confirm
+//   body: { storage_key, filename, mimetype, file_type }
+//   returns: { file }
+// ──────────────────────────────────────────────────────────
+router.post('/:eventId/files/confirm', async (req: Request, res: Response) => {
+  const ev = store.events.find((e) => e.id === req.params.eventId);
+  if (!ev) return res.status(404).json({ error: 'event_not_found' });
+
+  const { storage_key, filename, file_type: rawType } = req.body as {
+    storage_key?: string;
+    filename?: string;
+    file_type?: string;
+  };
+
+  if (!storage_key || !filename) {
+    return res.status(400).json({ error: 'storage_key_and_filename_required' });
+  }
+
+  const file_type = sanitizeFileType(rawType);
+  if (!canWriteFile(req.user!.role, file_type)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+
+  // Storage에 실제로 파일이 존재하는지 확인
+  try {
+    const { firebaseStorage } = await import('../lib/firebase.js');
+    const [exists] = await firebaseStorage.bucket().file(storage_key).exists();
+    if (!exists) {
+      console.warn(`[confirm] 파일이 Storage에 없음: ${storage_key}`);
+      return res.status(400).json({ error: 'file_not_uploaded' });
+    }
+  } catch (e) {
+    console.error('[confirm] Storage 확인 실패:', e);
+    return res.status(500).json({ error: 'storage_check_failed', detail: (e as Error).message });
   }
 
   const record: EventFile = {
     id: nanoid(10),
     event_id: ev.id,
     file_type,
-    file_name: originalName,
-    file_url: storageKey,
+    file_name: filename,
+    file_url: storage_key,
     uploaded_by: req.user!.id,
     uploaded_at: new Date().toISOString(),
   };
   store.event_files.push(record);
   persistDoc('event_files', record.id);
-  console.log(`[upload] DB 저장 완료: ${record.id}`);
+
+  console.log(`[confirm] DB 저장 완료: ${record.id} (${filename})`);
   res.status(201).json({ file: toClientFile(record) });
 });
 

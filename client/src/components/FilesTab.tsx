@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
-import { getCurrentIdToken } from '../lib/firebase';
 import { EVENT_FILE_TYPE_LABEL, type EventFile, type EventFileType } from '../types';
 
 interface Props {
@@ -25,15 +24,11 @@ function fmtDateTime(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function fmtBytes(_bytes: number): string {
-  // multer는 size를 client로 안 보내고 우리 record에 size가 없으므로 미사용 — placeholder
-  return '';
-}
-
 export default function FilesTab({ eventId, canWrite }: Props) {
   const [files, setFiles] = useState<EventFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('');
   const [uploadType, setUploadType] = useState<EventFileType>('estimate');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -62,35 +57,50 @@ export default function FilesTab({ eventId, canWrite }: Props) {
       return;
     }
     setUploading(true);
+    setUploadStatus('서버에서 업로드 URL 요청 중...');
     try {
-      const idToken = await getCurrentIdToken().catch(() => null);
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('file_type', uploadType);
-      const API_BASE = import.meta.env.VITE_API_BASE || '';
-      const res = await fetch(`${API_BASE}/api/events/${eventId}/files`, {
-        method: 'POST',
-        body: fd,
-        credentials: 'include',
+      // STEP 1: 서버에서 Signed Upload URL 발급
+      const { upload_url, storage_key } = await api.post<{
+        upload_url: string;
+        storage_key: string;
+      }>(`/api/events/${eventId}/files/upload-url`, {
+        filename: file.name,
+        mimetype: file.type || 'application/octet-stream',
+        file_type: uploadType,
+      });
+
+      // STEP 2: Firebase Storage에 직접 PUT (Firebase Hosting 우회)
+      setUploadStatus('파일 업로드 중...');
+      const putRes = await fetch(upload_url, {
+        method: 'PUT',
+        body: file,
         headers: {
-          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+          'Content-Type': file.type || 'application/octet-stream',
         },
       });
-      if (!res.ok) {
-        let detail = '';
-        try {
-          const j = await res.json() as { error?: string; detail?: string };
-          detail = j.detail || j.error || '';
-        } catch { /* ignore */ }
-        throw new Error(`HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
+      if (!putRes.ok) {
+        const text = await putRes.text().catch(() => '');
+        throw new Error(`Storage 업로드 실패 (${putRes.status})${text ? ': ' + text.slice(0, 200) : ''}`);
       }
-      const data = (await res.json()) as { file: EventFile };
-      setFiles((p) => [data.file, ...p]);
+
+      // STEP 3: 서버에 업로드 완료 통보 → DB 레코드 생성
+      setUploadStatus('완료 처리 중...');
+      const { file: created } = await api.post<{ file: EventFile }>(
+        `/api/events/${eventId}/files/confirm`,
+        {
+          storage_key,
+          filename: file.name,
+          mimetype: file.type || 'application/octet-stream',
+          file_type: uploadType,
+        }
+      );
+      setFiles((p) => [created, ...p]);
     } catch (err) {
       alert(`업로드 실패: ${(err as Error).message}`);
       console.error('[FilesTab] upload error:', err);
     } finally {
       setUploading(false);
+      setUploadStatus('');
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
@@ -134,6 +144,7 @@ export default function FilesTab({ eventId, canWrite }: Props) {
               className="input !py-1.5 !text-sm w-32"
               value={uploadType}
               onChange={(e) => setUploadType(e.target.value as EventFileType)}
+              disabled={uploading}
             >
               {TYPE_OPTIONS.map((t) => (
                 <option key={t} value={t}>
@@ -152,7 +163,15 @@ export default function FilesTab({ eventId, canWrite }: Props) {
               className="block text-sm file:mr-2 file:px-3 file:py-1 file:rounded file:border-0 file:bg-blue-600 file:text-white file:cursor-pointer hover:file:bg-blue-700 disabled:opacity-50"
             />
           </div>
-          {uploading && <div className="text-xs text-gray-500">업로드 중...</div>}
+          {uploading && (
+            <div className="text-xs text-gray-500 flex items-center gap-1">
+              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+              </svg>
+              {uploadStatus || '업로드 중...'}
+            </div>
+          )}
         </div>
       )}
 
@@ -196,7 +215,6 @@ export default function FilesTab({ eventId, canWrite }: Props) {
                     >
                       {f.file_name}
                     </a>
-                    {fmtBytes(0) /* keep helper used */}
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-500">{fmtDateTime(f.uploaded_at)}</td>
                   <td className="px-3 py-2">
