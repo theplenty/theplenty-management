@@ -42,9 +42,16 @@ if (!admin.apps.length) {
   if (isCloudFunctions) {
     // Cloud Functions: FIREBASE_CONFIG 환경변수에서 projectId/storageBucket 자동 로드 +
     // default service account credential 자동 적용.
-    admin.initializeApp();
+    // FIREBASE_STORAGE_BUCKET이 명시된 경우 우선 사용 (appspot.com vs firebasestorage.app 불일치 방지).
+    // FIREBASE_* prefix는 Firebase CLI reserved → APP_STORAGE_BUCKET으로 override
+    const cfStorageBucket = process.env.APP_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET;
+    if (cfStorageBucket) {
+      admin.initializeApp({ storageBucket: cfStorageBucket });
+    } else {
+      admin.initializeApp();
+    }
     // eslint-disable-next-line no-console
-    console.log('[firebase] Admin SDK 초기화 (Cloud Functions auto-config)');
+    console.log(`[firebase] Admin SDK 초기화 (Cloud Functions, bucket: ${cfStorageBucket ?? 'auto'})`);
   } else {
     const credPath = resolveCredPath();
     const storageBucket =

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { getCurrentIdToken } from '../lib/firebase';
 import { EVENT_FILE_TYPE_LABEL, type EventFile, type EventFileType } from '../types';
 
 interface Props {
@@ -62,20 +63,32 @@ export default function FilesTab({ eventId, canWrite }: Props) {
     }
     setUploading(true);
     try {
+      const idToken = await getCurrentIdToken().catch(() => null);
       const fd = new FormData();
       fd.append('file', file);
       fd.append('file_type', uploadType);
-      const res = await fetch(`/api/events/${eventId}/files`, {
+      const API_BASE = import.meta.env.VITE_API_BASE || '';
+      const res = await fetch(`${API_BASE}/api/events/${eventId}/files`, {
         method: 'POST',
         body: fd,
         credentials: 'include',
+        headers: {
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        let detail = '';
+        try {
+          const j = await res.json() as { error?: string; detail?: string };
+          detail = j.detail || j.error || '';
+        } catch { /* ignore */ }
+        throw new Error(`HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
+      }
       const data = (await res.json()) as { file: EventFile };
       setFiles((p) => [data.file, ...p]);
     } catch (err) {
-      alert('업로드 실패');
-      console.error(err);
+      alert(`업로드 실패: ${(err as Error).message}`);
+      console.error('[FilesTab] upload error:', err);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
