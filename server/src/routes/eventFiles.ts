@@ -1,23 +1,15 @@
 // 행사 첨부파일 관리 — Firebase Storage 기반 (Phase 5).
-// multer.memoryStorage로 업로드 받아 Firebase Storage 버킷에 PUT.
+// busboy로 multipart 파싱 (multer 대신 — Cloud Functions v2 호환성).
 // 다운로드는 signed URL로 redirect (10분 유효).
 
 import { Router } from 'express';
-import multer from 'multer';
+import Busboy from 'busboy';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { store, persistDoc, persistDelete } from '../store/mockStore.js';
 import { requireActiveRole } from '../middleware/auth.js';
+import type { Request, Response } from 'express';
 import type { EventFile, EventFileType } from '../types.js';
-
-// multer가 file.originalname을 latin1로 디코드하므로 UTF-8로 재해석한다.
-function decodeKoreanName(s: string): string {
-  try {
-    return Buffer.from(s, 'latin1').toString('utf8');
-  } catch {
-    return s;
-  }
-}
 
 function sanitizeFileType(s: unknown): EventFileType {
   const v = String(s || 'other');
@@ -31,11 +23,6 @@ function sanitizeFileType(s: unknown): EventFileType {
     return v;
   return 'other';
 }
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
-});
 
 const router = Router();
 router.use(requireActiveRole);
@@ -52,8 +39,68 @@ function buildStorageKey(eventId: string, originalName: string): string {
   return `events/${eventId}/${nanoid(16)}${ext}`;
 }
 
+// multipart/form-data 파싱 (busboy 직접 사용 — Cloud Functions v2에서 multer보다 안정적)
+interface ParsedMultipart {
+  file?: { buffer: Buffer; mimetype: string; filename: string };
+  fields: Record<string, string>;
+}
+function parseMultipart(req: Request): Promise<ParsedMultipart> {
+  return new Promise((resolve, reject) => {
+    let bb: ReturnType<typeof Busboy>;
+    try {
+      bb = Busboy({ headers: req.headers });
+    } catch (e) {
+      return reject(new Error(`Busboy 초기화 실패: ${(e as Error).message}`));
+    }
+
+    let fileData: ParsedMultipart['file'] | undefined;
+    const fields: Record<string, string> = {};
+    let settled = false;
+
+    const done = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve({ file: fileData, fields });
+    };
+
+    bb.on('file', (name, stream, info) => {
+      if (name === 'file') {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        stream.on('data', (chunk: Buffer) => {
+          size += chunk.length;
+          if (size > 25 * 1024 * 1024) {
+            stream.destroy(new Error('파일 크기 초과 (25MB 제한)'));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        stream.on('end', () => {
+          fileData = {
+            buffer: Buffer.concat(chunks),
+            mimetype: info.mimeType || 'application/octet-stream',
+            filename: info.filename || 'upload',
+          };
+        });
+        stream.on('error', (e: Error) => done(e));
+      } else {
+        stream.resume(); // 불필요한 필드는 drain
+      }
+    });
+
+    bb.on('field', (name, value) => {
+      fields[name] = value;
+    });
+
+    bb.on('finish', () => done());
+    bb.on('error', (e: Error) => done(e));
+
+    req.pipe(bb);
+  });
+}
+
 // 클라이언트 응답용 — DB에 저장된 file_url(storage path)을 클릭 가능한 download URL로 변환.
-// 클라이언트는 file.id로 다운로드 라우트 호출 → 서버가 signed URL로 redirect.
 function toClientFile(f: EventFile): EventFile {
   return {
     ...f,
@@ -61,27 +108,41 @@ function toClientFile(f: EventFile): EventFile {
   };
 }
 
-// 업로드 — multer로 메모리 buffer 받아서 Firebase Storage에 저장.
-router.post('/:eventId/files', upload.single('file'), async (req, res) => {
+// 업로드 — busboy로 multipart 파싱 → Firebase Storage에 저장.
+router.post('/:eventId/files', async (req: Request, res: Response) => {
   const ev = store.events.find((e) => e.id === req.params.eventId);
   if (!ev) return res.status(404).json({ error: 'event_not_found' });
 
-  const f = req.file;
-  if (!f) return res.status(400).json({ error: 'no_file' });
+  // multipart 파싱
+  let parsed: ParsedMultipart;
+  try {
+    parsed = await parseMultipart(req);
+  } catch (e) {
+    console.error('[upload] multipart 파싱 실패:', e);
+    return res.status(400).json({ error: 'parse_failed', detail: (e as Error).message });
+  }
 
-  const file_type = sanitizeFileType(req.body.file_type);
+  const { file: f, fields } = parsed;
+  if (!f || !f.buffer.length) {
+    return res.status(400).json({ error: 'no_file' });
+  }
+
+  const file_type = sanitizeFileType(fields.file_type);
   if (!canWriteFile(req.user!.role, file_type)) {
     return res.status(403).json({ error: 'forbidden' });
   }
 
-  const originalName = decodeKoreanName(f.originalname);
+  const originalName = f.filename;
   const storageKey = buildStorageKey(ev.id, originalName);
+
+  console.log(`[upload] 시작: ${originalName} (${f.buffer.length} bytes, type=${file_type}, key=${storageKey})`);
 
   try {
     const { firebaseStorage } = await import('../lib/firebase.js');
     const bucket = firebaseStorage.bucket();
+    console.log(`[upload] bucket name: ${bucket.name}`);
     await bucket.file(storageKey).save(f.buffer, {
-      contentType: f.mimetype || 'application/octet-stream',
+      contentType: f.mimetype,
       metadata: {
         metadata: {
           original_name: originalName,
@@ -91,6 +152,7 @@ router.post('/:eventId/files', upload.single('file'), async (req, res) => {
         },
       },
     });
+    console.log(`[upload] Storage 저장 완료: ${storageKey}`);
   } catch (e) {
     console.error('[upload] Firebase Storage 저장 실패:', e);
     return res.status(500).json({ error: 'storage_failed', detail: (e as Error).message });
@@ -101,13 +163,13 @@ router.post('/:eventId/files', upload.single('file'), async (req, res) => {
     event_id: ev.id,
     file_type,
     file_name: originalName,
-    // file_url에 storage object key 저장. 클라이언트는 /download 라우트로 접근.
     file_url: storageKey,
     uploaded_by: req.user!.id,
     uploaded_at: new Date().toISOString(),
   };
   store.event_files.push(record);
   persistDoc('event_files', record.id);
+  console.log(`[upload] DB 저장 완료: ${record.id}`);
   res.status(201).json({ file: toClientFile(record) });
 });
 
@@ -120,7 +182,6 @@ router.get('/:eventId/files', (req, res) => {
 });
 
 // 다운로드 — Firebase Storage에서 signed URL 생성 후 redirect.
-// 클라이언트는 /api/events/:eventId/files/:fileId/download 호출 → 302 → 실제 파일.
 router.get('/:eventId/files/:fileId/download', async (req, res) => {
   const ev = store.events.find((e) => e.id === req.params.eventId);
   if (!ev) return res.status(404).json({ error: 'event_not_found' });
@@ -137,7 +198,6 @@ router.get('/:eventId/files/:fileId/download', async (req, res) => {
     const [signedUrl] = await bucket.file(record.file_url).getSignedUrl({
       action: 'read',
       expires: Date.now() + 10 * 60 * 1000,
-      // download 시 원본 한글 파일명으로 저장되도록 Content-Disposition 강제
       responseDisposition: `attachment; filename*=UTF-8''${encodeURIComponent(record.file_name)}`,
     });
     res.redirect(signedUrl);
@@ -159,7 +219,6 @@ router.delete('/:eventId/files/:fileId', async (req, res) => {
   if (!canWriteFile(req.user!.role, removed.file_type)) {
     return res.status(403).json({ error: 'forbidden' });
   }
-  // Storage에서도 삭제 (실패해도 메타데이터 삭제는 진행)
   try {
     const { firebaseStorage } = await import('../lib/firebase.js');
     await firebaseStorage.bucket().file(removed.file_url).delete({ ignoreNotFound: true });
@@ -172,7 +231,7 @@ router.delete('/:eventId/files/:fileId', async (req, res) => {
   res.json({ ok: true });
 });
 
-// 전체 첨부파일 목록 (관리 페이지용) — 휴지통(삭제된 행사)의 파일은 제외.
+// 전체 첨부파일 목록 (관리 페이지용)
 router.get('/_all', (_req, res) => {
   const deletedEventIds = new Set(
     store.events.filter((e) => e.deleted_at).map((e) => e.id)
