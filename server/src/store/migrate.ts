@@ -3,6 +3,9 @@
 import { nanoid } from 'nanoid';
 import { store, persist, persistDoc, persistDelete } from './mockStore.js';
 import { DEFAULT_TENANT_ID } from '../types.js';
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import path from 'path';
 import type {
   MiceContact,
   MiceCustomer,
@@ -662,6 +665,104 @@ function migrateEventRevenueFields() {
   }
 }
 
+// ── 2026 컨벤션 매출 엑셀 → 행사 매칭 후 revenue lines 일괄 등록 ──────
+// 멱등: sales_total_amount 이미 채워진 행사는 스킵.
+// 매칭: start_datetime 날짜 prefix(YYYY-MM-DD) 우선, 여러 건이면 행사명 단어 겹침 최대 항목 선택.
+function migrateRevenueFromExcel2026() {
+  // JSON 파일 읽기 (ESM 환경이라 fs 직접 사용)
+  let excelRows: Array<{
+    no: string; date: string; status: string; event_name: string;
+    discount_rate: number | null; gateway_fee: number | null;
+    contract_date: string | null; contract_amount: number | null;
+    sales_total_amount: number | null;
+    items: Record<string, number | null>;
+  }>;
+  try {
+    const require = createRequire(import.meta.url);
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const jsonPath = path.resolve(__dirname, 'revenueExcel2026Data.json');
+    excelRows = require(jsonPath) as typeof excelRows;
+  } catch (e) {
+    console.warn('[migrate] revenueExcel2026Data.json 없음 — 매출 엑셀 마이그레이션 스킵');
+    return;
+  }
+
+  // revenue_items code → id 맵
+  const codeToId: Record<string, string> = {};
+  for (const item of store.revenue_items) codeToId[item.code] = item.id;
+
+  // 단어 겹침 점수 (Korean 포함 간단 tokenize)
+  function overlap(a: string, b: string): number {
+    const tokA = new Set(a.split(/[\s&()\-_,\.\/]+/).filter(Boolean));
+    const tokB = new Set(b.split(/[\s&()\-_,\.\/]+/).filter(Boolean));
+    let n = 0;
+    for (const t of tokA) if (tokB.has(t)) n++;
+    return n;
+  }
+
+  let matched = 0, skipped = 0, unmatched = 0;
+  const t = new Date().toISOString();
+
+  for (const row of excelRows) {
+    if (!row.date || row.status === 'LOS') continue;
+
+    // 이미 채워진 행사 스킵 (멱등)
+    const candidatesByDate = store.events.filter(
+      (e) => !e.deleted_at && e.start_datetime.startsWith(row.date)
+    );
+    if (candidatesByDate.length === 0) { unmatched++; continue; }
+
+    // 날짜 유일 → 바로 매칭, 여러 건 → 행사명 겹침 최고점
+    let target = candidatesByDate[0];
+    if (candidatesByDate.length > 1) {
+      let best = -1;
+      for (const ev of candidatesByDate) {
+        const score = overlap(row.event_name, ev.event_name);
+        if (score > best) { best = score; target = ev; }
+      }
+    }
+
+    // 이미 sales_total_amount 있으면 스킵
+    const raw = target as unknown as Record<string, unknown>;
+    if (raw.sales_total_amount != null) { skipped++; continue; }
+
+    // Event 필드 업데이트
+    raw.contract_amount = row.contract_amount;
+    raw.sales_total_amount = row.sales_total_amount;
+    raw.discount_rate = row.discount_rate;
+    raw.discount_reason = '';
+    raw.contract_date = row.contract_date;
+    raw.gateway_fee = row.gateway_fee;
+    target.updated_at = t;
+    persistDoc('events', target.id);
+
+    // Revenue lines 등록 (기존 라인 덮어쓰기)
+    store.event_revenue_lines = store.event_revenue_lines.filter(
+      (l) => l.event_id !== target.id
+    );
+    for (const [code, amount] of Object.entries(row.items)) {
+      if (amount == null || !codeToId[code]) continue;
+      store.event_revenue_lines.push({
+        id: nanoid(10),
+        tenant_id: DEFAULT_TENANT_ID,
+        event_id: target.id,
+        revenue_item_id: codeToId[code],
+        amount,
+        note: '',
+        created_at: t,
+        updated_at: t,
+      });
+    }
+    for (const l of store.event_revenue_lines.filter((l) => l.event_id === target.id)) {
+      persistDoc('event_revenue_lines', l.id);
+    }
+    matched++;
+  }
+
+  console.log(`[migrate] 2026 매출 엑셀: 매칭 ${matched}건, 기존재 스킵 ${skipped}건, 미매칭 ${unmatched}건`);
+}
+
 export function runMigrations() {
   migrateTenants();
   migrateMiceCustomers();
@@ -674,4 +775,5 @@ export function runMigrations() {
   migrateWeddingMenuBOM();
   migrateBanquetBevBOM();
   migrateEventRevenueFields();
+  migrateRevenueFromExcel2026();
 }

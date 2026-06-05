@@ -75,6 +75,7 @@ interface FormState {
   memo: string;
   assigned_manager_id: string;
   assigned_manager_name: string;
+  contract_date: string; // 계약일 (YYYY-MM-DD)
 }
 
 type TabKey = 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review' | 'collaboration';
@@ -123,6 +124,7 @@ function emptyForm(allowed: CustomerType[], initialDate: string | null): FormSta
     memo: '',
     assigned_manager_id: '',
     assigned_manager_name: '',
+    contract_date: '',
   };
 }
 
@@ -191,6 +193,7 @@ export default function EventFormModal({
         memo: initialEvent.memo || '',
         assigned_manager_id: initialEvent.assigned_manager_id || '',
         assigned_manager_name: initialEvent.assigned_manager_name || '',
+        contract_date: (initialEvent as unknown as Record<string,unknown>).contract_date as string || '',
       });
       setFoods(
         (initialFoodItems || []).map((f) => ({
@@ -272,6 +275,7 @@ export default function EventFormModal({
       food_gtd_final: form.food_gtd_final,
       food_exp_final: form.food_exp_final,
       memo: form.memo,
+      contract_date: form.contract_date || null,
       assigned_manager_id: form.assigned_manager_id,
       assigned_manager_name: form.assigned_manager_name,
       created_at: '',
@@ -339,6 +343,7 @@ export default function EventFormModal({
         food_gtd_final: form.food_gtd_final,
         food_exp_final: form.food_exp_final,
         memo: form.memo,
+        contract_date: form.contract_date || null,
         // WEDDING 은 서버에서 연결된 고객의 담당지배인으로 덮어쓰므로 그대로 전송해도 무해.
         assigned_manager_id: form.assigned_manager_id,
         assigned_manager_name: form.assigned_manager_name,
@@ -717,7 +722,16 @@ function BasicInfoTab({
               placeholder="여러 줄 입력 가능 — 내부 참고용 메모"
             />
           </Field>
-          {/* 5) 이하는 기존 순서 유지 — 구분 / 상태 / 이용시간 / 좌석수 / 작성일자 / 작성자 / 담당자 */}
+          {/* 5) 계약일 */}
+          <Field label="계약일">
+            <input
+              type="date"
+              className="input"
+              value={form.contract_date}
+              onChange={(e) => setForm({ ...form, contract_date: e.target.value })}
+            />
+          </Field>
+          {/* 6) 이하는 기존 순서 유지 — 구분 / 상태 / 이용시간 / 좌석수 / 작성일자 / 작성자 / 담당자 */}
           <Field label="구분" required>
             <select
               className="input"
