@@ -196,3 +196,13 @@ export function canWriteRevenue(role: Role | undefined): boolean {
 export function canSeeRevenue(role: Role | undefined): boolean {
   return !!role && role !== 'pending' && role !== 'disabled';
 }
+
+// ===== 결제 매핑 =====
+// 조회: 활성 사용자 전원 (세일즈/연회/관리자).
+// 수정: admin 전용 (관리팀).
+export function canWritePayments(role: Role | undefined): boolean {
+  return role === 'admin';
+}
+export function canSeePayments(role: Role | undefined): boolean {
+  return !!role && role !== 'pending' && role !== 'disabled' && role !== 'h_kitchen';
+}

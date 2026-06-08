@@ -590,3 +590,30 @@ export interface EventRevenueLine {
   created_at: string;
   updated_at: string;
 }
+
+// ===== 결제 매핑 (Payments) =====
+export type PaymentType = 'deposit' | 'balance' | 'contract' | 'additional' | 'refund';
+export type PaymentMethod = 'card' | 'transfer' | 'cash' | 'other';
+export type CardCompany =
+  | 'hyundai' | 'samsung' | 'shinhan' | 'kb' | 'lotte'
+  | 'bc' | 'woori' | 'hana' | 'other';
+
+export interface Payment {
+  id: string;
+  tenant_id?: string;
+  event_id: string;
+  payment_type: PaymentType;
+  amount: number;               // 고객 결제 금액
+  paid_at: string;              // 고객이 결제한 날 (ISO date)
+  method: PaymentMethod;
+  card_company?: CardCompany;   // method=card 일 때만
+  approval_no?: string;         // 카드 승인번호
+  business_name?: string;       // 현금영수증/세금계산서 사업자명
+  bank_deposit_date?: string;   // 카드사가 우리 통장 입금한 날
+  bank_deposit_amount?: number; // 수수료 차감 후 실제 입금액
+  note?: string;
+  reconciled_at?: string;
+  reconciled_by?: string;       // user id
+  created_at: string;
+  updated_at: string;
+}

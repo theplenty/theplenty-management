@@ -22,6 +22,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import Dashboard from './pages/Dashboard';
 import Menus from './pages/Menus';
 import Revenue from './pages/Revenue';
+import Payments from './pages/Payments';
 import PublicCalendar from './pages/PublicCalendar';
 import PublicSummary from './pages/PublicSummary';
 import ApiDocs from './pages/ApiDocs';
@@ -148,6 +149,15 @@ function ProtectedRoutes() {
           element={
             <ProtectedRoute allow={['admin', 'sales_mice', 'sales_wedding', 'banquet', 'kitchen']}>
               <Revenue />
+            </ProtectedRoute>
+          }
+        />
+        {/* 결제 매핑 — 조회: 활성 사용자 전원. 수정: admin only. */}
+        <Route
+          path="/payments"
+          element={
+            <ProtectedRoute allow={['admin', 'sales_mice', 'sales_wedding', 'banquet', 'kitchen']}>
+              <Payments />
             </ProtectedRoute>
           }
         />

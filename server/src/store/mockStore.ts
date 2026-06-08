@@ -22,6 +22,7 @@ import type {
   Menu,
   RevenueItem,
   EventRevenueLine,
+  Payment,
 } from '../types.js';
 import { DEFAULT_TENANT_ID } from '../types.js';
 
@@ -57,6 +58,7 @@ interface DB {
   menus: Menu[];
   revenue_items: RevenueItem[];
   event_revenue_lines: EventRevenueLine[];
+  payments: Payment[];
 }
 
 const COLLECTIONS: (keyof DB)[] = [
@@ -80,6 +82,7 @@ const COLLECTIONS: (keyof DB)[] = [
   'menus',
   'revenue_items',
   'event_revenue_lines',
+  'payments',
 ];
 
 function safeReadJSON<T>(file: string): T | null {
@@ -193,6 +196,7 @@ const db: DB = {
   menus: loadCollection('menus'),
   revenue_items: loadCollection('revenue_items'),
   event_revenue_lines: loadCollection('event_revenue_lines'),
+  payments: loadCollection('payments'),
 };
 
 export function getCollection<K extends keyof DB>(name: K): DB[K] {

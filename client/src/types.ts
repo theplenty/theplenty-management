@@ -777,6 +777,69 @@ export interface EventRevenueLine {
   updated_at: string;
 }
 
+// ===== 결제 매핑 (Payments) =====
+export type PaymentType = 'deposit' | 'balance' | 'contract' | 'additional' | 'refund';
+export type PaymentMethod = 'card' | 'transfer' | 'cash' | 'other';
+export type CardCompany =
+  | 'hyundai' | 'samsung' | 'shinhan' | 'kb' | 'lotte'
+  | 'bc' | 'woori' | 'hana' | 'other';
+
+export const PAYMENT_TYPE_LABEL: Record<PaymentType, string> = {
+  deposit: '선금',
+  balance: '잔금',
+  contract: '계약금',
+  additional: '추가',
+  refund: '환불',
+};
+
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  card: '카드',
+  transfer: '계좌이체',
+  cash: '현금',
+  other: '기타',
+};
+
+export const CARD_COMPANY_LABEL: Record<CardCompany, string> = {
+  hyundai: '현대카드',
+  samsung: '삼성카드',
+  shinhan: '신한카드',
+  kb: 'KB국민카드',
+  lotte: '롯데카드',
+  bc: 'BC카드',
+  woori: '우리카드',
+  hana: '하나카드',
+  other: '기타카드',
+};
+
+// 카드사별 영업일 기준 입금 소요일
+export const CARD_DEPOSIT_DAYS: Record<CardCompany, number> = {
+  hyundai: 3, samsung: 3, shinhan: 2, kb: 3,
+  lotte: 3, bc: 2, woori: 2, hana: 2, other: 3,
+};
+
+export const PAYMENT_TYPE_OPTIONS: PaymentType[] = ['contract', 'deposit', 'balance', 'additional', 'refund'];
+export const PAYMENT_METHOD_OPTIONS: PaymentMethod[] = ['card', 'transfer', 'cash', 'other'];
+export const CARD_COMPANY_OPTIONS: CardCompany[] = ['hyundai', 'samsung', 'shinhan', 'kb', 'lotte', 'bc', 'woori', 'hana', 'other'];
+
+export interface Payment {
+  id: string;
+  event_id: string;
+  payment_type: PaymentType;
+  amount: number;
+  paid_at: string;
+  method: PaymentMethod;
+  card_company?: CardCompany;
+  approval_no?: string;
+  business_name?: string;
+  bank_deposit_date?: string;
+  bank_deposit_amount?: number;
+  note?: string;
+  reconciled_at?: string;
+  reconciled_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // ===== 캘린더 공유 =====
 export interface CalendarShare {
   id: string;
