@@ -18,6 +18,7 @@ import {
   type WeddingSourceDetail,
 } from '../types';
 import Modal from '../components/Modal';
+import WeddingMarginModal from '../components/WeddingMarginModal';
 import SimilarPhoneWarning from '../components/SimilarPhoneWarning';
 import LinkedEventsSection from '../components/LinkedEventsSection';
 import { Field, StatusBadge } from '../components/Field';
@@ -232,6 +233,9 @@ export default function WeddingCustomers() {
   const [form, setForm] = useState<FormState>(() => emptyForm(authorId, authorName));
   const [saving, setSaving] = useState(false);
   const [logRefresh, setLogRefresh] = useState(0);
+  // 마진계산기 모달 — 열린 예식후보 id (null=닫힘)
+  const [calcOpenId, setCalcOpenId] = useState<string | null>(null);
+  const canEditCalcSettings = user?.role === 'admin';
 
   async function load() {
     setLoading(true);
@@ -976,7 +980,17 @@ export default function WeddingCustomers() {
             {form.event_inquiries.map((inq, idx) => (
               <div key={inq.id} className="border rounded-md p-3 bg-gray-50/40">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs font-semibold text-gray-600">예식 후보 #{idx + 1}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-gray-600">예식 후보 #{idx + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => setCalcOpenId(inq.id)}
+                      className="text-xs px-2 py-0.5 rounded bg-[#5b4a3a] text-white hover:opacity-90"
+                      title="웨딩 마진계산기 + 견적서"
+                    >
+                      🧮 마진계산기
+                    </button>
+                  </div>
                   {form.event_inquiries.length > 1 && (
                     <button
                       type="button"
@@ -987,6 +1001,36 @@ export default function WeddingCustomers() {
                     </button>
                   )}
                 </div>
+                {calcOpenId === inq.id && (
+                  <WeddingMarginModal
+                    inquiry={{
+                      id: inq.id,
+                      wedding_datetime: inq.wedding_datetime,
+                      guaranteed_guest_count: inq.guaranteed_guest_count,
+                      estimate_amount: inq.estimate_amount,
+                      estimate_detail: inq.estimate_detail,
+                      visit_consultation_comment: inq.visit_consultation_comment,
+                      assigned_manager_id: inq.assigned_manager_id,
+                      assigned_manager_name: inq.assigned_manager_name,
+                      created_at: inq.created_at,
+                      calc_payload: inq.calc_payload,
+                    }}
+                    idx={idx}
+                    groom={form.groom_name}
+                    bride={form.bride_name}
+                    canEditSettings={canEditCalcSettings}
+                    canSave
+                    onClose={() => setCalcOpenId(null)}
+                    onSaved={(u) => {
+                      updateInquiry(inq.id, {
+                        estimate_amount: u.estimate_amount,
+                        estimate_detail: u.estimate_detail,
+                        calc_payload: u.calc_payload,
+                      });
+                      setCalcOpenId(null);
+                    }}
+                  />
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Field label="예식날짜 및 시간">
                     <input

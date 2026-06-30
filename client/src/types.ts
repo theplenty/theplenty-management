@@ -125,6 +125,8 @@ export interface WeddingEventInquiry {
   assigned_manager_id: string;
   assigned_manager_name: string;
   created_at: string;
+  // 마진계산기 입력 전체를 JSON 직렬화 (재오픈 복원용)
+  calc_payload?: string;
 }
 
 export interface WeddingCustomer {
@@ -450,6 +452,8 @@ export interface Event {
   discount_reason?: string;
   contract_date?: string | null;
   gateway_fee?: number | null;
+  // BEO(행사 운영 지시서) — 자동 시드 + 담당자 수동 편집 결과를 JSON 직렬화해 보관.
+  beo_payload?: string;
 }
 
 // ===== 휴지통 =====
@@ -632,8 +636,20 @@ export interface MenuDetail {
   quantity: string;            // 수량 (표시용 문자열)
   unit: string;                // 단위 (G, ML, EA …)
   unit_price: number | null;   // 단가 (원/단위)
-  portion_cost: number | null; // 부분 원가 (원)
+  portion_cost: number | null; // 부분 원가 (원, VAT 제외)
+  // 배치 1회가 만드는 인분수. 소스·육수·드레싱처럼 대량 조리분을 한꺼번에 입력했을 때
+  // 1인분 환산용. effectivePortionCost = portion_cost / (batch_yield ?? 1).
+  // null/미입력이면 1 (portion_cost가 이미 1인분 기준).
+  batch_yield?: number | null;
   notes: string;               // 비고
+}
+
+// BOM 항목의 1인분 환산 원가 (배치 입력분을 batch_yield로 나눔).
+// 편집 중 문자열로 들어올 수 있어 Number()로 강제 변환한다.
+export function effectivePortionCost(d: { portion_cost: number | null; batch_yield?: number | null }): number {
+  const pc = Number(d.portion_cost) || 0;
+  const by = Number(d.batch_yield);
+  return pc / (by && by > 0 ? by : 1);
 }
 
 // 기업(MICE) / 웨딩(WEDDING) 구분 — 행사 유형과 매칭

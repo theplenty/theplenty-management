@@ -6,14 +6,16 @@ import {
   canSeeMice,
   canSeeWedding,
   canSeeReviews,
-  canSeeDashboard,
   canSeeCollaboration,
   canManageUsers,
   canManageApiKeys,
   canManageTrash,
   canSeeMenu,
+  canSeeMenuCost,
   canSeeRevenue,
   canSeePayments,
+  isSales,
+  isAdmin,
 } from '../auth/permissions';
 import clsx from 'clsx';
 import GlobalSearch from './GlobalSearch';
@@ -47,7 +49,7 @@ export default function Layout() {
   const role = user?.role;
 
   const menus: MenuEntry[] = [
-    { to: '/dashboard', label: '대시보드', visible: !!user && canSeeDashboard(role) },
+    { to: '/home', label: '🏠 홈', visible: !!user && (isSales(role) || isAdmin(role)) },
     {
       label: '고객정보 DB',
       visible: !!user && (canSeeMice(role) || canSeeWedding(role)),
@@ -78,9 +80,11 @@ export default function Layout() {
     },
     { to: '/files', label: '첨부파일 관리', visible: !!user },
     { to: '/menus', label: '🍽️ 메뉴 마스터', visible: !!user && canSeeMenu(role) },
+    { to: '/menu-cost', label: '🧮 메뉴별 원가', visible: !!user && canSeeMenuCost(role) },
     { to: '/revenue', label: '💰 매출 관리', visible: !!user && canSeeRevenue(role) },
     { to: '/payments', label: '💳 결제 매핑', visible: !!user && canSeePayments(role) },
     // 관리자 전용 탭 — admin role 만 노출.
+    { to: '/admin/wedding-calc', label: '⚙ 웨딩 기본값', visible: !!user && canManageUsers(role) },
     { to: '/admin/users', label: '사용자 관리', visible: !!user && canManageUsers(role) },
     { to: '/admin/api-keys', label: '외부 API 키', visible: !!user && canManageApiKeys(role) },
     { to: '/admin/activity-log', label: '📜 활동 로그', visible: !!user && canManageUsers(role) },
@@ -181,7 +185,7 @@ export default function Layout() {
             })}
         </nav>
         <div className="p-4 border-t border-gray-800 text-xs text-gray-400">
-          v0.3
+          v0.4
         </div>
       </aside>
 

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useAuth } from '../auth/AuthContext';
+import WeddingMarginModal from '../components/WeddingMarginModal';
 import {
   type WeddingCustomer,
   type WeddingEventInquiry,
@@ -76,6 +78,10 @@ const ENTITY_LABEL: Record<string, string> = {
 export default function WeddingProfile() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const role = user?.role;
+  const canEditCalcSettings = role === 'admin';
+  const canSaveInquiry = role === 'admin' || role === 'sales_wedding';
   const [profile, setProfile] = useState<FullProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +100,27 @@ export default function WeddingProfile() {
         setToast(`${label}: ${text} (수동 복사 필요)`);
         setTimeout(() => setToast(null), 3000);
       });
+  }
+
+  // 마진계산기 결과를 예식후보에 저장 — 고객 PATCH로 event_inquiries 갱신
+  async function saveInquiry(updated: WeddingEventInquiry) {
+    setProfile((prev) => {
+      if (!prev) return prev;
+      const event_inquiries = prev.customer.event_inquiries.map((q) => (q.id === updated.id ? updated : q));
+      // 서버 반영
+      api
+        .patch<{ customer: WeddingCustomer }>(`/api/customers/wedding/${prev.customer.id}`, { event_inquiries })
+        .then((res) => {
+          setProfile((p) => (p ? { ...p, customer: res.customer } : p));
+          setToast('마진계산기 결과가 예식후보에 저장됨 ✓');
+          setTimeout(() => setToast(null), 2400);
+        })
+        .catch((e) => {
+          setToast('저장 실패: ' + (e as Error).message);
+          setTimeout(() => setToast(null), 3000);
+        });
+      return { ...prev, customer: { ...prev.customer, event_inquiries } };
+    });
   }
 
   useEffect(() => {
@@ -223,7 +250,16 @@ export default function WeddingProfile() {
         ) : (
           <ul className="space-y-2">
             {c.event_inquiries.map((eq, idx) => (
-              <WeddingInquiryCard key={eq.id} inq={eq} idx={idx} />
+              <WeddingInquiryCard
+                key={eq.id}
+                inq={eq}
+                idx={idx}
+                groom={c.groom_name}
+                bride={c.bride_name}
+                canEditSettings={canEditCalcSettings}
+                canSave={canSaveInquiry}
+                onSave={saveInquiry}
+              />
             ))}
           </ul>
         )}
@@ -356,15 +392,47 @@ function CopyableContact({
   );
 }
 
-function WeddingInquiryCard({ inq, idx }: { inq: WeddingEventInquiry; idx: number }) {
+function WeddingInquiryCard({
+  inq, idx, groom, bride, canEditSettings, canSave, onSave,
+}: {
+  inq: WeddingEventInquiry;
+  idx: number;
+  groom: string;
+  bride: string;
+  canEditSettings: boolean;
+  canSave: boolean;
+  onSave: (updated: WeddingEventInquiry) => void;
+}) {
+  const [calcOpen, setCalcOpen] = useState(false);
   return (
     <li className="border rounded p-3 text-sm">
       <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
-        <div className="font-semibold text-gray-900">#{idx + 1}</div>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-gray-900">#{idx + 1}</span>
+          <button
+            onClick={() => setCalcOpen(true)}
+            className="text-xs px-2 py-0.5 rounded bg-[#5b4a3a] text-white hover:opacity-90"
+            title="웨딩 마진계산기 + 견적서"
+          >
+            🧮 마진계산기
+          </button>
+        </div>
         <div className="text-xs text-gray-500">
           {inq.assigned_manager_name && `담당: ${inq.assigned_manager_name}`}
         </div>
       </div>
+      {calcOpen && (
+        <WeddingMarginModal
+          inquiry={inq}
+          idx={idx}
+          groom={groom}
+          bride={bride}
+          canEditSettings={canEditSettings}
+          canSave={canSave}
+          onClose={() => setCalcOpen(false)}
+          onSaved={(u) => { onSave(u); setCalcOpen(false); }}
+        />
+      )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
         <KV label="예식일시" value={fmt(inq.wedding_datetime)} />
         <KV label="보장인원" value={inq.guaranteed_guest_count != null ? `${inq.guaranteed_guest_count}명` : '-'} />

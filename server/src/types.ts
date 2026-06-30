@@ -151,6 +151,8 @@ export interface WeddingEventInquiry {
   assigned_manager_id: string;
   assigned_manager_name: string;
   created_at: string;
+  // 마진계산기 입력 전체를 JSON 직렬화 (재오픈 복원용). 임베디드 필드라 마이그레이션 영향 없음.
+  calc_payload?: string;
 }
 
 export interface WeddingCustomer {
@@ -316,6 +318,9 @@ export interface Event {
   discount_reason?: string;             // 할인 사유
   contract_date?: string | null;        // 계약일
   gateway_fee?: number | null;          // 가톨릭대 대관료 (별도 지급)
+  // ===== BEO(행사 운영 지시서) =====
+  // 자동 시드 + 담당자 수동 편집한 BEO 문서를 JSON 직렬화해 보관 (변경이력 diff 제외).
+  beo_payload?: string;
 }
 
 export interface Invoice {
@@ -483,6 +488,21 @@ export type MenuCategory = '전식' | '주식' | '후식' | '음료' | '주류' 
 //   qty    : 단순 수량 — 디저트 플레이트·떡 등
 export type MenuMode = 'set' | 'coffee' | 'qty';
 
+// menuModeOf — 메뉴 이름으로 입력 모드 결정 (마스터 없을 때 폴백; 마스터 있으면 Menu.mode 우선).
+export function menuModeOf(name: string): MenuMode {
+  if (name === 'Coffee Break' || name.toLowerCase().includes('coffee break')) return 'coffee';
+  if (
+    name === 'Dessert Plate(M)' ||
+    name === 'Dessert Plate(L)' ||
+    name === 'Rice Cake Plate' ||
+    name === '웨딩국수' ||
+    name.includes('Dessert') ||
+    name.includes('디저트')
+  )
+    return 'qty';
+  return 'set';
+}
+
 // 메뉴 코스별 식자재 원가 구성 항목 (BOM)
 export interface MenuDetail {
   id: string;
@@ -490,8 +510,19 @@ export interface MenuDetail {
   quantity: string;            // 수량 (표시용 문자열)
   unit: string;                // 단위 (G, ML, EA …)
   unit_price: number | null;   // 단가 (원/단위)
-  portion_cost: number | null; // 부분 원가 (원)
+  portion_cost: number | null; // 부분 원가 (원, VAT 제외)
+  // 배치 1회가 만드는 인분수 — 대량 조리분(소스·육수 등)을 1인분으로 환산.
+  // effectivePortionCost = portion_cost / (batch_yield ?? 1)
+  batch_yield?: number | null;
   notes: string;               // 비고
+}
+
+// BOM 항목의 1인분 환산 원가 (배치 입력분을 batch_yield로 나눔).
+// 편집 중 문자열로 들어올 수 있어 Number()로 강제 변환한다.
+export function effectivePortionCost(d: { portion_cost: number | null; batch_yield?: number | null }): number {
+  const pc = Number(d.portion_cost) || 0;
+  const by = Number(d.batch_yield);
+  return pc / (by && by > 0 ? by : 1);
 }
 
 // 기업(MICE) / 웨딩(WEDDING) 구분 — 행사 유형과 매칭
@@ -616,4 +647,49 @@ export interface Payment {
   reconciled_by?: string;       // user id
   created_at: string;
   updated_at: string;
+}
+
+// ===== 앱 설정 (전 직원 공유, key-value) =====
+// 마진계산기 기준값 등 admin이 편집하고 전 직원이 읽는 설정을 저장.
+// id === key (persistDoc/Firestore 문서 키 호환용).
+export interface AppSetting {
+  id: string;         // = key ('wedding-calc' 등)
+  key: string;        // 'wedding-calc' 등
+  value: unknown;     // 설정 JSON (타입은 key별로 상이)
+  updated_at: string;
+  updated_by?: string;
+}
+
+// ===== 웨딩 마진계산기 기준값 (Admin 편집) =====
+export interface WCPriceTier { label: string; from: string; A: number; B: number; C: number; fB: number; fL: number; fG: number; }
+export interface WCRentItem { n: string; rmk: string; }
+export interface WCOptItem { n: string; p: number; rmk: string; minG: number; }
+export interface WCOtherItem { n: string; p: number; rmk: string; svc: boolean; qty?: number; qtyMode?: boolean; off?: boolean; }
+export interface WCBevItem { n: string; p: number; rmk: string; }
+export interface WCCtype { name: string; mealDisc: number; flowerUp: boolean; }
+export interface WCCost {
+  foodA: number; foodB: number; foodC: number; extPP: number; fixed: number;
+  flowerCostR: number; intBurden: number; comBurden: number;
+}
+export type WCSeason = '워크인' | '임직원' | '비수기';
+export interface WCPreset {
+  period: string; season: WCSeason; day: '토' | '일'; time: '점심' | '저녁';
+  discount: number; coursePrice: number; director: number; flower: number;
+  wine: number; reception: boolean; fixed: number; marginRate: number;
+}
+export interface WeddingCalcSettings {
+  price: WCPriceTier[];
+  courseDesc: { A: string; B: string; C: string };
+  flowerDesc: { basic: string; lux: string; grand: string };
+  rentList: number;
+  rentSpecial: number;
+  rentItems: WCRentItem[];
+  optItems: WCOptItem[];
+  otherItems: WCOtherItem[];
+  bevItems: WCBevItem[];
+  ctypes: WCCtype[];
+  cost: WCCost;
+  presets?: WCPreset[];
+  tierTeamlead?: { lunchSat: number; other: number };
+  tierExecFloor?: number;
 }

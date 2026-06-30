@@ -17,7 +17,12 @@ import {
   type Hall,
   type Invoice,
   type UsageType,
+  type MiceCustomer,
+  type WeddingCustomer,
+  menuModeOf,
 } from '../types';
+import { type BeoSeedInput } from '../lib/beoDoc';
+import BeoEditorModal from './BeoEditorModal';
 import Modal from './Modal';
 import ErrorBoundary from './ErrorBoundary';
 import { Field } from './Field';
@@ -40,6 +45,10 @@ import clsx from 'clsx';
 
 type DraftFoodItem = Omit<FoodItem, 'event_id'>;
 type DraftCustomerLink = Omit<EventCustomerLink, 'event_id'>;
+
+// BEO 기능 노출 플래그 — 아직 보류(엉성). 엔티티화(로드맵 B2) 후 true 예정.
+// 코드(openBeoEditor/BeoEditorModal/beoDoc)는 보존하고 진입 버튼만 숨긴다.
+const BEO_ENABLED = false;
 
 interface Props {
   open: boolean;
@@ -170,6 +179,10 @@ export default function EventFormModal({
     emptyCancellationDraft()
   );
   const [saving, setSaving] = useState(false);
+  const [beoBusy, setBeoBusy] = useState(false);
+  const [beoOpen, setBeoOpen] = useState(false);
+  const [beoSeed, setBeoSeed] = useState<BeoSeedInput | null>(null);
+  const [beoPayload, setBeoPayload] = useState<string | undefined>(undefined);
   const [tab, setTab] = useState<TabKey>('basic');
 
   const isEdit = !!initialEvent;
@@ -195,6 +208,7 @@ export default function EventFormModal({
         assigned_manager_name: initialEvent.assigned_manager_name || '',
         contract_date: (initialEvent as unknown as Record<string,unknown>).contract_date as string || '',
       });
+      setBeoPayload(initialEvent.beo_payload);
       setFoods(
         (initialFoodItems || []).map((f) => ({
           id: f.id,
@@ -240,6 +254,7 @@ export default function EventFormModal({
       setLinks([]);
       setInvoice(emptyInvoiceDraft());
       setCancellation(emptyCancellationDraft());
+      setBeoPayload(undefined);
     }
     setTab(initialTab || 'basic');
   }, [
@@ -415,6 +430,93 @@ export default function EventFormModal({
     }
   }
 
+  // 일시 → 날짜/시간 분리 포맷 (BEO 헤더 시드용)
+  function fmtDate(local: string): string {
+    if (!local) return '';
+    const d = new Date(local);
+    if (isNaN(d.getTime())) return local;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const wd = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${wd})`;
+  }
+  function fmtTime(local: string): string {
+    if (!local) return '';
+    const d = new Date(local);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  // BEO 편집기 열기 — 행사/식음/업체 데이터로 시드를 구성한 뒤 모달을 연다.
+  // 저장(PATCH)에는 행사 id가 필요하므로 수정(저장된) 행사에서만 노출.
+  async function openBeoEditor() {
+    if (!initialEvent) return;
+    if (!form.event_name.trim()) {
+      alert('행사명을 입력/저장한 뒤 BEO를 작성하세요.');
+      setTab('basic');
+      return;
+    }
+    setBeoBusy(true);
+    try {
+      let accountName = form.event_name;
+      let organizer = '';
+      let onsite = '';
+      // CONTACT POINT(없으면 첫 업체) 담당자 해석을 위해 고객 목록 조회. 실패해도 시드는 진행.
+      if (links.length > 0) {
+        try {
+          const url = form.event_type === 'MICE' ? '/api/customers/mice' : '/api/customers/wedding';
+          const res = await api.get<{ customers: (MiceCustomer | WeddingCustomer)[] }>(url);
+          const byId = new Map(res.customers.map((c) => [c.id, c]));
+          const cp = links.find((l) => l.is_contact_point) || links[0];
+          const c = byId.get(cp.customer_id);
+          if (c) {
+            if (c.customer_type === 'MICE') {
+              accountName = c.organization_name || form.event_name;
+              const all = c.inquiries.flatMap((i) => i.contacts);
+              const ct = all.find((x) => x.id === cp.contact_point_contact_id) || all[0];
+              organizer = ct?.name || '';
+              onsite = ct?.phone || '';
+            } else {
+              accountName = c.wedding_event_name || form.event_name;
+              const isBride = cp.contact_point_contact_id === 'bride';
+              organizer = (isBride ? c.bride_name : c.groom_name) || c.bride_name || c.groom_name || '';
+              onsite = (isBride ? c.bride_phone : c.groom_phone) || '';
+            }
+          }
+        } catch (e) {
+          console.error('[BEO] 고객 조회 실패', e);
+        }
+      }
+
+      const seed: BeoSeedInput = {
+        template: form.event_type,
+        account_name: accountName,
+        organizer_name: organizer,
+        onsite_contact: onsite,
+        catering_manager: form.assigned_manager_name,
+        event_date: fmtDate(form.start_datetime),
+        event_time: `${fmtTime(form.start_datetime)} - ${fmtTime(form.end_datetime)}`,
+        halls_text: form.halls.join(', '),
+        payment_method: invoice.payment_status || '',
+        customer_type: '',
+        signboard: form.event_name,
+        foods: foods.map((f) => ({
+          menu_name: f.menu_name,
+          mode: menuModeOf(f.menu_name),
+          time: f.time_label || f.service_time || '',
+          gtd: f.gtd_final != null ? String(f.gtd_final) : f.gtd_contract != null ? String(f.gtd_contract) : '',
+          exp: f.exp_final != null ? String(f.exp_final) : f.exp_contract != null ? String(f.exp_contract) : '',
+          quantity: f.quantity != null ? String(f.quantity) : '',
+          memo: f.memo || '',
+        })),
+      };
+      setBeoSeed(seed);
+      setBeoOpen(true);
+    } finally {
+      setBeoBusy(false);
+    }
+  }
+
   const visibleTabs = TABS.filter((t) => t.visible(form, false /* hasReview - phase 4 */));
 
   return (
@@ -434,6 +536,18 @@ export default function EventFormModal({
               title="휴지통으로 이동 (복구 가능)"
             >
               {deleting ? '삭제중...' : '🗑 행사 삭제'}
+            </button>
+          )}
+          {/* BEO(행사 운영 지시서) — 자동 시드 + 담당자 수동 편집. 저장이 필요해 수정 모드에서만 노출.
+              현재 BEO_ENABLED=false 로 노출 보류 (로드맵 B2 엔티티화 후 활성화). */}
+          {isEdit && BEO_ENABLED && (
+            <button
+              onClick={openBeoEditor}
+              disabled={beoBusy || saving || deleting}
+              className="btn-secondary"
+              title="행사·식음·업체 데이터로 BEO 초안을 만들고 직접 편집/저장합니다 (인쇄/PDF)"
+            >
+              {beoBusy ? 'BEO 여는 중...' : '📄 BEO'}
             </button>
           )}
           <button onClick={onClose} className="btn-secondary">
@@ -592,6 +706,20 @@ export default function EventFormModal({
           </ul>
         )}
       </Modal>
+
+      {/* BEO 편집기 — 자동 시드 + 수동 편집 + 저장(PATCH). 저장된 행사에서만 사용. */}
+      {beoOpen && initialEvent && beoSeed && (
+        <BeoEditorModal
+          open={beoOpen}
+          onClose={() => setBeoOpen(false)}
+          eventId={initialEvent.id}
+          canWrite={canCreateEvent(user?.role)}
+          seedInput={beoSeed}
+          savedPayload={beoPayload}
+          onSaved={(payload) => setBeoPayload(payload)}
+          editorName={user?.name || ''}
+        />
+      )}
     </Modal>
   );
 }
@@ -653,14 +781,29 @@ function BasicInfoTab({
     <>
       <Section title="A. 행사 기본정보">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 1) 행사명 */}
-          <Field label="행사명" required className="md:col-span-2">
-            <input
-              className="input"
-              value={form.event_name}
-              onChange={(e) => setForm({ ...form, event_name: e.target.value })}
-            />
-          </Field>
+          {/* 1) 상태 + 행사명 (한 줄 — 캘린더뷰의 [상태] 행사명 순서와 동일하게 상태를 왼쪽에) */}
+          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-4">
+            <Field label="상태" required>
+              <select
+                className="input"
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value as EventStatus })}
+              >
+                {EVENT_STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_DESC[s]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="행사명" required>
+              <input
+                className="input"
+                value={form.event_name}
+                onChange={(e) => setForm({ ...form, event_name: e.target.value })}
+              />
+            </Field>
+          </div>
           {/* 2) 행사 시작일시 / 종료일시 — 한 줄에 나란히.
               시작일시의 '일자'가 바뀌면 종료 일자를 같은 날로 자동 동기화(당일행사 기본, 시간은 유지). */}
           <Field label="행사 시작일시" required>
@@ -731,7 +874,8 @@ function BasicInfoTab({
               onChange={(e) => setForm({ ...form, contract_date: e.target.value })}
             />
           </Field>
-          {/* 6) 이하는 기존 순서 유지 — 구분 / 상태 / 이용시간 / 좌석수 / 작성일자 / 작성자 / 담당자 */}
+          {/* 6) 이하는 기존 순서 유지 — 구분 / 이용시간 / 좌석수 / 작성일자 / 작성자 / 담당자
+                 (상태는 운영 편의상 상단 행사명 옆으로 이동) */}
           <Field label="구분" required>
             <select
               className="input"
@@ -742,19 +886,6 @@ function BasicInfoTab({
               {allowedTypes.map((t) => (
                 <option key={t} value={t}>
                   {t}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="상태" required>
-            <select
-              className="input"
-              value={form.status}
-              onChange={(e) => setForm({ ...form, status: e.target.value as EventStatus })}
-            >
-              {EVENT_STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_DESC[s]}
                 </option>
               ))}
             </select>

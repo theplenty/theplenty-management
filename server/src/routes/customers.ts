@@ -515,6 +515,8 @@ function normalizeWeddingInquiries(input: unknown, fallbackUserId: string, fallb
       assigned_manager_id: o.assigned_manager_id || fallbackUserId,
       assigned_manager_name: o.assigned_manager_name || fallbackUserName,
       created_at: o.created_at || new Date().toISOString(),
+      // 마진계산기 입력 보존 (재오픈 복원용)
+      ...(o.calc_payload !== undefined ? { calc_payload: o.calc_payload } : {}),
     };
   });
 }

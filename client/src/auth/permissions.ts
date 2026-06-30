@@ -180,6 +180,11 @@ export function canSeeMenu(role: Role | undefined): boolean {
   return isActive(role);
 }
 
+// 메뉴별 원가/마진 — 원가율은 민감 정보이므로 운영·재무 라인만 (관리자/주방/연회).
+export function canSeeMenuCost(role: Role | undefined): boolean {
+  return role === 'admin' || role === 'kitchen' || role === 'banquet';
+}
+
 // ===== 행사 삭제 =====
 // 휴지통 안전망이 있으므로 활성 사용자 모두 행사·고객 soft-delete 가능.
 // 전체비우기(clearAllEvents) 등 mass 작업은 admin only.

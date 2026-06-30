@@ -129,7 +129,8 @@ export default function FilesTab({ eventId, canWrite }: Props) {
     <div>
       <div className="text-sm text-gray-600 mb-3">
         견적서 / 계약서 / BEO / 기타 파일을 업로드합니다. PDF, 이미지, 문서 등 25MB까지
-        지원하며, BEO는 추후 행사정보 기반 워드 자동 생성과 연결될 예정입니다.
+        지원합니다. BEO는 하단 <span className="font-medium text-gray-700">📄 BEO 생성</span>{' '}
+        버튼으로 행사정보·식음·업체정보를 모아 자동 생성(인쇄/PDF)할 수 있습니다.
       </div>
 
       {canWrite && (

@@ -13,6 +13,7 @@ import {
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { isAdmin } from '../auth/permissions';
+import { BeverageAlertBanner, BeverageRevenueCard } from '../components/BeverageWidgets';
 import { useActiveUsers } from '../lib/useActiveUsers';
 import SalesDashboard from '../components/SalesDashboard';
 import { formatKoreanCommas } from '../lib/numberFormat';
@@ -286,12 +287,20 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ③ 주류없는 달 조기경보 — 상단 배너 */}
+      <BeverageAlertBanner events={events} />
+
       {/* ===== Sections 1+2: 세일즈 중심 대시보드 (유입→전환 추적) ===== */}
       <SalesDashboard
         miceCustomers={mice}
         weddingCustomers={wedding}
         activeUsers={activeUsers}
       />
+
+      {/* ② 월별 주류매출 카드 */}
+      <Section eyebrow="03 / Beverage" title="월별 주류매출" subtitle="고마진(~90%) 항목 · 매출관리 파일 기준 · 전월 대비 추적">
+        <BeverageRevenueCard events={events} canEdit={admin} />
+      </Section>
 
       {/* ===== Section 1 (LEGACY): MICE 신규 유입 현황 ===== */}
       {false && (
@@ -630,36 +639,14 @@ function HeroHeader({
 }) {
   const now = new Date().getFullYear();
   return (
-    <div
-      className="relative w-full"
-      style={{
-        background: NV.surfaceDark,
-        color: NV.onDark,
-        padding: '48px 32px',
-        borderRadius: 2,
-      }}
-    >
-      {/* 코너 스퀘어 — 시그니처 장식 */}
-      <span
-        aria-hidden
-        className="absolute"
-        style={{ width: 12, height: 12, background: NV.primary, top: 0, left: 0 }}
-      />
+    <div className="relative w-full border border-gray-200 rounded-lg bg-white px-6 py-5">
       <div className="flex items-start justify-between gap-6 flex-wrap">
         <div>
-          <div
-            className="text-[11px] font-bold uppercase tracking-[0.144em] mb-3"
-            style={{ color: NV.primary }}
-          >
+          <div className="text-[11px] font-bold uppercase tracking-[0.144em] mb-2 text-emerald-600">
             Plenty Convention / Dashboard
           </div>
-          <h1
-            className="font-bold leading-tight"
-            style={{ fontSize: 48, color: NV.onDark, letterSpacing: 0 }}
-          >
-            대시보드
-          </h1>
-          <p className="mt-3 text-base font-normal" style={{ color: NV.onDarkMute, lineHeight: 1.5 }}>
+          <h2 className="text-2xl font-bold text-gray-900 leading-tight">📊 대시보드</h2>
+          <p className="mt-1 text-sm text-gray-500">
             영업·연회 통합 운영 지표 · 신규 유입 / 상담 전환 / 매출 달성
           </p>
         </div>
@@ -667,17 +654,7 @@ function HeroHeader({
           <select
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
-            className="appearance-none px-4"
-            style={{
-              height: 44,
-              background: 'transparent',
-              color: NV.onDark,
-              border: `1px solid ${NV.onDark}`,
-              borderRadius: 2,
-              fontSize: 16,
-              fontWeight: 700,
-              minWidth: 96,
-            }}
+            className="appearance-none px-3 py-1.5 text-sm font-semibold border border-gray-300 rounded bg-white text-gray-800"
           >
             {[now - 2, now - 1, now, now + 1].map((y) => (
               <option key={y} value={y} style={{ color: NV.ink }}>
@@ -687,20 +664,7 @@ function HeroHeader({
           </select>
           <button
             onClick={onRefresh}
-            className="font-bold"
-            style={{
-              height: 44,
-              padding: '0 24px',
-              background: NV.primary,
-              color: NV.ink,
-              border: 'none',
-              borderRadius: 2,
-              fontSize: 16,
-              cursor: 'pointer',
-            }}
-            onMouseDown={(e) => (e.currentTarget.style.background = NV.primaryDark)}
-            onMouseUp={(e) => (e.currentTarget.style.background = NV.primary)}
-            onMouseLeave={(e) => (e.currentTarget.style.background = NV.primary)}
+            className="px-4 py-1.5 text-sm font-semibold rounded bg-emerald-500 text-white hover:bg-emerald-600 cursor-pointer border-0"
           >
             새로고침 →
           </button>

@@ -83,7 +83,8 @@ function toFcEvent(ev: EventWithFood, faded: boolean, hardConflict: boolean): Ev
   const cancelled = isCancelledStatus(ev.status);
   return {
     id: ev.id,
-    title: ev.event_name || '(이름 없음)',
+    // 상태 + 행사명 병기 — 색상과 별개로 DEF/INQ/LOS 등을 한눈에 (예: "[DEF] 대한의학회")
+    title: `[${ev.status}] ${ev.event_name || '(이름 없음)'}`,
     start: ev.start_datetime,
     end: ev.end_datetime,
     backgroundColor: baseColor,

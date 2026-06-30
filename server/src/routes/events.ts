@@ -474,8 +474,10 @@ router.patch('/:id', (req, res) => {
   // 담당자 id 는 사용자에게 의미 없으므로 diff 대상에서 제외 — _name 변경만 '담당자'로 노출
   const beforeForDiff = { ...before };
   delete beforeForDiff.assigned_manager_id;
+  delete beforeForDiff.beo_payload; // BEO 문서는 대용량 JSON — 변경이력에서 제외
   const afterForDiff = { ...(ev as unknown as Record<string, unknown>) };
   delete afterForDiff.assigned_manager_id;
+  delete afterForDiff.beo_payload;
   const diff = computeDiff(beforeForDiff, afterForDiff, EVENT_FIELD_LABELS);
   if (diff.changes.length > 0) {
     logChange({

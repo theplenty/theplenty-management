@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { AuthProvider } from './auth/AuthContext';
+import { AuthProvider, useAuth } from './auth/AuthContext';
+import { isSales, isAdmin } from './auth/permissions';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
@@ -19,8 +20,11 @@ import MiceProfile from './pages/MiceProfile';
 import CalendarSummary from './pages/CalendarSummary';
 import ActivityLog from './pages/ActivityLog';
 import ErrorBoundary from './components/ErrorBoundary';
+import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import Menus from './pages/Menus';
+import MenuCost from './pages/MenuCost';
+import AdminWeddingCalc from './pages/AdminWeddingCalc';
 import Revenue from './pages/Revenue';
 import Payments from './pages/Payments';
 import PublicCalendar from './pages/PublicCalendar';
@@ -67,7 +71,16 @@ function ProtectedRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/calendar" replace />} />
+        <Route index element={<DefaultLanding />} />
+        {/* 역할별 홈 — 세일즈팀 + 관리자 전용. 그 외 역할은 캘린더로 랜딩. */}
+        <Route
+          path="/home"
+          element={
+            <ProtectedRoute allow={['admin', 'sales_mice', 'sales_wedding']}>
+              <Home />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/dashboard"
           element={
@@ -143,6 +156,15 @@ function ProtectedRoutes() {
         <Route path="/files" element={<Files />} />
         {/* 메뉴 마스터 — 활성 사용자 전원 조회 가능. 등록·수정은 페이지 내부에서 권한 게이트. */}
         <Route path="/menus" element={<Menus />} />
+        {/* 메뉴별 원가 — 원가율은 민감 정보. 관리자/주방/연회만. */}
+        <Route
+          path="/menu-cost"
+          element={
+            <ProtectedRoute allow={['admin', 'kitchen', 'banquet']}>
+              <MenuCost />
+            </ProtectedRoute>
+          }
+        />
         {/* 매출 관리 — 조회: 활성 사용자 전원. 수정: admin only (페이지 내부 게이트). */}
         <Route
           path="/revenue"
@@ -177,6 +199,15 @@ function ProtectedRoutes() {
             </ProtectedRoute>
           }
         />
+        {/* 웨딩 마진계산기 기본값 — 관리자 전용 */}
+        <Route
+          path="/admin/wedding-calc"
+          element={
+            <ProtectedRoute allow={['admin']}>
+              <AdminWeddingCalc />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/admin/api-keys"
           element={
@@ -203,7 +234,14 @@ function ProtectedRoutes() {
         />
       </Route>
 
-      <Route path="*" element={<Navigate to="/calendar" replace />} />
+      <Route path="*" element={<DefaultLanding />} />
     </Routes>
   );
+}
+
+// 로그인 후 기본 랜딩 — 세일즈/관리자는 역할별 홈, 그 외(연회·주방 등)는 캘린더.
+function DefaultLanding() {
+  const { user } = useAuth();
+  const role = user?.role;
+  return <Navigate to={isSales(role) || isAdmin(role) ? '/home' : '/calendar'} replace />;
 }

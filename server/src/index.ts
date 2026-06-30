@@ -1,4 +1,4 @@
-// build: 2026-06-05
+// build: 2026-06-23 (cold start 강제 — 한식도시락 BOM 교정 반영)
 // .env는 두 곳 모두 시도:
 //   1) 프로젝트 루트 ../../.env  (로컬 dev 환경)
 //   2) server/.env               (Cloud Functions 배포 환경)
@@ -37,6 +37,8 @@ import menusRouter from './routes/menus.js';
 import revenueItemsRouter from './routes/revenueItems.js';
 import eventRevenueRouter from './routes/eventRevenue.js';
 import paymentsRouter from './routes/payments.js';
+import menuCostRouter from './routes/menuCost.js';
+import settingsRouter from './routes/settings.js';
 import { attachUser, attachTenant } from './middleware/auth.js';
 import { runSeed } from './store/seed.js';
 import { runMigrations } from './store/migrate.js';
@@ -79,6 +81,8 @@ app.use('/api/revenue-items', revenueItemsRouter);
 app.use('/api/events', eventRevenueRouter);
 app.use('/api/revenue', eventRevenueRouter);
 app.use('/api/payments', paymentsRouter);
+app.use('/api/menu-cost', menuCostRouter);
+app.use('/api/settings', settingsRouter);
 // 한국 공휴일 (구글 공식 캘린더 프록시) — 공개 정보, 별도 권한 체크 없음
 app.use('/api/holidays', holidaysRouter);
 
