@@ -434,6 +434,57 @@ router.post('/', (req, res) => {
   res.status(201).json({ event: ev, food_items, customer_links, invoice, cancellation });
 });
 
+// 행사 복제 — 반복/유사 행사 재입력을 줄이기 위해 기본정보 + 식음 + 업체연결을 복사.
+// invoice/취소/리뷰/첨부/BEO 는 실제 진행 산출물이라 복제하지 않음. 상태는 INQ 로 초기화.
+router.post('/:id/duplicate', (req, res) => {
+  const src = store.events.find((e) => e.id === req.params.id);
+  if (!src || isDeleted(src)) return res.status(404).json({ error: 'not_found' });
+  if (!canWriteType(req.user!.role, src.event_type)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const now = new Date().toISOString();
+  const ev: Event = {
+    ...src,
+    id: nanoid(10),
+    event_name: `${src.event_name || '행사'} (복사)`,
+    status: 'INQ',
+    created_by: req.user!.id,
+    created_by_name: req.user!.name,
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+    deleted_by_id: null,
+    deleted_by_name: null,
+    beo_payload: undefined,
+  };
+  store.events.push(ev);
+  persistDoc('events', ev.id);
+  // 식음/업체 연결 복제 (새 id 부여 위해 원본 id 제거 후 replace 헬퍼 재사용)
+  const srcFoods = store.event_food_items.filter((f) => f.event_id === src.id);
+  replaceFoodItems(ev.id, srcFoods.map((f) => ({ ...f, id: undefined })));
+  const srcLinks = store.event_customers.filter((l) => l.event_id === src.id);
+  replaceCustomerLinks(ev.id, srcLinks.map((l) => ({ ...l, id: undefined })));
+  // WEDDING 이면 담당자 재도출
+  if (ev.event_type === 'WEDDING') {
+    const mgr = deriveWeddingManager(ev.id);
+    if (mgr) {
+      ev.assigned_manager_id = mgr.id;
+      ev.assigned_manager_name = mgr.name;
+      persistDoc('events', ev.id);
+    }
+  }
+  const food_items = store.event_food_items.filter((f) => f.event_id === ev.id);
+  const customer_links = store.event_customers.filter((l) => l.event_id === ev.id);
+  logChange({
+    entity_type: 'event',
+    entity_id: ev.id,
+    action: 'create',
+    summary: `[${ev.event_name}] 복제 생성 (원본: ${src.event_name || '(이름 없음)'})`,
+    user: req.user!,
+  });
+  res.status(201).json({ event: ev, food_items, customer_links });
+});
+
 router.patch('/:id', (req, res) => {
   const ev = store.events.find((e) => e.id === req.params.id);
   if (!ev) return res.status(404).json({ error: 'not_found' });

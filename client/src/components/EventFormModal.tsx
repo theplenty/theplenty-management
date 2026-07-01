@@ -171,6 +171,7 @@ export default function EventFormModal({
     [activeUsers]
   );
   const [deleting, setDeleting] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [form, setForm] = useState<FormState>(() => emptyForm(allowedTypes, initialDate || null));
   const [foods, setFoods] = useState<DraftFoodItem[]>([]);
   const [links, setLinks] = useState<DraftCustomerLink[]>([]);
@@ -409,6 +410,36 @@ export default function EventFormModal({
     }
   }
 
+  // 행사 복제 — 반복/유사 행사 재입력 감소. 서버가 기본정보+식음+업체를 복사(상태 INQ).
+  async function duplicateEvent() {
+    if (!initialEvent) return;
+    if (
+      !confirm(
+        `[${initialEvent.event_name || '(이름 없음)'}] 행사를 복제합니다.\n` +
+          `· 기본정보·식음 메뉴·업체 연결이 복사됩니다 (상태는 INQ로 초기화).\n` +
+          `· INVOICE·취소·리뷰·첨부·BEO는 복사되지 않습니다.\n` +
+          `복제 후 새로 생긴 '(복사)' 행사를 열어 날짜 등을 수정하세요. 계속하시겠습니까?`
+      )
+    )
+      return;
+    setDuplicating(true);
+    try {
+      const res = await api.post<{
+        event: Event;
+        food_items: FoodItem[];
+        customer_links: EventCustomerLink[];
+      }>(`/api/events/${initialEvent.id}/duplicate`, {});
+      onSaved({ ...res.event, food_items: res.food_items }, res.customer_links);
+      onClose();
+      alert(`복제되었습니다: ${res.event.event_name}\n캘린더/목록에서 열어 날짜·정보를 수정하세요.`);
+    } catch (e) {
+      alert('복제 실패');
+      console.error(e);
+    } finally {
+      setDuplicating(false);
+    }
+  }
+
   async function deleteEvent() {
     if (!initialEvent || !onDeleted) return;
     if (
@@ -548,6 +579,17 @@ export default function EventFormModal({
               title="행사·식음·업체 데이터로 BEO 초안을 만들고 직접 편집/저장합니다 (인쇄/PDF)"
             >
               {beoBusy ? 'BEO 여는 중...' : '📄 BEO'}
+            </button>
+          )}
+          {/* 행사 복제 — 반복·유사 행사 재입력 감소. 수정 모드 + 작성권한자만. */}
+          {isEdit && canCreateEvent(user?.role) && (
+            <button
+              onClick={duplicateEvent}
+              disabled={duplicating || saving || deleting}
+              className="btn-secondary"
+              title="이 행사를 복제 (기본정보·식음·업체 복사, 상태 INQ)"
+            >
+              {duplicating ? '복제중...' : '📋 복제'}
             </button>
           )}
           <button onClick={onClose} className="btn-secondary">
