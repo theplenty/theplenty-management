@@ -37,8 +37,43 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+// 바이너리(파일) 다운로드용 — JSON이 아닌 Blob을 반환. 인증 처리는 request와 동일.
+// Content-Disposition의 파일명도 함께 파싱해 돌려준다.
+async function requestBlob(path: string): Promise<{ blob: Blob; filename: string }> {
+  const idToken = await getCurrentIdToken().catch(() => null);
+  const res = await fetch(`${API_BASE}${path}`, {
+    credentials: 'include',
+    headers: { ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}) },
+  });
+  if (!res.ok) {
+    let payload: unknown = null;
+    try {
+      payload = await res.json();
+    } catch {
+      /* ignore */
+    }
+    const err = new Error(`API ${res.status}: ${path}`) as ApiError;
+    err.status = res.status;
+    err.payload = payload;
+    throw err;
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get('Content-Disposition') || '';
+  const m = /filename\*=UTF-8''([^;]+)/i.exec(cd) || /filename="?([^";]+)"?/i.exec(cd);
+  let filename = '';
+  if (m) {
+    try {
+      filename = decodeURIComponent(m[1]);
+    } catch {
+      filename = m[1];
+    }
+  }
+  return { blob, filename };
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
+  getBlob: (path: string) => requestBlob(path),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) =>

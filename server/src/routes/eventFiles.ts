@@ -8,6 +8,15 @@ import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { store, persistDoc, persistDelete } from '../store/mockStore.js';
 import { requireActiveRole } from '../middleware/auth.js';
+import {
+  buildEml,
+  buildMiceMail,
+  buildWeddingMail,
+  guessMime,
+  ymd,
+  ymdDow,
+  addDays,
+} from '../lib/mailDraft.js';
 import type { Request, Response } from 'express';
 import type { EventFile, EventFileType } from '../types.js';
 
@@ -133,6 +142,84 @@ router.get('/:eventId/files/:fileId/download', async (req, res) => {
     console.error('[download] signed URL 생성 실패:', e);
     res.status(500).json({ error: 'signed_url_failed' });
   }
+});
+
+// 고객 발송용 Outlook 메일 초안(.eml) — 견적서/계약서 파일을 첨부한 편집 초안 생성.
+//   GET /api/events/:eventId/files/:fileId/mail-draft
+//   받는사람(contact point 이메일)·제목·본문을 event/고객 데이터로 자동 매칭.
+//   설치형 Outlook에서 열면 X-Unsent 헤더로 편집·전송 가능한 새 메일이 뜬다.
+router.get('/:eventId/files/:fileId/mail-draft', async (req, res) => {
+  const ev = store.events.find((e) => e.id === req.params.eventId);
+  if (!ev) return res.status(404).json({ error: 'event_not_found' });
+  const record = store.event_files.find(
+    (f) => f.id === req.params.fileId && f.event_id === ev.id
+  );
+  if (!record) return res.status(404).json({ error: 'file_not_found' });
+  // 고객 발송 대상은 견적서/계약서만 (BEO 등 내부문서 제외)
+  if (record.file_type !== 'estimate' && record.file_type !== 'contract') {
+    return res.status(400).json({ error: 'not_sendable_file_type' });
+  }
+  const docLabel = record.file_type === 'estimate' ? '견적서' : '계약서';
+  const senderName = req.user!.name || '';
+
+  // CONTACT POINT 링크 → 고객/담당자/이메일 해석 (미지정이면 첫 링크로 fallback)
+  const links = store.event_customers.filter((l) => l.event_id === ev.id);
+  const cp = links.find((l) => l.is_contact_point) || links[0];
+
+  let content;
+  if (ev.event_type === 'WEDDING') {
+    const cust = cp ? store.wedding_customers.find((c) => c.id === cp.customer_id) : undefined;
+    const toEmail = !cust
+      ? ''
+      : cp?.contact_point_contact_id === 'bride'
+        ? cust.bride_email || cust.groom_email || ''
+        : cust.groom_email || cust.bride_email || '';
+    content = buildWeddingMail({
+      groomName: cust?.groom_name || '',
+      brideName: cust?.bride_name || '',
+      replyDeadline: ymdDow(addDays(new Date(), 1)), // 메일발송일 다음날
+    });
+    content.to = toEmail;
+  } else {
+    const cust = cp ? store.mice_customers.find((c) => c.id === cp.customer_id) : undefined;
+    const contacts = cust ? cust.inquiries.flatMap((i) => i.contacts) : [];
+    const contact = contacts.find((ct) => ct.id === cp?.contact_point_contact_id) || contacts[0];
+    content = buildMiceMail({
+      orgName: cust?.organization_name || '',
+      contactName: contact?.name || '',
+      senderName,
+      docLabel,
+      eventName: ev.event_name || '',
+      eventDate: ymd(ev.start_datetime),
+    });
+    content.to = contact?.email || cust?.official_email || '';
+  }
+
+  // 첨부 바이트 로드 — Admin SDK로 서버 내부에서 직접 (CORS 무관)
+  let buffer: Buffer;
+  try {
+    const { firebaseStorage } = await import('../lib/firebase.js');
+    const [buf] = await firebaseStorage.bucket().file(record.file_url).download();
+    buffer = buf;
+  } catch (e) {
+    console.error('[mail-draft] 첨부 파일 로드 실패:', e);
+    return res.status(500).json({ error: 'attachment_load_failed' });
+  }
+
+  const eml = buildEml(content, {
+    filename: record.file_name,
+    mime: guessMime(record.file_name),
+    buffer,
+  });
+
+  const safeEvent = (ev.event_name || 'event').replace(/[\\/:*?"<>|]/g, '_');
+  const dlName = `${docLabel}_${safeEvent}.eml`;
+  res.setHeader('Content-Type', 'message/rfc822; charset=utf-8');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename*=UTF-8''${encodeURIComponent(dlName)}`
+  );
+  res.send(eml);
 });
 
 // 삭제

@@ -675,7 +675,11 @@ export default function EventFormModal({
       )}
       {tab === 'files' && (
         <ErrorBoundary title="첨부파일 탭에서 오류가 발생했습니다">
-          <FilesTab eventId={initialEvent?.id || null} canWrite={canCreateEvent(user?.role)} />
+          <FilesTab
+            eventId={initialEvent?.id || null}
+            canWrite={canCreateEvent(user?.role)}
+            eventType={initialEvent?.event_type ?? form.event_type}
+          />
         </ErrorBoundary>
       )}
       {tab === 'collaboration' && (

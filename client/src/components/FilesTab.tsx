@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { uploadFileToStorage } from '../lib/firebase';
-import { EVENT_FILE_TYPE_LABEL, type EventFile, type EventFileType } from '../types';
+import {
+  EVENT_FILE_TYPE_LABEL,
+  type CustomerType,
+  type EventFile,
+  type EventFileType,
+} from '../types';
 
 interface Props {
   eventId: string | null;
   canWrite: boolean;
+  // 고객 발송(📧 Outlook) 버튼 노출 판단용 — MICE: 견적서/계약서, WEDDING: 계약서
+  eventType?: CustomerType | null;
 }
 
 const TYPE_OPTIONS: EventFileType[] = ['estimate', 'contract', 'beo', 'final_invoice', 'other'];
@@ -31,14 +38,56 @@ function extOf(filename: string): string {
   return i >= 0 ? filename.slice(i) : '';
 }
 
-export default function FilesTab({ eventId, canWrite }: Props) {
+export default function FilesTab({ eventId, canWrite, eventType }: Props) {
   const [files, setFiles] = useState<EventFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadType, setUploadType] = useState<EventFileType>('estimate');
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 고객 발송 가능 파일: MICE=견적서/계약서, WEDDING=계약서
+  function canSend(t: EventFileType): boolean {
+    if (t === 'estimate') return eventType === 'MICE';
+    if (t === 'contract') return eventType === 'MICE' || eventType === 'WEDDING';
+    return false;
+  }
+
+  // 📧 Outlook 발송 — 받는사람·제목·본문·첨부가 채워진 .eml 초안 다운로드
+  async function sendViaOutlook(f: EventFile) {
+    setSendingId(f.id);
+    try {
+      const { blob, filename } = await api.getBlob(
+        `/api/events/${f.event_id}/files/${f.id}/mail-draft`
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || 'mail.eml';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      alert(
+        'Outlook 메일 초안(.eml)이 다운로드되었습니다.\n' +
+          '파일을 열면 받는사람·제목·본문·첨부가 채워진 Outlook 새 메일이 열립니다. 내용 확인 후 전송하세요.'
+      );
+    } catch (e) {
+      const code = (e as { payload?: { error?: string } })?.payload?.error;
+      const msg =
+        code === 'not_sendable_file_type'
+          ? '견적서/계약서만 발송할 수 있습니다.'
+          : code === 'attachment_load_failed'
+            ? '첨부 파일을 불러오지 못했습니다.'
+            : code || '알 수 없는 오류';
+      alert('메일 초안 생성 실패: ' + msg);
+      console.error(e);
+    } finally {
+      setSendingId(null);
+    }
+  }
 
   async function load() {
     if (!eventId) return;
@@ -131,6 +180,14 @@ export default function FilesTab({ eventId, canWrite }: Props) {
         견적서 / 계약서 / BEO / 기타 파일을 업로드합니다. PDF, 이미지, 문서 등 25MB까지
         지원합니다. BEO는 하단 <span className="font-medium text-gray-700">📄 BEO 생성</span>{' '}
         버튼으로 행사정보·식음·업체정보를 모아 자동 생성(인쇄/PDF)할 수 있습니다.
+        {(eventType === 'MICE' || eventType === 'WEDDING') && (
+          <>
+            {' '}
+            <span className="font-medium text-blue-700">📧 Outlook 발송</span> 버튼은
+            {eventType === 'MICE' ? ' 견적서·계약서를 ' : ' 계약서를 '}
+            CONTACT POINT 담당자에게 보낼 Outlook 메일 초안(받는사람·제목·본문·첨부 자동)을 만듭니다.
+          </>
+        )}
       </div>
 
       {canWrite && (
@@ -219,14 +276,26 @@ export default function FilesTab({ eventId, canWrite }: Props) {
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-500">{fmtDateTime(f.uploaded_at)}</td>
                   <td className="px-3 py-2">
-                    {canWrite && (
-                      <button
-                        onClick={() => handleDelete(f)}
-                        className="text-xs text-red-600 hover:underline"
-                      >
-                        삭제
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3 justify-end">
+                      {canSend(f.file_type) && (
+                        <button
+                          onClick={() => sendViaOutlook(f)}
+                          disabled={sendingId === f.id}
+                          className="text-xs text-blue-600 hover:underline disabled:opacity-50 whitespace-nowrap"
+                          title="받는사람·제목·본문·첨부가 채워진 Outlook 메일 초안을 생성합니다"
+                        >
+                          {sendingId === f.id ? '생성 중...' : '📧 Outlook 발송'}
+                        </button>
+                      )}
+                      {canWrite && (
+                        <button
+                          onClick={() => handleDelete(f)}
+                          className="text-xs text-red-600 hover:underline"
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

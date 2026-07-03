@@ -2,12 +2,13 @@
 // 셀의 행사를 클릭하면 상세(사용홀·메뉴·GTD/EXP·메뉴 비고)를 모달로 표시.
 // 모바일: 셀당 2건 + 날짜 탭 시 하단에 그날 요약 카드 리스트.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import koLocale from '@fullcalendar/core/locales/ko';
 import type { EventClickArg, EventInput } from '@fullcalendar/core';
+import { buildKoreanHolidays } from '../lib/koreanHolidays';
 import {
   type CustomerType,
   type EventStatus,
@@ -108,6 +109,20 @@ export default function CalendarSummaryView({ events }: { events: SummaryEvent[]
   const isMobile = useIsMobile();
   const [selected, setSelected] = useState<SummaryEvent | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  // 한국 공휴일 — 메인 캘린더와 동일하게 표시(공개 요약 페이지 포함). 보이는 범위에 맞춰 로드.
+  const [visibleRange, setVisibleRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [holidays, setHolidays] = useState<EventInput[]>([]);
+
+  useEffect(() => {
+    if (!visibleRange) return;
+    let cancelled = false;
+    buildKoreanHolidays(visibleRange.start, visibleRange.end).then((hs) => {
+      if (!cancelled) setHolidays(hs);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleRange]);
 
   const summaryEvents = useMemo(
     () => events.filter((e) => !EXCLUDED_STATUSES.has(e.status)),
@@ -156,14 +171,23 @@ export default function CalendarSummaryView({ events }: { events: SummaryEvent[]
           editable={false}
           // PC: 셀에 모든 행사 상세를 펼쳐 한눈에 + 그대로 출력 / 모바일: 2건만, 탭하면 하단 리스트
           dayMaxEvents={isMobile ? 2 : false}
-          events={fcEvents}
+          events={[...fcEvents, ...holidays]}
+          datesSet={(arg) => setVisibleRange({ start: arg.start, end: arg.end })}
           eventClick={handleEventClick}
           dateClick={(info) => {
             if (isMobile) setSelectedDate(info.dateStr);
           }}
           eventContent={(arg) => {
             const ev = arg.event.extendedProps.summary as SummaryEvent | undefined;
-            if (!ev) return undefined;
+            // 공휴일 등 요약 외 이벤트: 제목(🇰🇷 이름)을 그대로 표시.
+            // (eventContent에서 undefined를 반환하면 FullCalendar가 빈 블록을 그림)
+            if (!ev) {
+              return (
+                <div className="px-1 py-0.5 text-[11px] font-semibold" style={{ color: '#dc2626' }}>
+                  {arg.event.title}
+                </div>
+              );
+            }
             return <SummaryEventBlock ev={ev} compact={isMobile} />;
           }}
         />
