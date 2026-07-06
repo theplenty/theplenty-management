@@ -33,6 +33,7 @@ import activityLogRouter from './routes/activityLog.js';
 import holidaysRouter from './routes/holidays.js';
 import collaborationRequestsRouter from './routes/collaborationRequests.js';
 import summaryShareRouter from './routes/summaryShare.js';
+import { landingStaffRouter, landingPublicRouter } from './routes/weddingLanding.js';
 import menusRouter from './routes/menus.js';
 import revenueItemsRouter from './routes/revenueItems.js';
 import eventRevenueRouter from './routes/eventRevenue.js';
@@ -66,6 +67,8 @@ app.use('/api/users', usersRouter);
 app.use('/api/customers', customersRouter);
 // 첨부파일과 리뷰는 events 하위 경로 — events 라우터보다 먼저 등록해야 :id 매칭에 안 잡힘
 app.use('/api/events', eventFilesRouter);
+// 웨딩 고객 랜딩 (직원용) — events 하위 경로
+app.use('/api/events', landingStaffRouter);
 app.use('/api/event-reviews', eventReviewsRouter);
 app.use('/api/events', eventsRouter);
 app.use('/api/calendar-shares', calendarSharesRouter);
@@ -90,6 +93,8 @@ app.use('/api/holidays', holidaysRouter);
 app.use('/api/public/v1', publicApiRouter);
 // 공개(토큰만으로 접근) — 외부 업체에게 특정 월 캘린더 공유용 (구버전)
 app.use('/api/public', publicCalendarRouter);
+// 공개(토큰만으로 접근) — 웨딩 가예약 고객 랜딩
+app.use('/api/public', landingPublicRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('[server] error:', err);

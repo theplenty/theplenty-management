@@ -34,6 +34,7 @@ import CancellationTab, {
   emptyCancellationDraft,
 } from './CancellationTab';
 import FilesTab from './FilesTab';
+import WeddingLandingTab from './WeddingLandingTab';
 import ReviewTab from './ReviewTab';
 import CollaborationTab from './CollaborationTab';
 import ChangeLogPanel from './ChangeLogPanel';
@@ -65,7 +66,7 @@ interface Props {
   // 관리자 삭제 콜백 — 부모가 목록에서 제거 처리. 미제공 시 삭제 버튼 미노출.
   onDeleted?: (eventId: string) => void;
   // 모달 열릴 때 처음 보일 탭 — 미지정 시 '기본정보'.
-  initialTab?: 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review' | 'collaboration';
+  initialTab?: 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review' | 'collaboration' | 'landing';
 }
 
 interface FormState {
@@ -87,7 +88,7 @@ interface FormState {
   contract_date: string; // 계약일 (YYYY-MM-DD)
 }
 
-type TabKey = 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review' | 'collaboration';
+type TabKey = 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review' | 'collaboration' | 'landing';
 
 interface TabDef {
   key: TabKey;
@@ -102,6 +103,8 @@ const TABS: TabDef[] = [
   { key: 'invoice', label: '가톨릭대관료', visible: () => true },
   { key: 'files', label: '첨부파일', visible: () => true },
   { key: 'collaboration', label: '협업요청서', visible: () => true },
+  // 웨딩 가예약 고객용 공개 랜딩 링크 — WEDDING 행사에만 노출
+  { key: 'landing', label: '💌 고객 랜딩', visible: (f) => f.event_type === 'WEDDING' },
   { key: 'cancel', label: '취소정보', visible: (f) => f.status === 'LOS' },
   { key: 'review', label: '행사리뷰', visible: () => true },
 ];
@@ -679,6 +682,18 @@ export default function EventFormModal({
             eventId={initialEvent?.id || null}
             canWrite={canCreateEvent(user?.role)}
             eventType={initialEvent?.event_type ?? form.event_type}
+          />
+        </ErrorBoundary>
+      )}
+      {tab === 'landing' && (
+        <ErrorBoundary title="고객 랜딩 탭에서 오류가 발생했습니다">
+          <WeddingLandingTab
+            eventId={initialEvent?.id || null}
+            startDatetime={form.start_datetime}
+            customerIds={[...links]
+              .sort((a, b) => Number(b.is_contact_point) - Number(a.is_contact_point))
+              .map((l) => l.customer_id)}
+            canManage={user?.role === 'admin' || user?.role === 'sales_wedding'}
           />
         </ErrorBoundary>
       )}

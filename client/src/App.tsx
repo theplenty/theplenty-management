@@ -29,6 +29,7 @@ import Revenue from './pages/Revenue';
 import Payments from './pages/Payments';
 import PublicCalendar from './pages/PublicCalendar';
 import PublicSummary from './pages/PublicSummary';
+import WeddingLandingPublic from './pages/WeddingLandingPublic';
 import ApiDocs from './pages/ApiDocs';
 
 export default function App() {
@@ -38,6 +39,8 @@ export default function App() {
         {/* 공개 — 인증 없이 접근, 토큰 기반 외부 공유 */}
         <Route path="/public/calendar/:token" element={<PublicCalendar />} />
         <Route path="/public/summary/:token" element={<PublicSummary />} />
+        {/* 공개 — 웨딩 가예약 고객 랜딩 (짧은 주소, 카톡 공유용) */}
+        <Route path="/l/:token" element={<WeddingLandingPublic />} />
         {/* 공개 — API 문서 (외부 개발자용) */}
         <Route path="/api-docs" element={<ApiDocs />} />
 

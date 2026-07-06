@@ -121,6 +121,15 @@ const DEFAULTS: Record<string, unknown> = {
   // 월별 주류(베버리지) 매출 — 매출관리 파일 기준 수기 입력/연동.
   //   revenue: { 'YYYY-MM': 금액 }, alertThreshold: 주류행사 조기경보 임계치(건)
   'beverage': { revenue: {}, alertThreshold: 2 },
+  // 웨딩 고객 랜딩 미디어 (Storage 공개 URL 모음) — 공개 랜딩이 서버에서 직접 읽어 포함.
+  'wedding-landing-media': {
+    hall_video_url: '',
+    full_video_url: '',
+    flower_photos: { basic: [], luxury: [], grand: [] },
+    menu_photos: { a: [], b: [], c: [] },
+    directions_image: '',
+    kakao_url: 'https://pf.kakao.com/_xfGwxob',
+  },
 };
 
 function findSetting(key: string): AppSetting | undefined {

@@ -416,6 +416,47 @@ export interface SummaryShare {
   created_by: string;
 }
 
+// ===== 웨딩 고객 랜딩 (가예약 고객용 공개 링크) =====
+// INQ 웨딩 행사마다 1개. 고객이 가블록 기간 동안 열람하는 모바일 랜딩 페이지.
+// 견적은 직원이 "발행" 시점에 고객용 HTML 스냅샷으로 저장 (마진·원가 등 내부 데이터 미포함).
+// 상태: LOS/휴지통 → 닫힘 · DEF → '계약 완료' 감사 화면 · 가블록 종료일 경과 → 만료 · closed → 수동 닫힘.
+
+// 상담 중시항목 키 (고정 8종) — 랜딩에서 항목별 다듬어진 문구로 노출
+export type WeddingPriorityKey =
+  | 'space'      // 공간중시
+  | 'food'       // 음식중시
+  | 'access'     // 교통중시
+  | 'flower'     // 플라워중시
+  | 'private'    // 프라이빗 진행 중시
+  | 'parents'    // 부모님 의견 중시
+  | 'budget'     // 예산 중시
+  | 'photo';     // 사진 및 영상 중시
+
+export interface WeddingLandingCta {
+  action: 'contract' | 'call'; // 계약하고 싶어요 | 전화로 상의할게요
+  at: string; // ISO
+}
+
+export interface WeddingLanding {
+  id: string;
+  tenant_id?: string;
+  event_id: string;
+  token: string; // 공개 링크 토큰 (/l/:token)
+  block_until: string; // 가블록 종료일 YYYY-MM-DD (경과 시 링크 만료)
+  priorities: WeddingPriorityKey[];
+  custom_note: string; // 자유 추가 문구 (선택)
+  inquiry_id: string; // 매칭된 예식후보 id (견적 출처)
+  guest_count: number | null; // 스냅샷: 예상 하객
+  total_amount: string; // 스냅샷: 총 예상비용 (예: "34,500,000")
+  quote_html: string; // 스냅샷: 고객용 견적서 HTML
+  closed: boolean; // 직원 수동 닫기
+  cta_clicks: WeddingLandingCta[];
+  created_by: string;
+  created_by_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Cancellation {
   id: string;
   tenant_id?: string;

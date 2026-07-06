@@ -18,6 +18,7 @@ import type {
   ApiKey,
   CollaborationRequest,
   SummaryShare,
+  WeddingLanding,
   Tenant,
   Menu,
   RevenueItem,
@@ -56,6 +57,7 @@ interface DB {
   api_keys: ApiKey[];
   collaboration_requests: CollaborationRequest[];
   summary_shares: SummaryShare[];
+  wedding_landings: WeddingLanding[];
   menus: Menu[];
   revenue_items: RevenueItem[];
   event_revenue_lines: EventRevenueLine[];
@@ -81,6 +83,7 @@ const COLLECTIONS: (keyof DB)[] = [
   'api_keys',
   'collaboration_requests',
   'summary_shares',
+  'wedding_landings',
   'menus',
   'revenue_items',
   'event_revenue_lines',
@@ -196,6 +199,7 @@ const db: DB = {
   api_keys: loadCollection('api_keys'),
   collaboration_requests: loadCollection('collaboration_requests'),
   summary_shares: loadCollection('summary_shares'),
+  wedding_landings: loadCollection('wedding_landings'),
   menus: loadCollection('menus'),
   revenue_items: loadCollection('revenue_items'),
   event_revenue_lines: loadCollection('event_revenue_lines'),

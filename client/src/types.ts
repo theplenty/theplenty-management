@@ -867,3 +867,77 @@ export interface CalendarShare {
   created_at: string;
   event_type_filter: 'ALL' | 'MICE' | 'WEDDING';
 }
+
+// ===== 웨딩 고객 랜딩 (가예약 고객용 공개 링크) =====
+export type WeddingPriorityKey =
+  | 'space' | 'food' | 'access' | 'flower' | 'private' | 'parents' | 'budget' | 'photo';
+
+// 체크 항목 → 랜딩 노출용 다듬어진 문구 (직원 화면·공개 페이지 공용)
+export const WEDDING_PRIORITY_LABEL: Record<WeddingPriorityKey, string> = {
+  space: '공간 중시',
+  food: '음식 중시',
+  access: '교통 중시',
+  flower: '플라워 중시',
+  private: '프라이빗 진행 중시',
+  parents: '부모님 의견 중시',
+  budget: '예산 중시',
+  photo: '사진·영상 중시',
+};
+
+export const WEDDING_PRIORITY_SENTENCE: Record<WeddingPriorityKey, string> = {
+  private: '하객이 많아도 복잡하지 않은, 프라이빗한 단독홀 예식',
+  flower: '사진에서 플라워와 공간이 풍성하게 보이는 웨딩',
+  food: '부모님과 하객 모두가 만족할 수 있는 격 있는 식사',
+  space: '높은 층고와 긴 버진로드가 만드는 압도적인 공간감',
+  access: '서울 어디에서 출발해도 찾아오기 쉬운 위치와 교통',
+  parents: '부모님의 마음까지 편안한 결혼식 준비',
+  budget: '불필요한 비용 없이, 합리적으로 완성하는 결혼식',
+  photo: '화보처럼 오래 남는 사진과 영상',
+};
+
+export interface WeddingLandingCta {
+  action: 'contract' | 'call';
+  at: string;
+}
+
+export interface WeddingLanding {
+  id: string;
+  event_id: string;
+  token: string;
+  block_until: string; // YYYY-MM-DD
+  priorities: WeddingPriorityKey[];
+  custom_note: string;
+  inquiry_id: string;
+  guest_count: number | null;
+  total_amount: string;
+  quote_html: string;
+  closed: boolean;
+  cta_clicks: WeddingLandingCta[];
+  created_by: string;
+  created_by_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WeddingLandingState = 'active' | 'contracted' | 'closed' | 'expired';
+
+export interface WeddingLandingFlowerPhoto {
+  url: string;
+  loc?: string; // 위치 태그 (버진로드/신부대기실/포토테이블/포토월)
+}
+
+// 랜딩 미디어 설정 (settings key: 'wedding-landing-media') — admin이 관리
+export interface WeddingLandingMedia {
+  hall_video_url?: string; // 섹션 삽입용 mp4 (자동재생 루프)
+  hall_video_poster?: string; // 섹션 영상 포스터 (재생 전/불가 환경 표시용)
+  full_video_url?: string; // 풀 영상 (YouTube 일부공개 링크 또는 mp4)
+  // 플라워 사진 — loc: 위치 태그 (버진로드/신부대기실/포토테이블/포토월)
+  flower_photos?: {
+    basic?: WeddingLandingFlowerPhoto[];
+    luxury?: WeddingLandingFlowerPhoto[];
+    grand?: WeddingLandingFlowerPhoto[];
+  };
+  menu_photos?: { a?: string[]; b?: string[]; c?: string[]; option?: string[] };
+  directions_image?: string;
+  kakao_url?: string; // 카카오톡 채널 링크
+}
