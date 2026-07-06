@@ -207,6 +207,11 @@ export default function WeddingLandingPublic() {
 
   // ── active — 본 랜딩 ──
   const priorities = data.priorities || [];
+  // 자유 추가 문구 — 쉼표(,)로 구분하면 각각 별도 번호 줄로 노출
+  const customNotes = (data.custom_note || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   const hasQuote = Boolean(data.quote_html);
   const flowerPhotos = media?.flower_photos?.[flowerTab] || [];
 
@@ -315,12 +320,12 @@ export default function WeddingLandingPublic() {
                   <span>{WEDDING_PRIORITY_SENTENCE[k]}</span>
                 </li>
               ))}
-              {data.custom_note && (
-                <li className="flex gap-2.5 text-[14px] md:text-[16px] leading-relaxed text-[#4d4237]">
-                  <span className="font-serif font-bold text-[#c9a96a]">{priorities.length + 1}.</span>
-                  <span>{data.custom_note}</span>
+              {customNotes.map((note, i) => (
+                <li key={`c${i}`} className="flex gap-2.5 text-[14px] md:text-[16px] leading-relaxed text-[#4d4237]">
+                  <span className="font-serif font-bold text-[#c9a96a]">{priorities.length + i + 1}.</span>
+                  <span>{note}</span>
                 </li>
-              )}
+              ))}
             </ol>
             <p className="mt-5 pt-4 border-t border-[#f1e9da] text-[13.5px] md:text-[15px] leading-relaxed text-[#8a7461] text-center">
               PLENTY의 <b>단독홀 운영 방식</b>과 웨딩 연출은

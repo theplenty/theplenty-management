@@ -369,24 +369,33 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
             </label>
           ))}
         </div>
-        {priorities.length > 0 && (
+        {(priorities.length > 0 || customNote.trim()) && (
           <div className="mt-1.5 text-xs text-gray-600 bg-gray-50 border rounded p-2 space-y-0.5">
             {priorities.map((k, i) => (
               <div key={k}>
                 {i + 1}. {WEDDING_PRIORITY_SENTENCE[k]}
               </div>
             ))}
+            {customNote
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map((note, i) => (
+                <div key={`c${i}`}>
+                  {priorities.length + i + 1}. {note}
+                </div>
+              ))}
           </div>
         )}
         <div className="mt-2">
           <label className="text-[11px] uppercase tracking-wide text-gray-500">
-            자유 추가 문구 (선택 — 중시항목 아래 한 줄로 노출)
+            자유 추가 문구 (선택 — 쉼표(,)로 구분하면 각각 별도 줄로 노출)
           </label>
           <input
             className="input"
             value={customNote}
             onChange={(e) => setCustomNote(e.target.value)}
-            placeholder="예: 야외 포토타임을 원하셔서 로비 공간 활용안을 함께 준비했습니다."
+            placeholder="예: 직접 제작한 미디어월 연출, 야외 포토타임 동선 준비"
             disabled={!canManage}
           />
         </div>
