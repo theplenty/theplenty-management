@@ -247,8 +247,21 @@ export default function WeddingLandingPublic() {
         </div>
       </section>
 
-      {/* 3. 퀵 버튼 */}
+      {/* 3. 홀 영상 + 퀵 버튼 */}
       <section className={`${S.wrap} mt-6`}>
+        {media?.hall_video_url && (
+          // 자동재생(무음 루프) + 컨트롤 — 멈추거나 되감아 다시 볼 수 있음
+          <video
+            className="mb-6 w-full rounded-2xl shadow-md"
+            src={media.hall_video_url}
+            poster={media.hall_video_poster || undefined}
+            controls
+            autoPlay
+            muted
+            loop
+            playsInline
+          />
+        )}
         <div className="grid grid-cols-3 gap-2">
           {hasQuote ? (
             <button onClick={() => setQuoteOpen(true)} className="rounded-xl bg-[#3f342a] text-white py-3.5 md:py-5 text-[12.5px] md:text-[15px] font-semibold leading-tight">
@@ -325,19 +338,6 @@ export default function WeddingLandingPublic() {
         <p className={S.body}>
           {'한 시간 단위로 여러 예식이 교차하는 공간이 아닌,\n두 분의 예식과 하객에게만 집중할 수 있도록 운영됩니다.\n\n웅장한 미디어월과 긴 버진로드, 높은 층고는\n신부 입장의 순간을 더욱 선명하게 만들어 줍니다.'}
         </p>
-        {media?.hall_video_url && (
-          // 자동재생(무음 루프) + 컨트롤 — 고객이 멈추거나 구간을 되감아 다시 볼 수 있음
-          <video
-            className="mt-6 w-full rounded-2xl shadow-md"
-            src={media.hall_video_url}
-            poster={media.hall_video_poster || undefined}
-            controls
-            autoPlay
-            muted
-            loop
-            playsInline
-          />
-        )}
       </section>
 
       <div className={S.divider} />
