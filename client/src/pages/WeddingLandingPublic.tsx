@@ -725,6 +725,19 @@ function Shell({ children }: { children: React.ReactNode }) {
       <style>{`
         .font-serif { font-family: 'Noto Serif KR', 'Nanum Myeongjo', 'Apple SD Gothic Neo', serif; }
       `}</style>
+      {/* 워터마크 — 캡처·유포물에 출처가 남도록 최상단 레이어에 로고 반복 (인터랙션 방해 없음) */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-[70]"
+        style={{
+          backgroundImage: `url(${LOGO_URL})`,
+          backgroundRepeat: 'repeat',
+          backgroundSize: '200px auto',
+          backgroundPosition: 'center',
+          opacity: 0.03,
+          transform: 'rotate(-14deg) scale(1.5)',
+        }}
+      />
       {children}
     </div>
   );
@@ -761,6 +774,10 @@ function Footer() {
         <a href="mailto:rsvn@h-kitchen.co.kr">E-mail. rsvn@h-kitchen.co.kr</a>
         {' · '}
         <a href="tel:010-6575-1598">Phone. 010-6575-1598</a>
+      </div>
+      <div className="mt-3 text-[9.5px] md:text-[11px] text-[#cfc5b4]">
+        © {new Date().getFullYear()} PLENTY CONVENTION. All rights reserved.
+        <br />본 페이지의 구성·문구·이미지의 무단 복제 및 전재를 금합니다.
       </div>
     </footer>
   );
