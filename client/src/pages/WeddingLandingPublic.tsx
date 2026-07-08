@@ -94,6 +94,38 @@ const FAQ: { q: string; a: string }[] = [
   },
 ];
 
+// 플라워 등급별 안내 (탭 선택 시 노출)
+const FLOWER_GRADE_INFO: Record<'basic' | 'luxury' | 'grand', { desc: string; includes: string[] }> = {
+  basic: {
+    desc: '베이직은 웨딩 공간의 핵심 포인트를 깔끔하게 완성하는 기본 구성입니다. 과하지 않으면서도 단정하고 세련된 분위기를 원하시는 분들께 추천드립니다.',
+    includes: ['로드입구 장식', '신부 대기실', '포토 테이블', '테이블 센터피스'],
+  },
+  luxury: {
+    desc: '럭셔리는 베이직 구성보다 한층 더 풍성한 사이즈와 디테일을 더한 업그레이드 구성입니다. 특히 버진로드와 단상 연출을 중요하게 생각하시는 신랑·신부님께 추천드리며, 전체 공간이 보다 풍성하고 화사하게 느껴지는 구성입니다.',
+    includes: [
+      '로드입구 장식 (Size Up)',
+      '신부 대기실 (Size Up)',
+      '포토 테이블 (Size Up)',
+      '테이블 센터피스 (Size Up)',
+      '버진로드 꽃길 조화 추가',
+      '단상 조화 추가',
+    ],
+  },
+  grand: {
+    desc: '그랜드는 플렌티 웨딩 플라워의 가장 풍성한 프리미엄 구성입니다. 럭셔리 구성에 생화 디테일과 반달 아치, 포토월, 칵테일바 연출까지 더해져 홀 전체가 하나의 웨딩 콘셉트처럼 완성됩니다. 버진로드와 단상에는 조화와 생화가 함께 더해져 더욱 입체적이고 고급스러운 분위기를 만들고, 신부 대기실 반달 아치와 포토월은 사진에 남는 장면까지 풍성하게 채워줍니다. 하객에게 깊은 인상을 남기고, 사진과 영상에 남는 장면이 더욱더 아름답게 느껴지는 구성입니다.',
+    includes: [
+      '로드입구 장식 (Size Up)',
+      '신부 대기실 (Size Up) + 반달 아치 추가',
+      '포토 테이블 (Size Up)',
+      '테이블 센터피스 (Size Up)',
+      '버진로드 꽃길 조화&생화 추가',
+      '단상 조화&생화 추가',
+      '포토월 추가',
+      '칵테일바 추가',
+    ],
+  },
+};
+
 // 섹션 공통 스타일
 // 모바일 우선 + md(768px~) 이상 PC에서는 폭·글자·여백 확대
 const S = {
@@ -110,6 +142,7 @@ export default function WeddingLandingPublic() {
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false); // 풀 영상 (mp4) 오버레이 플레이어
   const [flowerTab, setFlowerTab] = useState<'basic' | 'luxury' | 'grand'>('basic');
+  const [flowerLoc, setFlowerLoc] = useState(''); // 소분류(위치) 필터 — 빈 값이면 첫 위치
   const [ctaSent, setCtaSent] = useState<'contract' | 'call' | null>(null);
   const [ctaSending, setCtaSending] = useState(false);
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
@@ -213,7 +246,12 @@ export default function WeddingLandingPublic() {
     .map((s) => s.trim())
     .filter(Boolean);
   const hasQuote = Boolean(data.quote_html);
-  const flowerPhotos = media?.flower_photos?.[flowerTab] || [];
+  // 플라워: 현재 등급의 사진 → 위치(소분류) 목록 → 선택된 위치만 필터
+  const gradePhotos = media?.flower_photos?.[flowerTab] || [];
+  const flowerLocs = [...new Set(gradePhotos.map((p) => p.loc).filter(Boolean))] as string[];
+  const activeLoc = flowerLoc && flowerLocs.includes(flowerLoc) ? flowerLoc : flowerLocs[0] || '';
+  const flowerPhotos = activeLoc ? gradePhotos.filter((p) => p.loc === activeLoc) : gradePhotos;
+  const gradeInfo = FLOWER_GRADE_INFO[flowerTab];
 
   return (
     <Shell>
@@ -353,13 +391,21 @@ export default function WeddingLandingPublic() {
         <p className={S.body}>
           {'PLENTY의 웨딩 플라워는 정해진 장식을\n그대로 사용하는 방식이 아닙니다.\n두 분의 취향과 계절, 드레스와 예식 분위기까지 고려해\n가장 어울리는 연출을 제안합니다.'}
         </p>
+        <p className="mt-3 text-[12px] md:text-[13px] leading-relaxed text-[#a89a86]">
+          ※ 플라워의 기본 컬러는 화이트 베이스에 그린 소재 약 20%가 기본 구성이며, 신랑신부님이
+          원하시는 웨딩 무드에 맞는 유색 플라워를 선택하여 포인트 컬러로 연출하실 수 있습니다.
+        </p>
         {media?.flower_photos && (
           <div className="mt-6">
+            {/* 대분류 탭 */}
             <div className="flex justify-center gap-1.5">
               {(['basic', 'luxury', 'grand'] as const).map((t) => (
                 <button
                   key={t}
-                  onClick={() => setFlowerTab(t)}
+                  onClick={() => {
+                    setFlowerTab(t);
+                    setFlowerLoc(''); // 등급 바꾸면 소분류는 첫 위치로
+                  }}
                   className={
                     'px-4 py-1.5 md:px-5 md:py-2 rounded-full text-[11px] md:text-[12.5px] tracking-[0.15em] font-semibold border transition ' +
                     (flowerTab === t
@@ -371,22 +417,47 @@ export default function WeddingLandingPublic() {
                 </button>
               ))}
             </div>
+
+            {/* 등급 안내 설명 */}
+            <div className="mt-4 rounded-xl bg-white/80 border border-[#eee5d5] px-5 py-4 md:px-7 md:py-5 text-left">
+              <p className="text-[13px] md:text-[14.5px] leading-relaxed text-[#5d5245]">
+                {gradeInfo.desc}
+              </p>
+              <div className="mt-2.5 pt-2.5 border-t border-[#f1e9da] text-[11.5px] md:text-[12.5px] leading-relaxed text-[#a3906f]">
+                <b className="text-[#b0956a]">포함 구성</b> · {gradeInfo.includes.join(' · ')}
+              </div>
+            </div>
+
+            {/* 소분류(위치) 버튼 */}
+            {flowerLocs.length > 0 && (
+              <div className="mt-4 flex justify-center gap-1.5 flex-wrap">
+                {flowerLocs.map((loc) => (
+                  <button
+                    key={loc}
+                    onClick={() => setFlowerLoc(loc)}
+                    className={
+                      'px-3.5 py-1 md:px-4 md:py-1.5 rounded-full text-[11.5px] md:text-[13px] border transition ' +
+                      (activeLoc === loc
+                        ? 'bg-[#c9a96a] text-white border-[#c9a96a] font-semibold'
+                        : 'bg-white text-[#8a7f71] border-[#e4d9c4]')
+                    }
+                  >
+                    {loc}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {flowerPhotos.length > 0 ? (
               <div className="mt-4 flex gap-2.5 overflow-x-auto pb-2 -mx-5 px-5 snap-x">
                 {flowerPhotos.map((p, i) => (
-                  <div key={i} className="relative snap-center shrink-0">
-                    <img
-                      src={p.url}
-                      alt={`${p.loc || flowerTab} ${i + 1}`}
-                      loading="lazy"
-                      className="h-64 md:h-96 rounded-xl shadow-sm object-cover"
-                    />
-                    {p.loc && (
-                      <span className="absolute bottom-2 left-2 px-2.5 py-1 rounded-full bg-black/45 backdrop-blur-sm text-white text-[10.5px] md:text-[12px] tracking-wide">
-                        {p.loc}
-                      </span>
-                    )}
-                  </div>
+                  <img
+                    key={`${activeLoc}${i}`}
+                    src={p.url}
+                    alt={`${p.loc || flowerTab} ${i + 1}`}
+                    loading="lazy"
+                    className="h-64 md:h-96 rounded-xl shadow-sm snap-center shrink-0 object-cover"
+                  />
                 ))}
               </div>
             ) : (
