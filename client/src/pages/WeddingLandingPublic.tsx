@@ -281,7 +281,11 @@ export default function WeddingLandingPublic() {
           <p className="mt-4 text-[13px] md:text-[15px] leading-relaxed text-[#8a7461]">
             예식일은 두 분께 오래 기억될 중요한 선택이기에,
             <br />서두르지 않고 충분히 고민하실 수 있도록
-            <br />해당 날짜와 시간은 <b className="text-[#a3541f]">7일간 우선 예약</b>해 두었습니다.
+            <br />해당 날짜와 시간은{' '}
+            <b className="text-[#a3541f]">
+              {data.block_until ? `${fmtShortDate(data.block_until)}까지 ` : ''}우선 예약
+            </b>
+            해 두었습니다.
           </p>
           <p className="mt-3 text-[13px] md:text-[15px] leading-relaxed text-[#8a7461]">
             충분히 비교해보시고,
