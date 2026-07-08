@@ -2,7 +2,7 @@
 // 인증 없이 토큰만으로 접근. 데이터는 /api/public/landing/:token (견적은 서버 저장 스냅샷).
 // 상태: active(전체 노출) · contracted(계약 감사 화면) · closed/expired(마감 안내).
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { QUOTE_CSS } from '../lib/weddingQuote';
 import {
@@ -146,6 +146,8 @@ export default function WeddingLandingPublic() {
   // 메뉴 코스 아코디언 — 기본 전체 접힘, 하나만 펼침. menuIdx: 펼친 코스의 사진 번호
   const [openCourse, setOpenCourse] = useState<'a' | 'b' | 'c' | 'option' | null>(null);
   const [menuIdx, setMenuIdx] = useState(0);
+  const flowerStripRef = useRef<HTMLDivElement>(null); // 플라워 가로 스트립 — 방향키 스크롤용
+  const menuTouchX = useRef<number | null>(null); // 메뉴 사진 스와이프 시작 X좌표
   const [ctaSent, setCtaSent] = useState<'contract' | 'call' | null>(null);
   const [ctaSending, setCtaSending] = useState(false);
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
@@ -461,16 +463,47 @@ export default function WeddingLandingPublic() {
             )}
 
             {flowerPhotos.length > 0 ? (
-              <div className="mt-4 flex gap-2.5 overflow-x-auto pb-2 -mx-5 px-5 snap-x">
-                {flowerPhotos.map((p, i) => (
-                  <img
-                    key={`${activeLoc}${i}`}
-                    src={p.url}
-                    alt={`${p.loc || flowerTab} ${i + 1}`}
-                    loading="lazy"
-                    className="h-64 md:h-96 rounded-xl shadow-sm snap-center shrink-0 object-cover"
-                  />
-                ))}
+              <div className="relative mt-4">
+                <div ref={flowerStripRef} className="flex gap-2.5 overflow-x-auto pb-2 -mx-5 px-5 snap-x">
+                  {flowerPhotos.map((p, i) => (
+                    <img
+                      key={`${activeLoc}${i}`}
+                      src={p.url}
+                      alt={`${p.loc || flowerTab} ${i + 1}`}
+                      loading="lazy"
+                      className="h-64 md:h-96 rounded-xl shadow-sm snap-center shrink-0 object-cover"
+                    />
+                  ))}
+                </div>
+                {/* 좌우 방향키 — 폰에서는 스와이프로 넘기므로 PC(md+)에서만 노출 */}
+                {flowerPhotos.length > 1 && (
+                  <>
+                    <button
+                      aria-label="이전 사진"
+                      onClick={() =>
+                        flowerStripRef.current?.scrollBy({
+                          left: -flowerStripRef.current.clientWidth * 0.8,
+                          behavior: 'smooth',
+                        })
+                      }
+                      className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-10 h-10 rounded-full bg-white/95 shadow-md border border-[#e4d9c4] items-center justify-center text-[#8a7f71] text-lg hover:bg-white"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      aria-label="다음 사진"
+                      onClick={() =>
+                        flowerStripRef.current?.scrollBy({
+                          left: flowerStripRef.current.clientWidth * 0.8,
+                          behavior: 'smooth',
+                        })
+                      }
+                      className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-10 h-10 rounded-full bg-white/95 shadow-md border border-[#e4d9c4] items-center justify-center text-[#8a7f71] text-lg hover:bg-white"
+                    >
+                      ›
+                    </button>
+                  </>
+                )}
               </div>
             ) : (
               <div className="mt-4 text-[12px] text-[#b7ab9b]">사진 준비 중입니다.</div>
@@ -542,11 +575,41 @@ export default function WeddingLandingPublic() {
                   </button>
                   {isOpen && (
                     <div className="px-3 pb-4 md:px-4">
-                      <img
-                        src={photos[idx]}
-                        alt={`${c === 'option' ? '잔치국수' : c + ' course'} ${idx + 1}`}
-                        className="w-full rounded-lg shadow-sm object-cover"
-                      />
+                      <div
+                        className="relative"
+                        onTouchStart={(e) => (menuTouchX.current = e.touches[0].clientX)}
+                        onTouchEnd={(e) => {
+                          if (menuTouchX.current == null) return;
+                          const dx = e.changedTouches[0].clientX - menuTouchX.current;
+                          menuTouchX.current = null;
+                          if (Math.abs(dx) < 40) return; // 짧은 터치는 무시 (스크롤과 구분)
+                          setMenuIdx(Math.max(0, Math.min(photos.length - 1, idx + (dx < 0 ? 1 : -1))));
+                        }}
+                      >
+                        <img
+                          src={photos[idx]}
+                          alt={`${c === 'option' ? '잔치국수' : c + ' course'} ${idx + 1}`}
+                          className="w-full rounded-lg shadow-sm object-cover"
+                        />
+                        {photos.length > 1 && idx > 0 && (
+                          <button
+                            aria-label="이전 사진"
+                            onClick={() => setMenuIdx(idx - 1)}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 rounded-full bg-white/90 shadow-md flex items-center justify-center text-[#8a7f71] text-lg hover:bg-white"
+                          >
+                            ‹
+                          </button>
+                        )}
+                        {photos.length > 1 && idx < photos.length - 1 && (
+                          <button
+                            aria-label="다음 사진"
+                            onClick={() => setMenuIdx(idx + 1)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 rounded-full bg-white/90 shadow-md flex items-center justify-center text-[#8a7f71] text-lg hover:bg-white"
+                          >
+                            ›
+                          </button>
+                        )}
+                      </div>
                       {/* 번호 페이지네이션 */}
                       {photos.length > 1 && (
                         <div className="mt-3 flex justify-center gap-1.5 flex-wrap">

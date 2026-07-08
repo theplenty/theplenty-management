@@ -115,12 +115,34 @@ export const landingPublicRouter = Router();
 // 랜딩 미디어 설정 (settings key). 값 예시는 클라이언트 WeddingLandingPublic 참고.
 const MEDIA_SETTING_KEY = 'wedding-landing-media';
 
-function mediaSetting(): unknown {
+// Firestore 모드에서는 이 설정이 외부 스크립트로 직접 갱신될 수 있어,
+// 부팅 시 hydrate된 in-memory 캐시를 60초 TTL로 재조회한다.
+// (구버전 인스턴스가 삭제된 미디어 URL을 계속 응답하던 문제 방지)
+const MEDIA_TTL_MS = 60_000;
+let mediaCheckedAt = 0;
+
+async function mediaSetting(): Promise<unknown> {
+  const backend = (process.env.STORE_BACKEND || 'json').toLowerCase();
+  if (backend === 'firestore' && Date.now() - mediaCheckedAt > MEDIA_TTL_MS) {
+    mediaCheckedAt = Date.now(); // 실패해도 TTL 동안 재시도 안 함 (기존 캐시 사용)
+    try {
+      const { firestore } = await import('../lib/firebase.js');
+      const snap = await firestore.doc(`settings/${MEDIA_SETTING_KEY}`).get();
+      if (snap.exists) {
+        const fresh = snap.data() as AppSetting;
+        const i = store.settings.findIndex((s: AppSetting) => s.key === MEDIA_SETTING_KEY);
+        if (i >= 0) store.settings[i] = fresh;
+        else store.settings.push(fresh);
+      }
+    } catch (e) {
+      console.error('[landing] media 설정 재조회 실패 — 캐시 사용:', (e as Error).message);
+    }
+  }
   const row = store.settings.find((s: AppSetting) => s.key === MEDIA_SETTING_KEY);
   return row?.value ?? null;
 }
 
-landingPublicRouter.get('/landing/:token', (req, res) => {
+landingPublicRouter.get('/landing/:token', async (req, res) => {
   const landing = store.wedding_landings.find((l) => l.token === req.params.token);
   if (!landing) return res.status(404).json({ error: 'invalid_token' });
   const state = landingState(landing);
@@ -139,9 +161,10 @@ landingPublicRouter.get('/landing/:token', (req, res) => {
     }
   }
 
+  const media = await mediaSetting();
   // 닫힘/만료 상태에서는 최소 정보만 (견적·상세 미노출)
   if (state === 'closed' || state === 'expired') {
-    return res.json({ state, groom_name: groom, bride_name: bride, media: mediaSetting() });
+    return res.json({ state, groom_name: groom, bride_name: bride, media });
   }
   res.json({
     state,
@@ -154,7 +177,7 @@ landingPublicRouter.get('/landing/:token', (req, res) => {
     guest_count: landing.guest_count,
     total_amount: landing.total_amount,
     quote_html: landing.quote_html,
-    media: mediaSetting(),
+    media,
   });
 });
 
