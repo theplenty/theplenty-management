@@ -95,7 +95,7 @@ const FAQ_GROUPS: { title: string; items: { q: string; a: string }[] }[] = [
     items: [
       {
         q: '예식 시간과 홀 사용시간은 어떻게 되나요?',
-        a: '두 분을 위한 홀 사용시간은 총 6시간 제공되며, 그중 예식은 평균 2시간 정도 소요됩니다.',
+        a: '단독 예식으로 예식 시간은 토요일 12시·18시 / 일요일 12시, 주 최대 3팀으로 진행되며 6시간 간격, 2시간 예식으로 진행됩니다.\n신랑·신부님과 혼주님은 예식 2시간 전부터 5시간 이용 가능합니다. (12시 예식: 10시~15시 / 18시 예식: 16시~21시)',
       },
       {
         q: '예식 순서는 어떻게 진행되나요?',
@@ -301,6 +301,7 @@ export default function WeddingLandingPublic() {
   const [ctaSent, setCtaSent] = useState<'contract' | 'call' | null>(null);
   const [ctaSending, setCtaSending] = useState(false);
   const [faqOpen, setFaqOpen] = useState<string | null>(null); // `${그룹}-${항목}` 키
+  const [faqGroup, setFaqGroup] = useState<number | null>(null); // 펼친 FAQ 카테고리 (기본 전체 접힘)
 
   useEffect(() => {
     if (!token) return;
@@ -871,37 +872,55 @@ export default function WeddingLandingPublic() {
           <div className="text-[11px] tracking-[0.3em] text-[#b0956a] font-semibold">FAQ</div>
           <h2 className={`${S.h2} mt-2`}>자주 묻는 질문</h2>
         </div>
-        {FAQ_GROUPS.map((g, gi) => (
-          <div key={g.title} className={gi === 0 ? 'mt-5' : 'mt-9'}>
-            <div className="text-[11.5px] md:text-[13px] tracking-[0.25em] text-[#b0956a] font-semibold mb-1.5">
-              {g.title}
-            </div>
-            <div className="divide-y divide-[#eee5d5] border-y border-[#eee5d5]">
-              {g.items.map((f, i) => {
-                const key = `${gi}-${i}`;
-                const isOpen = faqOpen === key;
-                return (
-                  <div key={key}>
-                    <button
-                      onClick={() => setFaqOpen(isOpen ? null : key)}
-                      className="w-full flex items-start justify-between gap-3 py-3.5 text-left"
-                    >
-                      <span className="text-[13.5px] md:text-[15.5px] font-semibold text-[#4d4237] leading-snug">
-                        Q{FAQ_OFFSETS[gi] + i + 1}. {f.q}
-                      </span>
-                      <span className="text-[#b0956a] text-sm shrink-0 mt-0.5">{isOpen ? '−' : '+'}</span>
-                    </button>
-                    {isOpen && (
-                      <p className="pb-4 text-[13px] md:text-[14.5px] leading-relaxed text-[#8a7f71] whitespace-pre-line">
-                        {f.a}
-                      </p>
-                    )}
+        <div className="mt-5 space-y-2.5">
+          {FAQ_GROUPS.map((g, gi) => {
+            const groupOpen = faqGroup === gi;
+            return (
+              <div key={g.title} className="rounded-xl border border-[#eee5d5] bg-white/70 overflow-hidden">
+                {/* 카테고리 헤더 — 클릭해서 펼치기/접기 */}
+                <button
+                  onClick={() => {
+                    setFaqGroup(groupOpen ? null : gi);
+                    setFaqOpen(null);
+                  }}
+                  className="w-full flex items-center justify-between px-5 py-3.5 md:px-6 md:py-4"
+                >
+                  <span className="text-[12px] md:text-[13.5px] tracking-[0.25em] font-semibold text-[#b0956a]">
+                    {g.title}
+                    <span className="ml-2 tracking-normal text-[#cfc5b4]">{g.items.length}</span>
+                  </span>
+                  <span className="text-[#b0956a] text-sm">{groupOpen ? '−' : '+'}</span>
+                </button>
+                {groupOpen && (
+                  <div className="px-5 md:px-6 pb-2 divide-y divide-[#eee5d5] border-t border-[#eee5d5]">
+                    {g.items.map((f, i) => {
+                      const key = `${gi}-${i}`;
+                      const isOpen = faqOpen === key;
+                      return (
+                        <div key={key}>
+                          <button
+                            onClick={() => setFaqOpen(isOpen ? null : key)}
+                            className="w-full flex items-start justify-between gap-3 py-3.5 text-left"
+                          >
+                            <span className="text-[13.5px] md:text-[15.5px] font-semibold text-[#4d4237] leading-snug">
+                              Q{FAQ_OFFSETS[gi] + i + 1}. {f.q}
+                            </span>
+                            <span className="text-[#b0956a] text-sm shrink-0 mt-0.5">{isOpen ? '−' : '+'}</span>
+                          </button>
+                          {isOpen && (
+                            <p className="pb-4 text-[13px] md:text-[14.5px] leading-relaxed text-[#8a7f71] whitespace-pre-line">
+                              {f.a}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+                )}
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       <Footer />
