@@ -349,7 +349,7 @@ export default function WeddingLandingPublic() {
 
       {/* 6. 플라워 */}
       <section className={`${S.wrap} text-center`}>
-        <h2 className={S.h2}>{'같은 공간도 어떤 꽃과 색을 선택하느냐에 따라,\n전혀 다른 결혼식으로 완성됩니다'}</h2>
+        <h2 className={S.h2}>{'같은 공간도 어떤 꽃과 색을\n선택하느냐에 따라,\n전혀 다른 결혼식으로 완성됩니다'}</h2>
         <p className={S.body}>
           {'PLENTY의 웨딩 플라워는 정해진 장식을\n그대로 사용하는 방식이 아닙니다.\n두 분의 취향과 계절, 드레스와 예식 분위기까지 고려해\n가장 어울리는 연출을 제안합니다.'}
         </p>
@@ -431,7 +431,7 @@ export default function WeddingLandingPublic() {
 
       {/* 8. 다이닝 */}
       <section className={`${S.wrap} text-center`}>
-        <h2 className={S.h2}>{'예식이 끝난 뒤 하객들이 가장 오래 이야기하는 것은,\n결국 식사와 대접받았다는 기억입니다'}</h2>
+        <h2 className={S.h2}>{'예식이 끝난 뒤 하객들이\n가장 오래 이야기하는 것은,\n결국 식사와 대접받았다는 기억입니다'}</h2>
         <p className={S.body}>
           {'PLENTY는 식사가 예식과 분리되어 흐름이 끊기는 방식이 아니라,\n두 분의 예식을 함께 즐기며 식사할 수 있도록 운영됩니다.\n\n음식의 온도, 제공 속도, 테이블 서비스까지\n하객의 만족도를 기준으로 준비합니다.'}
         </p>
@@ -463,7 +463,7 @@ export default function WeddingLandingPublic() {
 
       {/* 9. 오시는길 */}
       <section className={`${S.wrap} text-center`}>
-        <h2 className={S.h2}>{'서울 어느 지역에서 출발하더라도,\n설명하기 쉬운 위치는 하객 초대의 부담을 줄여줍니다'}</h2>
+        <h2 className={S.h2}>{'서울 어느 지역에서 출발하더라도,\n설명하기 쉬운 위치는\n하객 초대의 부담을 줄여줍니다'}</h2>
         <p className={S.body}>
           {'고속터미널과 가까워 서울 하객뿐 아니라,\n지방에서 오시는 하객도 편리하게 방문할 수 있습니다.'}
         </p>
