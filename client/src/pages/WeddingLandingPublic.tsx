@@ -279,8 +279,13 @@ export default function WeddingLandingPublic() {
           <div className="mt-3 font-serif text-[19px] md:text-[26px] font-bold text-[#3f342a]">{dt.date}</div>
           <div className="mt-0.5 font-serif text-[17px] md:text-[21px] text-[#3f342a]">{dt.time}</div>
           <p className="mt-4 text-[13px] md:text-[15px] leading-relaxed text-[#8a7461]">
-            이 날짜와 시간은 지금,
-            <br />두 분만을 위해 <b className="text-[#a3541f]">안전하게 가블록</b> 되어 있습니다.
+            예식일은 두 분께 오래 기억될 중요한 선택이기에,
+            <br />서두르지 않고 충분히 고민하실 수 있도록
+            <br />해당 날짜와 시간은 <b className="text-[#a3541f]">7일간 우선 예약</b>해 두었습니다.
+          </p>
+          <p className="mt-3 text-[13px] md:text-[15px] leading-relaxed text-[#8a7461]">
+            충분히 비교해보시고,
+            <br />두 분께 가장 좋은 선택을 하실 수 있기를 바랍니다.
           </p>
           {data.block_until && (
             <div className="mt-4 inline-block rounded-full bg-white/80 border border-[#e8ddc9] px-4 py-1.5 text-[12px] md:text-[14px] text-[#8a7461]">
