@@ -447,11 +447,6 @@ export default function WeddingLandingPublic() {
             충분히 비교해보시고,
             <br />두 분께 가장 좋은 선택을 하실 수 있기를 바랍니다.
           </p>
-          {data.block_until && (
-            <div className="mt-4 inline-block rounded-full bg-white/80 border border-[#e8ddc9] px-4 py-1.5 text-[12px] md:text-[14px] text-[#8a7461]">
-              두 분을 위한 가블록 기간 : <b className="text-[#3f342a]">~ {fmtShortDate(data.block_until)}까지</b>
-            </div>
-          )}
         </div>
       </section>
 
@@ -844,6 +839,11 @@ export default function WeddingLandingPublic() {
                 <br />
                 아직 고민이 남아 있다면, 결정 전에 편하게 질문해 주세요.
               </p>
+              {data.block_until && (
+                <div className="mt-4 inline-block rounded-full bg-white/80 border border-[#e8ddc9] px-4 py-1.5 text-[12px] md:text-[14px] text-[#8a7461]">
+                  두 분을 위한 우선예약 기간 : <b className="text-[#3f342a]">~ {fmtShortDate(data.block_until)}까지</b>
+                </div>
+              )}
               <div className="mt-5 space-y-2.5">
                 <button
                   onClick={() => clickCta('contract')}
