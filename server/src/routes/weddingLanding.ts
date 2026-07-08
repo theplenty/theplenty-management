@@ -103,6 +103,12 @@ landingStaffRouter.put('/:eventId/landing', (req, res) => {
     landing.guest_count = body.guest_count;
   if (typeof body.total_amount === 'string') landing.total_amount = body.total_amount.slice(0, 40);
   if (typeof body.quote_html === 'string') landing.quote_html = body.quote_html;
+  if (Array.isArray(body.benefits)) {
+    landing.benefits = body.benefits
+      .filter((b) => b && typeof b.label === 'string' && typeof b.amount === 'number' && isFinite(b.amount))
+      .slice(0, 20)
+      .map((b) => ({ label: b.label.slice(0, 80), amount: Math.round(b.amount) }));
+  }
   if (typeof body.closed === 'boolean') landing.closed = body.closed;
   landing.updated_at = now;
   persistDoc('wedding_landings', landing.id);
@@ -177,6 +183,7 @@ landingPublicRouter.get('/landing/:token', async (req, res) => {
     guest_count: landing.guest_count,
     total_amount: landing.total_amount,
     quote_html: landing.quote_html,
+    benefits: landing.benefits || [],
     media,
   });
 });

@@ -900,6 +900,12 @@ export interface WeddingLandingCta {
   at: string;
 }
 
+// 랜딩 견적 카드에 노출할 혜택 한 줄 (발행 시점 스냅샷)
+export interface WeddingLandingBenefit {
+  label: string; // 예: '식대 10% 할인'
+  amount: number; // 혜택 금액(원)
+}
+
 export interface WeddingLanding {
   id: string;
   event_id: string;
@@ -911,6 +917,7 @@ export interface WeddingLanding {
   guest_count: number | null;
   total_amount: string;
   quote_html: string;
+  benefits?: WeddingLandingBenefit[]; // 혜택 내역 (식대할인·플라워 업그레이드·대관할인 등)
   closed: boolean;
   cta_clicks: WeddingLandingCta[];
   created_by: string;

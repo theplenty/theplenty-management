@@ -8,6 +8,7 @@ import {
   DEFAULT_WEDDING_CALC,
   computeMargin,
   defaultInputs,
+  flowerName,
   won,
   type CalcInputs,
   type WeddingCalcSettings,
@@ -19,6 +20,7 @@ import {
   type WeddingCustomer,
   type WeddingEventInquiry,
   type WeddingLanding,
+  type WeddingLandingBenefit,
   type WeddingLandingState,
   type WeddingPriorityKey,
 } from '../types';
@@ -144,10 +146,23 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
       inputs.otherSvc = cfg.otherItems.map((it, i) => saved.otherSvc?.[i] ?? !!it.svc);
       inputs.otherQty = cfg.otherItems.map((it, i) => saved.otherQty?.[i] ?? it.qty ?? 1);
       const L = computeMargin(inputs, cfg);
+      // 혜택 내역 — 랜딩 견적 카드에 노출 (금액 있는 것만)
+      const benefits: WeddingLandingBenefit[] = [];
+      if (L.mealBenefit > 0) benefits.push({ label: `식대 ${inputs.mealDiscount}% 할인`, amount: L.mealBenefit });
+      if (L.flowerBenefit > 0)
+        benefits.push({
+          label: `플라워 ${flowerName(inputs.flowerBill)} → ${flowerName(inputs.flowerGive)} 무료 업그레이드`,
+          amount: L.flowerBenefit,
+        });
+      if (L.rentBenefit > 0) benefits.push({ label: '대관 · 연출 패키지 할인', amount: L.rentBenefit });
+      L.otherLines.forEach((o) => {
+        if (o.svc && o.p > 0) benefits.push({ label: `${o.n} 무상 제공`, amount: o.p });
+      });
       return {
         html: buildQuoteHtml(inputs, cfg, L),
         guests: L.guests,
         total: won(L.A),
+        benefits,
       };
     } catch (e) {
       console.error('[landing] quote build error', e);
@@ -175,6 +190,7 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
         guest_count: quoteSnapshot?.guests ?? matchedInquiry?.guaranteed_guest_count ?? null,
         total_amount: quoteSnapshot?.total ?? matchedInquiry?.estimate_amount ?? '',
         quote_html: quoteSnapshot?.html ?? '',
+        benefits: quoteSnapshot?.benefits ?? [],
         ...patch,
       });
       setLanding(res.landing);

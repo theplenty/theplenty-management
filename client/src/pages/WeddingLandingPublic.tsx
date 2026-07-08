@@ -23,6 +23,7 @@ interface LandingPayload {
   guest_count?: number | null;
   total_amount?: string;
   quote_html?: string;
+  benefits?: { label: string; amount: number }[]; // 발행 시점 혜택 스냅샷
   media?: WeddingLandingMedia | null;
 }
 
@@ -678,6 +679,33 @@ export default function WeddingLandingPublic() {
                 총 예상 비용{' '}
                 <b className="font-serif text-[20px] md:text-[26px] text-[#f0d9a8]">{data.total_amount}원</b>
               </div>
+              {/* 혜택 내역 — 발행 시점 스냅샷. 받으신 혜택을 한 번 더 상기 */}
+              {(data.benefits?.length ?? 0) > 0 && (
+                <div className="mt-5 pt-4 border-t border-white/15 text-left max-w-[340px] md:max-w-[420px] mx-auto">
+                  <div className="text-center text-[11px] md:text-[12.5px] tracking-[0.25em] text-[#d8c49a] font-semibold">
+                    두 분이 받으신 혜택
+                  </div>
+                  <ul className="mt-3 space-y-1.5">
+                    {data.benefits!.map((b, i) => (
+                      <li
+                        key={i}
+                        className="flex items-baseline justify-between gap-3 text-[12.5px] md:text-[14px] text-[#e8e0d3]"
+                      >
+                        <span>🎁 {b.label}</span>
+                        <span className="tabular-nums shrink-0 text-[#d8c49a]">
+                          {b.amount.toLocaleString('ko-KR')}원
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-3 pt-2.5 border-t border-white/15 flex items-baseline justify-between text-[13px] md:text-[15px] font-bold">
+                    <span className="text-[#d8c49a]">총 혜택</span>
+                    <span className="tabular-nums text-[#f0d9a8]">
+                      {data.benefits!.reduce((s, b) => s + b.amount, 0).toLocaleString('ko-KR')}원
+                    </span>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={() => setQuoteOpen(true)}
                 className="mt-5 px-8 py-3 md:py-3.5 rounded-full bg-white text-[#3f342a] text-[13.5px] md:text-[15px] font-bold"
