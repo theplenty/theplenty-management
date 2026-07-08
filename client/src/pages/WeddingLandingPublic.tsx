@@ -143,6 +143,9 @@ export default function WeddingLandingPublic() {
   const [videoOpen, setVideoOpen] = useState(false); // 풀 영상 (mp4) 오버레이 플레이어
   const [flowerTab, setFlowerTab] = useState<'basic' | 'luxury' | 'grand'>('basic');
   const [flowerLoc, setFlowerLoc] = useState(''); // 소분류(위치) 필터 — 빈 값이면 첫 위치
+  // 메뉴 코스 아코디언 — 기본 전체 접힘, 하나만 펼침. menuIdx: 펼친 코스의 사진 번호
+  const [openCourse, setOpenCourse] = useState<'a' | 'b' | 'c' | 'option' | null>(null);
+  const [menuIdx, setMenuIdx] = useState(0);
   const [ctaSent, setCtaSent] = useState<'contract' | 'call' | null>(null);
   const [ctaSending, setCtaSending] = useState(false);
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
@@ -516,25 +519,58 @@ export default function WeddingLandingPublic() {
           {'PLENTY는 식사가 예식과 분리되어 흐름이 끊기는 방식이 아니라,\n두 분의 예식을 함께 즐기며 식사할 수 있도록 운영됩니다.\n\n음식의 온도, 제공 속도, 테이블 서비스까지\n하객의 만족도를 기준으로 준비합니다.'}
         </p>
         {media?.menu_photos && (
-          <div className="mt-6 space-y-5">
-            {(['a', 'b', 'c', 'option'] as const).map((c) =>
-              media.menu_photos?.[c]?.length ? (
-                <div key={c}>
-                  <div className="text-[11px] md:text-[13px] tracking-[0.25em] font-semibold text-[#b0956a] mb-2">
-                    {c === 'option' ? 'OPTION · 잔치국수' : `${c.toUpperCase()} COURSE`}
-                  </div>
-                  {media.menu_photos[c]!.map((src, i) => (
-                    <img
-                      key={i}
-                      src={src}
-                      alt={c === 'option' ? '잔치국수 (추가메뉴)' : `${c} course`}
-                      loading="lazy"
-                      className="w-full rounded-xl shadow-sm object-cover"
-                    />
-                  ))}
+          <div className="mt-6 space-y-2.5 text-left">
+            {(['a', 'b', 'c', 'option'] as const).map((c) => {
+              const photos = media.menu_photos?.[c] || [];
+              if (!photos.length) return null;
+              const isOpen = openCourse === c;
+              const idx = isOpen ? Math.min(menuIdx, photos.length - 1) : 0;
+              return (
+                <div key={c} className="rounded-xl border border-[#eee5d5] bg-white/70 overflow-hidden">
+                  {/* 코스 헤더 — 클릭해서 펼치기/접기 */}
+                  <button
+                    onClick={() => {
+                      setOpenCourse(isOpen ? null : c);
+                      setMenuIdx(0);
+                    }}
+                    className="w-full flex items-center justify-between px-5 py-3.5 md:px-6 md:py-4"
+                  >
+                    <span className="text-[12px] md:text-[13.5px] tracking-[0.25em] font-semibold text-[#b0956a]">
+                      {c === 'option' ? 'OPTION · 잔치국수' : `${c.toUpperCase()} COURSE`}
+                    </span>
+                    <span className="text-[#b0956a] text-sm">{isOpen ? '−' : '+'}</span>
+                  </button>
+                  {isOpen && (
+                    <div className="px-3 pb-4 md:px-4">
+                      <img
+                        src={photos[idx]}
+                        alt={`${c === 'option' ? '잔치국수' : c + ' course'} ${idx + 1}`}
+                        className="w-full rounded-lg shadow-sm object-cover"
+                      />
+                      {/* 번호 페이지네이션 */}
+                      {photos.length > 1 && (
+                        <div className="mt-3 flex justify-center gap-1.5 flex-wrap">
+                          {photos.map((_, i) => (
+                            <button
+                              key={i}
+                              onClick={() => setMenuIdx(i)}
+                              className={
+                                'w-7 h-7 md:w-8 md:h-8 rounded-full text-[11.5px] md:text-[13px] border transition ' +
+                                (idx === i
+                                  ? 'bg-[#c9a96a] text-white border-[#c9a96a] font-semibold'
+                                  : 'bg-white text-[#8a7f71] border-[#e4d9c4]')
+                              }
+                            >
+                              {i + 1}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              ) : null
-            )}
+              );
+            })}
           </div>
         )}
       </section>
