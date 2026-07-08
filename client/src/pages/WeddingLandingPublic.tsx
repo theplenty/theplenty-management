@@ -279,6 +279,13 @@ const FLOWER_GRADE_INFO: Record<'basic' | 'luxury' | 'grand', { desc: string; in
 
 // 섹션 공통 스타일
 // 모바일 우선 + md(768px~) 이상 PC에서는 폭·글자·여백 확대
+// 실제 고객(신랑신부) 후기 — 네이버 블로그 링크
+const REVIEW_LINKS: { url: string; blogger: string }[] = [
+  { url: 'https://blog.naver.com/km25jung/224251187744', blogger: 'km25jung' },
+  { url: 'https://blog.naver.com/boy2on_/224241082106', blogger: 'boy2on_' },
+  { url: 'https://blog.naver.com/soom__p/224117306086', blogger: 'soom__p' },
+];
+
 const S = {
   wrap: 'max-w-md md:max-w-2xl mx-auto px-5 md:px-8',
   h2: 'font-serif text-[19px] md:text-[25px] leading-snug font-bold text-[#3f342a] whitespace-pre-line',
@@ -828,6 +835,45 @@ export default function WeddingLandingPublic() {
             className="mt-6 w-full rounded-2xl shadow-sm"
           />
         )}
+      </section>
+
+      <div className={S.divider} />
+
+      {/* 9-1. 고객 후기 — 네이버 블로그 링크 */}
+      <section className={`${S.wrap} text-center`}>
+        <div className="text-[11px] tracking-[0.3em] text-[#b0956a] font-semibold">REAL REVIEW</div>
+        <h2 className={`${S.h2} mt-2`}>
+          {'먼저 PLENTY에서 결혼식을 올린\n신랑신부님의 이야기를 확인해보세요'}
+        </h2>
+        <p className={S.body}>
+          {'사진으로 보는 공간도 좋지만,\n직접 결혼식을 준비하고 하루를 보낸 분들의 후기는\n두 분의 선택에 조금 더 현실적인 도움이 될 수 있습니다.\n\n예식 전 고민했던 부분부터\n당일의 분위기, 하객 반응, 음식과 진행 만족도까지\n실제 고객님의 시선으로 남겨진 이야기를 준비해두었습니다.'}
+        </p>
+        <div className="mt-6 space-y-2.5 text-left">
+          {REVIEW_LINKS.map((r, i) => (
+            <a
+              key={r.url}
+              href={r.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-between gap-3 rounded-xl border border-[#eee5d5] bg-white/70 px-5 py-4 md:px-6 md:py-5"
+            >
+              <span className="flex items-center gap-3 min-w-0">
+                <span className="w-7 h-7 md:w-8 md:h-8 shrink-0 rounded-md bg-[#03c75a] text-white text-[13px] md:text-[15px] font-extrabold flex items-center justify-center">
+                  N
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13.5px] md:text-[15px] font-semibold text-[#4d4237]">
+                    신랑신부님의 결혼식 후기 {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <span className="block text-[11px] md:text-[12px] text-[#b7ab9b] truncate">
+                    blog.naver.com/{r.blogger}
+                  </span>
+                </span>
+              </span>
+              <span className="text-[#b0956a] shrink-0">›</span>
+            </a>
+          ))}
+        </div>
       </section>
 
       <div className={S.divider} />
