@@ -8,6 +8,7 @@ import {
   type WeddingCalcSettings, type CalcInputs, type CourseKey, type FlowerGrade,
   DEFAULT_WEDDING_CALC, defaultInputs, computeMargin, won, pctText, TIER_HEX,
   flowerName, TIME_OPTIONS, summaryText, findPreset, seasonFor, periodFor,
+  mealDiscountOptions,
 } from '../lib/weddingCalc';
 import { buildQuoteHtml, QUOTE_CSS, openQuotePrint } from '../lib/weddingQuote';
 import type { WeddingEventInquiry } from '../types';
@@ -223,7 +224,20 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, canEdit
                 </Field>
                 <Field label="코스 단가(1인·정가)"><input className="cin bg-gray-100" disabled value={won(result.listMeal) + ' 원'} /></Field>
                 <Field label={`식대 할인율 (${inputs.mealDiscount}%)`}>
-                  <input type="range" min={0} max={30} step={0.5} value={inputs.mealDiscount} onChange={(e) => setInp({ mealDiscount: Number(e.target.value) })} className="w-full accent-[#5b4a3a]" />
+                  {/* 예식일 기준 선택지 — ~27.8: 5/8/10%, 27.9~: 14/17/19/21% (체크 해제 = 0%) */}
+                  <div className="flex items-center gap-2.5 flex-wrap pt-1.5">
+                    {mealDiscountOptions(inputs.wdate).map((opt) => (
+                      <label key={opt} className="flex items-center gap-1 text-xs font-medium cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={inputs.mealDiscount === opt}
+                          onChange={() => setInp({ mealDiscount: inputs.mealDiscount === opt ? 0 : opt })}
+                          className="accent-[#5b4a3a]"
+                        />
+                        {opt}%
+                      </label>
+                    ))}
+                  </div>
                 </Field>
               </div>
             </Section>
@@ -253,7 +267,17 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, canEdit
             </Section>
 
             <Section title="④ RENTAL & DIRECTION (패키지) + 옵션">
-              <div className="text-[11px] text-gray-500">패키지 정상가 <b className="line-through">{won(cfg.rentList)}</b> → 특별가 <b className="text-[#c0392b]">{won(cfg.rentSpecial)}</b> (혜택 {won(result.rentBenefit)}) · 전 고객 묶음 제공</div>
+              <div className="text-[11px] text-gray-500 flex items-center gap-1.5 flex-wrap">
+                패키지 정상가 <b className="line-through">{won(cfg.rentList)}</b> → 특별가
+                <NumInput value={inputs.rentSpecial ?? cfg.rentSpecial} onChange={(v) => setInp({ rentSpecial: v })} w="92px" />
+                <span>원 (혜택 <b className="text-[#c0392b]">{won(result.rentBenefit)}</b>)</span>
+                {inputs.rentSpecial != null && inputs.rentSpecial !== cfg.rentSpecial && (
+                  <button onClick={() => setInp({ rentSpecial: null })} className="text-[10px] border border-gray-300 rounded px-1.5 py-0.5 text-gray-500 hover:bg-gray-100">
+                    기준값({won(cfg.rentSpecial)})으로
+                  </button>
+                )}
+              </div>
+              <div className="text-[10.5px] text-gray-400 mt-0.5">기간·시즌에 따라 대관 할인가를 직접 입력해 조정할 수 있습니다 · 전 고객 묶음 제공</div>
               <div className="mt-2 space-y-1">
                 <div className="text-[11px] text-gray-400">추가 옵션 (별도 청구 · 무료 아님)</div>
                 {cfg.optItems.map((it, i) => (

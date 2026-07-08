@@ -223,6 +223,12 @@ export interface CalcInputs {
   otherQty: number[];    // otherItems 길이 (qtyMode 항목용)
   laborInf: number;      // %
   foodInf: number;       // %
+  rentSpecial?: number | null; // 건별 대관(패키지) 특별가 — null이면 기준값(cfg.rentSpecial) 사용
+}
+
+// 식대 할인율 선택지 — 예식일 기준. ~2027-08-31: 5/8/10%, 2027-09-01~: 14/17/19/21%
+export function mealDiscountOptions(wdate: string): number[] {
+  return wdate && wdate >= '2027-09-01' ? [14, 17, 19, 21] : [5, 8, 10];
 }
 
 export const TIME_OPTIONS = ['토 점심', '토 저녁', '일 점심'];
@@ -249,6 +255,7 @@ export function defaultInputs(cfg: WeddingCalcSettings, prefill?: Partial<CalcIn
     otherQty: prefill?.otherQty ?? cfg.otherItems.map((it) => it.qty ?? 1),
     laborInf: prefill?.laborInf ?? 5,
     foodInf: prefill?.foodInf ?? 5,
+    rentSpecial: prefill?.rentSpecial ?? null,
   };
 }
 
@@ -329,8 +336,8 @@ export function computeMargin(inp: CalcInputs, cfg: WeddingCalcSettings): Margin
   const flowerRev = flowerPrice(pr, inp.flowerBill);
   const flowerBenefit = Math.max(0, flowerGiveP - flowerRev);
 
-  const rentRev = cfg.rentSpecial;
-  const rentBenefit = cfg.rentList - cfg.rentSpecial;
+  const rentRev = inp.rentSpecial ?? cfg.rentSpecial;
+  const rentBenefit = cfg.rentList - rentRev;
 
   let optRev = 0;
   const optLines: WCOptItem[] = [];
