@@ -908,9 +908,11 @@ export interface WeddingLandingBenefit {
 
 export interface WeddingLanding {
   id: string;
-  event_id: string;
+  event_id: string; // consult 모드에서는 ''
+  mode?: 'block' | 'consult'; // block=가블록(행사 연결, 기본) / consult=상담만 (고객 직접 연결)
+  customer_id?: string; // consult 모드: 연결 웨딩 고객
   token: string;
-  block_until: string; // YYYY-MM-DD
+  block_until: string; // YYYY-MM-DD — 가블록 종료일(block) / 링크 열람 기한(consult)
   priorities: WeddingPriorityKey[];
   custom_note: string;
   inquiry_id: string;

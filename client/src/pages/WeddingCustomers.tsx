@@ -19,6 +19,7 @@ import {
 } from '../types';
 import Modal from '../components/Modal';
 import WeddingMarginModal from '../components/WeddingMarginModal';
+import WeddingLandingTab from '../components/WeddingLandingTab';
 import SimilarPhoneWarning from '../components/SimilarPhoneWarning';
 import LinkedEventsSection from '../components/LinkedEventsSection';
 import { Field, StatusBadge } from '../components/Field';
@@ -1127,6 +1128,19 @@ export default function WeddingCustomers() {
             ))}
           </div>
         </Section>
+
+        {/* 💌 상담 고객 랜딩 — 가블록(행사) 없이 상담 DB만으로 발행하는 링크 */}
+        {editingId && (
+          <Section title="💌 고객 랜딩 (상담 후 링크 — 가블록 없이 발행)">
+            <WeddingLandingTab
+              eventId={null}
+              consultCustomerId={editingId}
+              startDatetime=""
+              customerIds={[editingId]}
+              canManage={user?.role === 'admin' || user?.role === 'sales_wedding'}
+            />
+          </Section>
+        )}
 
         {/* (3) 메모 */}
         <Section title="(3) 메모">

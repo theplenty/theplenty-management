@@ -33,7 +33,7 @@ import activityLogRouter from './routes/activityLog.js';
 import holidaysRouter from './routes/holidays.js';
 import collaborationRequestsRouter from './routes/collaborationRequests.js';
 import summaryShareRouter from './routes/summaryShare.js';
-import { landingStaffRouter, landingPublicRouter } from './routes/weddingLanding.js';
+import { landingStaffRouter, landingConsultRouter, landingPublicRouter } from './routes/weddingLanding.js';
 import menusRouter from './routes/menus.js';
 import revenueItemsRouter from './routes/revenueItems.js';
 import eventRevenueRouter from './routes/eventRevenue.js';
@@ -64,6 +64,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 // 인증 필요
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
+app.use('/api/customers', landingConsultRouter); // /wedding/:customerId/landing — customersRouter보다 먼저
 app.use('/api/customers', customersRouter);
 // 첨부파일과 리뷰는 events 하위 경로 — events 라우터보다 먼저 등록해야 :id 매칭에 안 잡힘
 app.use('/api/events', eventFilesRouter);

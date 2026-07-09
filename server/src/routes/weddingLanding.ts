@@ -9,6 +9,13 @@
 //
 // 상태머신: 휴지통/LOS → closed · DEF → contracted · 가블록 종료일 경과 → expired
 //           · 직원 수동 closed → closed · 그 외(INQ 등) → active
+//
+// 모드 2종:
+//   block   (기본) — 가블록 행사(event_id)에 연결. 위 상태머신 그대로.
+//   consult        — 상담만 하고 간 고객(customer_id)에 직접 연결. 행사 없이 발행.
+//                    GET/PUT /api/customers/wedding/:customerId/landing
+//                    만료 기준은 block_until(열람 기한). 고객이 DEF 행사로 계약되면 contracted.
+//                    같은 고객의 가블록(block) 랜딩이 발행되면 자동으로 닫힘.
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
@@ -36,6 +43,20 @@ function todayKst(): string {
 type LandingState = 'active' | 'contracted' | 'closed' | 'expired';
 
 function landingState(landing: WeddingLanding): LandingState {
+  if (landing.mode === 'consult') {
+    const cust = store.wedding_customers.find((c) => c.id === landing.customer_id);
+    if (!cust || cust.deleted_at) return 'closed';
+    // 이 고객이 DEF(계약완료) 웨딩 행사에 연결되어 있으면 감사 화면
+    const contracted = store.event_customers.some((l) => {
+      if (l.customer_id !== cust.id) return false;
+      const ev = store.events.find((e) => e.id === l.event_id);
+      return !!ev && !ev.deleted_at && ev.event_type === 'WEDDING' && ev.status === 'DEF';
+    });
+    if (contracted) return 'contracted';
+    if (landing.closed) return 'closed';
+    if (landing.block_until && todayKst() > landing.block_until) return 'expired';
+    return 'active';
+  }
   const ev = store.events.find((e) => e.id === landing.event_id);
   if (!ev || ev.deleted_at) return 'closed';
   if (ev.status === 'LOS' || ev.status === '상담취소') return 'closed';
@@ -94,7 +115,26 @@ landingStaffRouter.put('/:eventId/landing', (req, res) => {
     };
     store.wedding_landings.push(landing);
   }
-  // 허용 필드만 갱신 (token/cta_clicks 등은 서버 관리)
+  applyLandingBody(landing, body, now);
+  persistDoc('wedding_landings', landing.id);
+
+  // 같은 고객의 상담형(consult) 랜딩 자동 닫기 — 문구가 다른 두 링크가 동시에 살아있지 않도록
+  const linkedCustIds = store.event_customers
+    .filter((l) => l.event_id === ev.id)
+    .map((l) => l.customer_id);
+  for (const cl of store.wedding_landings) {
+    if (cl.mode === 'consult' && cl.customer_id && linkedCustIds.includes(cl.customer_id) && !cl.closed) {
+      cl.closed = true;
+      cl.updated_at = now;
+      persistDoc('wedding_landings', cl.id);
+    }
+  }
+
+  res.json({ landing, state: landingState(landing), smtp_configured: smtpConfigured() });
+});
+
+// 허용 필드만 갱신 (token/cta_clicks/mode 등은 서버 관리)
+function applyLandingBody(landing: WeddingLanding, body: Partial<WeddingLanding>, now: string) {
   if (typeof body.block_until === 'string') landing.block_until = body.block_until.slice(0, 10);
   if (body.priorities !== undefined) landing.priorities = sanitizePriorities(body.priorities);
   if (typeof body.custom_note === 'string') landing.custom_note = body.custom_note.slice(0, 500);
@@ -111,6 +151,59 @@ landingStaffRouter.put('/:eventId/landing', (req, res) => {
   }
   if (typeof body.closed === 'boolean') landing.closed = body.closed;
   landing.updated_at = now;
+}
+
+// ===== 직원용 — 상담형(consult): 행사 없이 웨딩 고객에 직접 발행 =====
+// mount: /api/customers → GET/PUT /api/customers/wedding/:customerId/landing
+export const landingConsultRouter = Router();
+landingConsultRouter.use(requireActiveRole);
+
+landingConsultRouter.get('/wedding/:customerId/landing', (req, res) => {
+  const cust = store.wedding_customers.find((c) => c.id === req.params.customerId);
+  if (!cust || cust.deleted_at) return res.status(404).json({ error: 'customer_not_found' });
+  const landing =
+    store.wedding_landings.find((l) => l.mode === 'consult' && l.customer_id === cust.id) || null;
+  res.json({
+    landing,
+    state: landing ? landingState(landing) : null,
+    smtp_configured: smtpConfigured(),
+  });
+});
+
+landingConsultRouter.put('/wedding/:customerId/landing', (req, res) => {
+  if (!canManageLanding(req.user!.role)) return res.status(403).json({ error: 'forbidden' });
+  const cust = store.wedding_customers.find((c) => c.id === req.params.customerId);
+  if (!cust || cust.deleted_at) return res.status(404).json({ error: 'customer_not_found' });
+
+  const body = req.body as Partial<WeddingLanding>;
+  const now = new Date().toISOString();
+  let landing = store.wedding_landings.find(
+    (l) => l.mode === 'consult' && l.customer_id === cust.id
+  );
+  if (!landing) {
+    landing = {
+      id: nanoid(10),
+      event_id: '',
+      mode: 'consult',
+      customer_id: cust.id,
+      token: nanoid(24),
+      block_until: '',
+      priorities: [],
+      custom_note: '',
+      inquiry_id: '',
+      guest_count: null,
+      total_amount: '',
+      quote_html: '',
+      closed: false,
+      cta_clicks: [],
+      created_by: req.user!.id,
+      created_by_name: req.user!.name,
+      created_at: now,
+      updated_at: now,
+    };
+    store.wedding_landings.push(landing);
+  }
+  applyLandingBody(landing, body, now);
   persistDoc('wedding_landings', landing.id);
   res.json({ landing, state: landingState(landing), smtp_configured: smtpConfigured() });
 });
@@ -148,35 +241,49 @@ async function mediaSetting(): Promise<unknown> {
   return row?.value ?? null;
 }
 
+// 랜딩 → 연결 고객 해석 (block: 행사의 CONTACT POINT 우선 / consult: customer_id 직접)
+function landingCustomer(landing: WeddingLanding) {
+  if (landing.mode === 'consult') {
+    return store.wedding_customers.find((c) => c.id === landing.customer_id);
+  }
+  const links = store.event_customers.filter((l) => l.event_id === landing.event_id);
+  const cp = links.find((l) => l.is_contact_point) || links[0];
+  return cp ? store.wedding_customers.find((c) => c.id === cp.customer_id) : undefined;
+}
+
+// 랜딩 → 예식 예정일시 (block: 행사 시작일시 / consult: 견적 출처 예식후보의 희망일시)
+function landingDatetime(landing: WeddingLanding): string {
+  if (landing.mode === 'consult') {
+    const cust = landingCustomer(landing);
+    const inq =
+      cust?.event_inquiries?.find((q) => q.id === landing.inquiry_id) || cust?.event_inquiries?.[0];
+    return inq?.wedding_datetime || '';
+  }
+  const ev = store.events.find((e) => e.id === landing.event_id);
+  return ev?.start_datetime || '';
+}
+
 landingPublicRouter.get('/landing/:token', async (req, res) => {
   const landing = store.wedding_landings.find((l) => l.token === req.params.token);
   if (!landing) return res.status(404).json({ error: 'invalid_token' });
   const state = landingState(landing);
-  const ev = store.events.find((e) => e.id === landing.event_id);
+  const mode = landing.mode || 'block';
 
-  // 신랑/신부 이름 — 연결된 웨딩 고객(CONTACT POINT 우선)에서 해석
-  let groom = '';
-  let bride = '';
-  if (ev) {
-    const links = store.event_customers.filter((l) => l.event_id === ev.id);
-    const cp = links.find((l) => l.is_contact_point) || links[0];
-    const cust = cp ? store.wedding_customers.find((c) => c.id === cp.customer_id) : undefined;
-    if (cust) {
-      groom = cust.groom_name || '';
-      bride = cust.bride_name || '';
-    }
-  }
+  const cust = landingCustomer(landing);
+  const groom = cust?.groom_name || '';
+  const bride = cust?.bride_name || '';
 
   const media = await mediaSetting();
   // 닫힘/만료 상태에서는 최소 정보만 (견적·상세 미노출)
   if (state === 'closed' || state === 'expired') {
-    return res.json({ state, groom_name: groom, bride_name: bride, media });
+    return res.json({ state, mode, groom_name: groom, bride_name: bride, media });
   }
   res.json({
     state,
+    mode,
     groom_name: groom,
     bride_name: bride,
-    wedding_datetime: ev?.start_datetime || '',
+    wedding_datetime: landingDatetime(landing),
     block_until: landing.block_until,
     priorities: landing.priorities,
     custom_note: landing.custom_note,
@@ -203,22 +310,25 @@ landingPublicRouter.post('/landing/:token/cta', async (req, res) => {
   persistDoc('wedding_landings', landing.id);
 
   // 2) 직원 통지 메일 (SMTP 설정 시)
-  const ev = store.events.find((e) => e.id === landing.event_id);
-  const links = ev ? store.event_customers.filter((l) => l.event_id === ev.id) : [];
-  const cp = links.find((l) => l.is_contact_point) || links[0];
-  const cust = cp ? store.wedding_customers.find((c) => c.id === cp.customer_id) : undefined;
+  const isConsult = landing.mode === 'consult';
+  const ev = isConsult ? undefined : store.events.find((e) => e.id === landing.event_id);
+  const cust = landingCustomer(landing);
+  const inq = isConsult
+    ? cust?.event_inquiries?.find((q) => q.id === landing.inquiry_id) || cust?.event_inquiries?.[0]
+    : undefined;
   const names = cust ? `${cust.groom_name || '?'} & ${cust.bride_name || '?'}` : '(고객 미연결)';
   const label = action === 'contract' ? '💍 이 날짜로 계약하고 싶어요' : '📞 담당자와 전화로 상의할게요';
-  const when = ev?.start_datetime?.replace('T', ' ') || '-';
+  const when = landingDatetime(landing).replace('T', ' ') || '-';
+  const manager = isConsult ? inq?.assigned_manager_name : ev?.assigned_manager_name;
   const mail = await sendNotifyMail({
-    subject: `[고객랜딩] ${names} — ${action === 'contract' ? '계약 의사' : '전화 상담 요청'}`,
+    subject: `[고객랜딩${isConsult ? '·상담' : ''}] ${names} — ${action === 'contract' ? '계약 의사' : '전화 상담 요청'}`,
     html:
       `<div style="font-family:'Malgun Gothic',sans-serif;font-size:14px;line-height:1.7">` +
-      `<p><b>${names}</b> 고객님이 랜딩 페이지에서 버튼을 눌렀습니다.</p>` +
+      `<p><b>${names}</b> 고객님이 ${isConsult ? '상담형 ' : ''}랜딩 페이지에서 버튼을 눌렀습니다.</p>` +
       `<p style="font-size:16px"><b>${label}</b></p>` +
-      `<p>예식 예정일시: ${when}<br>가블록 종료일: ${landing.block_until || '-'}<br>` +
-      `담당자: ${ev?.assigned_manager_name || '-'}</p>` +
-      `<p>관리시스템에서 해당 행사를 열어 확인해주세요.</p></div>`,
+      `<p>예식 예정일시: ${when}<br>${isConsult ? '링크 열람 기한' : '가블록 종료일'}: ${landing.block_until || '-'}<br>` +
+      `담당자: ${manager || '-'}</p>` +
+      `<p>관리시스템에서 해당 ${isConsult ? '고객(웨딩 상담 DB)' : '행사'}을 열어 확인해주세요.</p></div>`,
   });
   res.json({ ok: true, mail_sent: mail.sent });
 });

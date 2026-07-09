@@ -30,6 +30,9 @@ interface Props {
   startDatetime: string; // form.start_datetime — 예식후보 자동 매칭용
   customerIds: string[]; // 연결된 웨딩 고객 id (CONTACT POINT 우선)
   canManage: boolean; // admin | sales_wedding
+  // consult 모드 — 행사 없이 웨딩 고객에 직접 발행 (상담만 하고 간 고객용).
+  // 지정 시 eventId는 무시되고 /api/customers/wedding/:id/landing 을 사용한다.
+  consultCustomerId?: string | null;
 }
 
 const PRIORITY_KEYS = Object.keys(WEDDING_PRIORITY_LABEL) as WeddingPriorityKey[];
@@ -48,7 +51,11 @@ function plusDays(n: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export default function WeddingLandingTab({ eventId, startDatetime, customerIds, canManage }: Props) {
+export default function WeddingLandingTab({ eventId, startDatetime, customerIds, canManage, consultCustomerId }: Props) {
+  const isConsult = !!consultCustomerId;
+  const apiBase = isConsult
+    ? `/api/customers/wedding/${consultCustomerId}/landing`
+    : `/api/events/${eventId}/landing`;
   const [landing, setLanding] = useState<WeddingLanding | null>(null);
   const [state, setState] = useState<WeddingLandingState | null>(null);
   const [smtpConfigured, setSmtpConfigured] = useState(false);
@@ -67,7 +74,7 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
 
   // ── 로드: 랜딩 + 연결 고객 + 견적 기준값 ──
   useEffect(() => {
-    if (!eventId) {
+    if (!eventId && !isConsult) {
       setLoading(false);
       return;
     }
@@ -76,7 +83,7 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
       try {
         const [landingRes, cfgRes] = await Promise.all([
           api.get<{ landing: WeddingLanding | null; state: WeddingLandingState | null; smtp_configured: boolean }>(
-            `/api/events/${eventId}/landing`
+            apiBase
           ),
           api
             .get<{ setting: { value: WeddingCalcSettings } }>('/api/settings/wedding-calc')
@@ -118,7 +125,7 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId]);
+  }, [eventId, consultCustomerId]);
 
   // 예식후보 자동 매칭 — 지정된 것 > 행사 시작일과 같은 날짜 > 첫 후보
   const inquiries = customer?.event_inquiries || [];
@@ -175,14 +182,14 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
   }
 
   async function save(patch?: Partial<WeddingLanding>) {
-    if (!eventId) return;
+    if (!eventId && !isConsult) return;
     setSaving(true);
     try {
       const res = await api.put<{
         landing: WeddingLanding;
         state: WeddingLandingState;
         smtp_configured: boolean;
-      }>(`/api/events/${eventId}/landing`, {
+      }>(apiBase, {
         block_until: blockUntil,
         priorities,
         custom_note: customNote,
@@ -217,7 +224,7 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
     }
   }
 
-  if (!eventId) {
+  if (!eventId && !isConsult) {
     return (
       <div className="border rounded-md p-6 text-center bg-gray-50/50 text-sm text-gray-600">
         행사를 먼저 저장한 뒤 고객 랜딩을 만들 수 있습니다.
@@ -228,18 +235,27 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-gray-600">
-        가예약(INQ) 고객에게 보내는 <b>모바일 랜딩 링크</b>입니다. 가블록 안내·상담 중시항목·맞춤
-        견적·홀 소개·FAQ가 포함되며, <b>LOS 전환·가블록 종료일 경과 시 자동으로 닫힙니다.</b>{' '}
-        DEF(계약완료)가 되면 &lsquo;계약 완료 감사&rsquo; 화면으로 바뀝니다.
-      </div>
+      {isConsult ? (
+        <div className="text-sm text-gray-600">
+          <b>상담만 하고 돌아간 고객</b>에게 보내는 모바일 랜딩 링크입니다 (가블록 없이 발행).
+          가블록 안내 대신 <b>&ldquo;열람 기한까지 찬찬히 고민해 보세요&rdquo;</b> 문구가 노출되며,{' '}
+          <b>열람 기한 경과 시 자동으로 닫힙니다.</b> 이후 이 고객의 가블록(행사) 랜딩을 발행하면
+          이 링크는 자동으로 닫히고, 계약(DEF)되면 &lsquo;계약 완료 감사&rsquo; 화면으로 바뀝니다.
+        </div>
+      ) : (
+        <div className="text-sm text-gray-600">
+          가예약(INQ) 고객에게 보내는 <b>모바일 랜딩 링크</b>입니다. 가블록 안내·상담 중시항목·맞춤
+          견적·홀 소개·FAQ가 포함되며, <b>LOS 전환·가블록 종료일 경과 시 자동으로 닫힙니다.</b>{' '}
+          DEF(계약완료)가 되면 &lsquo;계약 완료 감사&rsquo; 화면으로 바뀝니다.
+        </div>
+      )}
 
       {/* 링크 + 상태 */}
       {landing ? (
         <div className="border rounded-md p-3 bg-blue-50/40 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`badge ${STATE_BADGE[state || 'active'].cls}`}>
-              {STATE_BADGE[state || 'active'].label}
+              {state === 'expired' && isConsult ? '열람 기한 만료' : STATE_BADGE[state || 'active'].label}
             </span>
             {!smtpConfigured && (
               <span
@@ -294,7 +310,7 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="text-[11px] uppercase tracking-wide text-gray-500">
-            가블록 종료일 (이 날짜까지 열람 가능)
+            {isConsult ? '링크 열람 기한 (기본 상담 후 7일)' : '가블록 종료일 (이 날짜까지 열람 가능)'}
           </label>
           <input
             type="date"

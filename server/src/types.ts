@@ -446,9 +446,11 @@ export interface WeddingLandingBenefit {
 export interface WeddingLanding {
   id: string;
   tenant_id?: string;
-  event_id: string;
+  event_id: string; // block 모드: 연결 행사. consult 모드에서는 ''
+  mode?: 'block' | 'consult'; // block=가블록(행사 연결, 기본) / consult=상담만 하고 간 고객 (고객 직접 연결)
+  customer_id?: string; // consult 모드: 연결 웨딩 고객
   token: string; // 공개 링크 토큰 (/l/:token)
-  block_until: string; // 가블록 종료일 YYYY-MM-DD (경과 시 링크 만료)
+  block_until: string; // 가블록 종료일(block) / 링크 열람 기한(consult) YYYY-MM-DD — 경과 시 만료
   priorities: WeddingPriorityKey[];
   custom_note: string; // 자유 추가 문구 (선택)
   inquiry_id: string; // 매칭된 예식후보 id (견적 출처)

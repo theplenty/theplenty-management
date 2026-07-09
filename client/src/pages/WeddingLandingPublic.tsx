@@ -14,6 +14,7 @@ import {
 
 interface LandingPayload {
   state: WeddingLandingState;
+  mode?: 'block' | 'consult'; // block=가블록(기본) / consult=상담만 하고 간 고객용
   groom_name: string;
   bride_name: string;
   wedding_datetime?: string;
@@ -378,7 +379,13 @@ export default function WeddingLandingPublic() {
       <Shell>
         <NoticeCard
           emoji="🌙"
-          title={data.state === 'expired' ? '가블록 기간이 종료되었습니다' : '이 페이지는 마감되었습니다'}
+          title={
+            data.state === 'expired'
+              ? data.mode === 'consult'
+                ? '페이지 열람 기간이 종료되었습니다'
+                : '가블록 기간이 종료되었습니다'
+              : '이 페이지는 마감되었습니다'
+          }
           body={
             '보내주신 관심에 진심으로 감사드립니다.\n날짜 확인이나 새로운 상담을 원하시면\n카카오톡 채널로 편하게 문의해 주세요.'
           }
@@ -418,6 +425,7 @@ export default function WeddingLandingPublic() {
   }
 
   // ── active — 본 랜딩 ──
+  const isConsult = data.mode === 'consult'; // 상담만 하고 간 고객 — 가블록 문구 대신 '열람 기한' 톤
   const priorities = data.priorities || [];
   // 자유 추가 문구 — 쉼표(,)로 구분하면 각각 별도 번호 줄로 노출
   const customNotes = (data.custom_note || '')
@@ -451,25 +459,51 @@ export default function WeddingLandingPublic() {
         </p>
       </header>
 
-      {/* 2. 가블록 카드 */}
+      {/* 2. 가블록 카드 (block) / 상담 안내 카드 (consult) */}
       <section className={`${S.wrap} mt-8`}>
         <div className="rounded-2xl border border-[#e8ddc9] bg-gradient-to-b from-[#fdfaf4] to-[#f8f1e4] px-6 py-7 md:px-10 md:py-10 text-center shadow-sm">
-          <div className="text-[11px] md:text-[12.5px] tracking-[0.25em] text-[#b0956a] font-semibold">RESERVED FOR YOU</div>
-          <div className="mt-3 font-serif text-[19px] md:text-[26px] font-bold text-[#3f342a]">{dt.date}</div>
-          <div className="mt-0.5 font-serif text-[17px] md:text-[21px] text-[#3f342a]">{dt.time}</div>
-          <p className="mt-4 text-[13px] md:text-[15px] leading-relaxed text-[#8a7461]">
-            예식일은 두 분께 오래 기억될 중요한 선택이기에,
-            <br />서두르지 않고 충분히 고민하실 수 있도록
-            <br />해당 날짜와 시간은{' '}
-            <b className="text-[#a3541f]">
-              {data.block_until ? `${fmtShortDate(data.block_until)}까지 ` : ''}우선 예약
-            </b>
-            해 두었습니다.
-          </p>
-          <p className="mt-3 text-[13px] md:text-[15px] leading-relaxed text-[#8a7461]">
-            충분히 비교해보시고,
-            <br />두 분께 가장 좋은 선택을 하실 수 있기를 바랍니다.
-          </p>
+          <div className="text-[11px] md:text-[12.5px] tracking-[0.25em] text-[#b0956a] font-semibold">
+            {isConsult ? 'PREPARED FOR YOU' : 'RESERVED FOR YOU'}
+          </div>
+          {dt.date && (
+            <>
+              <div className="mt-3 font-serif text-[19px] md:text-[26px] font-bold text-[#3f342a]">{dt.date}</div>
+              <div className="mt-0.5 font-serif text-[17px] md:text-[21px] text-[#3f342a]">{dt.time}</div>
+            </>
+          )}
+          {isConsult ? (
+            <>
+              <p className="mt-4 text-[13px] md:text-[15px] leading-relaxed text-[#8a7461]">
+                예식일은 두 분께 오래 기억될 중요한 선택이기에,
+                <br />오늘 상담에서 나눈 내용을 이 페이지에 담아
+                <br />
+                <b className="text-[#a3541f]">
+                  {data.block_until ? `${fmtShortDate(data.block_until)}까지 ` : ''}열어 두었습니다
+                </b>
+                .
+              </p>
+              <p className="mt-3 text-[13px] md:text-[15px] leading-relaxed text-[#8a7461]">
+                돌아가신 뒤에도 찬찬히 살펴보시고,
+                <br />두 분께 가장 좋은 선택을 하실 수 있기를 바랍니다.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-4 text-[13px] md:text-[15px] leading-relaxed text-[#8a7461]">
+                예식일은 두 분께 오래 기억될 중요한 선택이기에,
+                <br />서두르지 않고 충분히 고민하실 수 있도록
+                <br />해당 날짜와 시간은{' '}
+                <b className="text-[#a3541f]">
+                  {data.block_until ? `${fmtShortDate(data.block_until)}까지 ` : ''}우선 예약
+                </b>
+                해 두었습니다.
+              </p>
+              <p className="mt-3 text-[13px] md:text-[15px] leading-relaxed text-[#8a7461]">
+                충분히 비교해보시고,
+                <br />두 분께 가장 좋은 선택을 하실 수 있기를 바랍니다.
+              </p>
+            </>
+          )}
         </div>
       </section>
 
@@ -962,7 +996,7 @@ export default function WeddingLandingPublic() {
           ) : (
             <>
               <p className="font-serif text-[16.5px] md:text-[21px] leading-relaxed text-[#3f342a] font-bold">
-                두 분이 선택하신 날짜와 시간,
+                {isConsult ? '두 분이 상담하신 날짜와 조건,' : '두 분이 선택하신 날짜와 시간,'}
                 <br />
                 PLENTY에서 확정하고 싶으시다면
               </p>
@@ -973,7 +1007,8 @@ export default function WeddingLandingPublic() {
               </p>
               {data.block_until && (
                 <div className="mt-4 inline-block rounded-full bg-white/80 border border-[#e8ddc9] px-4 py-1.5 text-[12px] md:text-[14px] text-[#8a7461]">
-                  두 분을 위한 우선예약 기간 : <b className="text-[#3f342a]">~ {fmtShortDate(data.block_until)}까지</b>
+                  {isConsult ? '페이지 열람 기간' : '두 분을 위한 우선예약 기간'} :{' '}
+                  <b className="text-[#3f342a]">~ {fmtShortDate(data.block_until)}까지</b>
                 </div>
               )}
               <div className="mt-5 space-y-2.5">
@@ -982,7 +1017,7 @@ export default function WeddingLandingPublic() {
                   disabled={ctaSending}
                   className="w-full py-4 md:py-5 rounded-xl bg-[#a3541f] text-white text-[14.5px] md:text-[16.5px] font-bold shadow disabled:opacity-60"
                 >
-                  💍 이 날짜로 계약하고 싶어요
+                  {isConsult ? '💍 이 조건으로 계약하고 싶어요' : '💍 이 날짜로 계약하고 싶어요'}
                 </button>
                 <a
                   href={kakao}
