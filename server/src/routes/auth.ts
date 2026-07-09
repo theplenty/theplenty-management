@@ -7,9 +7,9 @@ const router = Router();
 
 // 로그인 — 두 가지 입력 지원
 //   1) idToken: Firebase ID 토큰 → Admin SDK로 검증 → user 매칭/생성 → 쿠키도 같이 발급
-//   2) email (+ name, picture): 모킹 로그인 — DEV_MOCK_LOGIN_ENABLED=true 일 때만 허용
-//
-// 운영 환경에서는 반드시 idToken만 사용하도록 .env에 DEV_MOCK_LOGIN_ENABLED=false 둘 것.
+//   2) email (+ name, picture): 모킹 로그인 — 로컬 dev 전용.
+//      DEV_MOCK_LOGIN_ENABLED=true 를 명시해야만 허용 (기본 false)이고,
+//      Cloud Functions/Cloud Run 런타임에서는 환경변수와 무관하게 항상 차단된다.
 router.post('/login', async (req, res) => {
   const body = req.body as {
     idToken?: string;
@@ -73,7 +73,12 @@ router.post('/login', async (req, res) => {
   }
 
   // ===== 2) 모킹 로그인 (dev only) =====
-  const mockEnabled = (process.env.DEV_MOCK_LOGIN_ENABLED || 'true').toLowerCase() === 'true';
+  // 하드닝(2026-07-09): ① 기본값 false — 명시적으로 true를 줘야만 허용 (로컬 server/.env)
+  //                    ② Cloud Functions/Cloud Run 런타임에서는 환경변수와 무관하게 원천 차단
+  //                       (.env가 true인 채 배포돼도 운영은 절대 열리지 않음)
+  const isCloudRuntime = !!process.env.K_SERVICE || !!process.env.FUNCTION_TARGET;
+  const mockEnabled =
+    !isCloudRuntime && (process.env.DEV_MOCK_LOGIN_ENABLED || 'false').toLowerCase() === 'true';
   if (!mockEnabled) {
     return res.status(403).json({ error: 'mock_login_disabled' });
   }
