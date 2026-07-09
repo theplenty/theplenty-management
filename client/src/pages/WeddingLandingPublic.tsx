@@ -635,12 +635,15 @@ export default function WeddingLandingPublic() {
               <div className="relative mt-4">
                 <div ref={flowerStripRef} className="flex gap-2.5 overflow-x-auto pb-2 -mx-5 px-5 snap-x">
                   {flowerPhotos.map((p, i) => (
+                    // min-w: 로드 전 폭 0으로 전부 뷰포트에 들어와 12장이 동시 다운로드되는 것 방지
+                    // (화면에 보이는 2~3장만 먼저 로드, 나머지는 스크롤 시 lazy 로드)
                     <img
                       key={`${activeLoc}${i}`}
                       src={p.url}
                       alt={`${p.loc || flowerTab} ${i + 1}`}
-                      loading="lazy"
-                      className="h-64 md:h-96 rounded-xl shadow-sm snap-center shrink-0 object-cover"
+                      loading={i < 2 ? 'eager' : 'lazy'}
+                      decoding="async"
+                      className="h-64 md:h-96 min-w-[200px] md:min-w-[300px] rounded-xl shadow-sm snap-center shrink-0 object-cover"
                     />
                   ))}
                 </div>
