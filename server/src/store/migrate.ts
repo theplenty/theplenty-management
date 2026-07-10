@@ -666,9 +666,16 @@ function migrateEventRevenueFields() {
 }
 
 // ── 2026 컨벤션 매출 엑셀 → 행사 매칭 후 revenue lines 일괄 등록 ──────
-// 멱등: sales_total_amount 이미 채워진 행사는 스킵.
+// ⚠ 일회성 백필. 기본 비활성 — MIGRATE_REVENUE_EXCEL_2026=true 일 때만 실행.
+//   비활성 이유(2026-07-10): ① 멱등 가드가 sales_total_amount 기준인데 엑셀 행의
+//   sales_total_amount가 null이면 영원히 재실행됨 ② 날짜만으로 매칭해 같은 날짜의
+//   무관한 행사(테스트 행사 등)에 매출이 잘못 기입됨 ③ dual 모드에서는 이 쓰기가
+//   운영 Firestore로 전파되어, 운영에서 삭제한 행사가 로컬 부팅 때마다 되살아났음.
 // 매칭: start_datetime 날짜 prefix(YYYY-MM-DD) 우선, 여러 건이면 행사명 단어 겹침 최대 항목 선택.
 function migrateRevenueFromExcel2026() {
+  if ((process.env.MIGRATE_REVENUE_EXCEL_2026 || '').toLowerCase() !== 'true') {
+    return; // 일회성 백필 완료 — 재실행하려면 env로 명시적 opt-in
+  }
   // JSON 파일 읽기 (ESM 환경이라 fs 직접 사용)
   let excelRows: Array<{
     no: string; date: string; status: string; event_name: string;
