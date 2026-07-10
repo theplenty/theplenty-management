@@ -428,7 +428,12 @@ function migrateMenuBOM() {
   const OLD_CATS = new Set(['전식', '주식', '후식', '음료', '주류', '패키지']);
 
   // 1) 구 스타일 카테고리 제거 — persistDelete 로 Firestore에도 반영
-  const toRemove = store.menus.filter((m) => OLD_CATS.has(m.category));
+  // 단, BOM(details)이 있는 메뉴는 신식이므로 제외. (음료 BOM이 '음료' 카테고리를 쓰는데
+  //   이걸 매 부팅 지우고 → migrateBanquetBevBOM이 새 id로 재등록하는 무한 루프가 있었음.
+  //   dual 모드에서는 이 churn이 운영 Firestore까지 오염시킴 — 2026-07-10 수정)
+  const toRemove = store.menus.filter(
+    (m) => OLD_CATS.has(m.category) && !(Array.isArray(m.details) && m.details.length > 0)
+  );
   if (toRemove.length > 0) {
     store.menus = store.menus.filter((m) => !OLD_CATS.has(m.category));
     for (const m of toRemove) persistDelete('menus', m.id);
