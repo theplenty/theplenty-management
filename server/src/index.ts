@@ -33,7 +33,7 @@ import activityLogRouter from './routes/activityLog.js';
 import holidaysRouter from './routes/holidays.js';
 import collaborationRequestsRouter from './routes/collaborationRequests.js';
 import summaryShareRouter from './routes/summaryShare.js';
-import { landingStaffRouter, landingConsultRouter, landingPublicRouter } from './routes/weddingLanding.js';
+import { landingStaffRouter, landingConsultRouter, landingPublicRouter, landingOgRouter } from './routes/weddingLanding.js';
 import menusRouter from './routes/menus.js';
 import revenueItemsRouter from './routes/revenueItems.js';
 import eventRevenueRouter from './routes/eventRevenue.js';
@@ -96,6 +96,8 @@ app.use('/api/public/v1', publicApiRouter);
 app.use('/api/public', publicCalendarRouter);
 // 공개(토큰만으로 접근) — 웨딩 가예약 고객 랜딩
 app.use('/api/public', landingPublicRouter);
+// 랜딩 링크 미리보기(OG) — hosting rewrite /l/** 가 이 함수로 들어옴
+app.use(landingOgRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('[server] error:', err);

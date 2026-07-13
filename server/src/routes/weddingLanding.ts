@@ -295,6 +295,72 @@ landingPublicRouter.get('/landing/:token', async (req, res) => {
   });
 });
 
+// ===== OG 미리보기 (/l/:token) =====
+// SPA는 정적 index.html이라 카톡/문자 링크 미리보기가 항상 "운영관리"로 떠서,
+// 랜딩 경로만 함수가 index.html에 신랑신부 이름이 담긴 OG 태그를 주입해 응답한다.
+// (hosting rewrite: /l/** → api 함수. 크롤러는 메타만 읽고, 브라우저는 그대로 SPA 구동)
+export const landingOgRouter = Router();
+
+const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN || 'https://plenty-management.web.app';
+const OG_IMAGE =
+  'https://storage.googleapis.com/plenty-management.firebasestorage.app/wedding-landing/brand/og_card.jpg';
+
+// XSS 방지 — 고객 이름이 HTML에 들어가므로 이스케이프
+function escHtml(s: string): string {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string)
+  );
+}
+
+// 호스팅의 index.html을 가져와 캐시 (5분 TTL, 실패 시 이전 캐시 유지)
+let indexCache: { html: string; at: number } | null = null;
+async function fetchIndexHtml(): Promise<string | null> {
+  if (indexCache && Date.now() - indexCache.at < 5 * 60_000) return indexCache.html;
+  try {
+    const r = await fetch(`${PUBLIC_ORIGIN}/index.html`);
+    if (r.ok) {
+      indexCache = { html: await r.text(), at: Date.now() };
+      return indexCache.html;
+    }
+  } catch (e) {
+    console.error('[landing-og] index.html fetch 실패:', (e as Error).message);
+  }
+  return indexCache?.html ?? null; // 실패해도 이전 캐시가 있으면 사용
+}
+
+landingOgRouter.get('/l/:token', async (req, res) => {
+  const landing = store.wedding_landings.find((l) => l.token === req.params.token);
+  const cust = landing ? landingCustomer(landing) : undefined;
+  const names =
+    cust && (cust.groom_name || cust.bride_name)
+      ? [cust.groom_name, cust.bride_name].filter(Boolean).join(' ♥ ')
+      : '';
+  const title = names
+    ? `${escHtml(names)} · PLENTY Private Reservation Page`
+    : 'PLENTY Private Reservation Page';
+  const desc = '플렌티컨벤션이 두 분만을 위해 준비한 프라이빗 페이지입니다.';
+  const url = `${PUBLIC_ORIGIN}/l/${encodeURIComponent(req.params.token)}`;
+
+  const base = await fetchIndexHtml();
+  if (!base) {
+    // 최초 요청부터 fetch 실패한 극히 드문 경우 — 재시도 유도
+    return res
+      .status(503)
+      .send('<!doctype html><html><head><meta charset="utf-8"></head><body><script>setTimeout(()=>location.reload(),800)</script></body></html>');
+  }
+  const og =
+    `<meta property="og:type" content="website" />` +
+    `<meta property="og:title" content="${title}" />` +
+    `<meta property="og:description" content="${desc}" />` +
+    `<meta property="og:image" content="${OG_IMAGE}" />` +
+    `<meta property="og:url" content="${url}" />` +
+    `<meta name="twitter:card" content="summary_large_image" />`;
+  const html = base
+    .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
+    .replace('</head>', `${og}</head>`);
+  res.set('Cache-Control', 'no-cache').type('html').send(html);
+});
+
 landingPublicRouter.post('/landing/:token/cta', async (req, res) => {
   const landing = store.wedding_landings.find((l) => l.token === req.params.token);
   if (!landing) return res.status(404).json({ error: 'invalid_token' });
