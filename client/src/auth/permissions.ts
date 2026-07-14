@@ -166,8 +166,9 @@ export function canSeeCollaboration(role: Role | undefined): boolean {
     role === 'banquet'
   );
 }
-export function canDeleteCollaboration(role: Role | undefined): boolean {
-  return role === 'admin';
+// 삭제: 대표(admin) 또는 상신한 담당자 본인(isOwner)
+export function canDeleteCollaboration(role: Role | undefined, isOwner = false): boolean {
+  return role === 'admin' || isOwner;
 }
 
 // ===== 메뉴 마스터 =====

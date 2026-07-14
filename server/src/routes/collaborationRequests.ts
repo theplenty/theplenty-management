@@ -257,12 +257,15 @@ router.patch('/:id/decision', (req, res) => {
   res.json({ request: cr });
 });
 
-// ===== 삭제 (대표/admin 전용) =====
+// ===== 삭제 (대표/admin + 상신한 담당자 본인) =====
 router.delete('/:id', (req, res) => {
-  if (req.user!.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   const idx = store.collaboration_requests.findIndex((c) => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not_found' });
   const removed = store.collaboration_requests[idx];
+  const isOwner = removed.created_by_id === req.user!.id;
+  if (req.user!.role !== 'admin' && !isOwner) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
   store.collaboration_requests.splice(idx, 1);
   persistDelete('collaboration_requests', removed.id);
 

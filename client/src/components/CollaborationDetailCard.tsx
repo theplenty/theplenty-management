@@ -215,10 +215,14 @@ export default function CollaborationDetailCard({
             )}
           </div>
 
-          {canDeleteCollaboration(role) && (
+          {canDeleteCollaboration(role, user?.id === cr.created_by_id) && (
             <div className="text-right">
-              <button onClick={handleDelete} className="text-xs text-red-600 hover:underline">
-                삭제 (대표 전용)
+              <button
+                onClick={handleDelete}
+                className="text-xs text-red-600 hover:underline"
+                title="대표 또는 상신한 담당자 본인만 삭제할 수 있습니다"
+              >
+                삭제
               </button>
             </div>
           )}
