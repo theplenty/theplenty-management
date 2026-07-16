@@ -32,6 +32,9 @@ const DEFAULT_KAKAO = 'https://pf.kakao.com/_xfGwxob';
 // 브랜드 로고 (키컬러를 페이지 팔레트의 브라운으로 리컬러한 버전, 투명배경)
 const LOGO_URL =
   'https://storage.googleapis.com/plenty-management.firebasestorage.app/wedding-landing/brand/logo_brown.png';
+// 히어로 배경 — 포토월+플라워 (상단은 크림 베일로 텍스트 가독성 확보)
+const HERO_BG_URL =
+  'https://storage.googleapis.com/plenty-management.firebasestorage.app/wedding-landing/brand/main_bg_v1.jpg';
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 
 // "2026-08-15T13:00" → { date: '2026년 8월 15일 (토)', time: '오후 1시' }
@@ -442,21 +445,36 @@ export default function WeddingLandingPublic() {
 
   return (
     <Shell>
-      {/* 1. Hero */}
-      <header className={`${S.wrap} pt-14 md:pt-20 pb-4 text-center`}>
-        <img src={LOGO_URL} alt="PLENTY CONVENTION" className="mx-auto w-48 md:w-64" />
-        <div className="text-[10px] md:text-[11.5px] tracking-[0.5em] text-[#b7ab9b] mt-3">WEDDING</div>
-        <p className="mt-10 text-[14px] md:text-[16px] text-[#8a7f71]">안녕하세요.</p>
-        <h1 className="mt-3 font-serif text-[22px] md:text-[30px] font-bold text-[#3f342a] leading-relaxed">
-          {data.groom_name} 신랑님
-          <span className="mx-1.5 text-[#d76a77]">💗</span>
-          {data.bride_name} 신부님
-        </h1>
-        <p className="mt-8 font-serif text-[17px] md:text-[22px] leading-relaxed text-[#5d5245]">
-          두 분이 꿈꾸는 결혼식이
-          <br />
-          PLENTY에서는 어떤 모습으로 완성될까요?
-        </p>
+      {/* 1. Hero — 포토월 배경 + 크림 베일(위는 진하게=가독성, 아래로 옅어져 꽃이 비침) */}
+      <header className="relative overflow-hidden">
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url(${HERO_BG_URL})` }}
+        />
+        <div
+          aria-hidden
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(250,247,241,0.96) 0%, rgba(250,247,241,0.93) 55%, rgba(250,247,241,0.8) 72%, rgba(250,247,241,0.45) 88%, rgba(250,247,241,0.3) 96%, #faf7f1 100%)',
+          }}
+        />
+        <div className={`${S.wrap} relative pt-14 md:pt-20 pb-32 md:pb-44 text-center`}>
+          <img src={LOGO_URL} alt="PLENTY CONVENTION" className="mx-auto w-48 md:w-64" />
+          <div className="text-[10px] md:text-[11.5px] tracking-[0.5em] text-[#b7ab9b] mt-3">WEDDING</div>
+          <p className="mt-10 text-[14px] md:text-[16px] text-[#8a7f71]">안녕하세요.</p>
+          <h1 className="mt-3 font-serif text-[22px] md:text-[30px] font-bold text-[#3f342a] leading-relaxed">
+            {data.groom_name} 신랑님
+            <span className="mx-1.5 text-[#d76a77]">💗</span>
+            {data.bride_name} 신부님
+          </h1>
+          <p className="mt-8 font-serif text-[17px] md:text-[22px] leading-relaxed text-[#5d5245]">
+            두 분이 꿈꾸는 결혼식이
+            <br />
+            PLENTY에서는 어떤 모습으로 완성될까요?
+          </p>
+        </div>
       </header>
 
       {/* 2. 가블록 카드 (block) / 상담 안내 카드 (consult) */}
