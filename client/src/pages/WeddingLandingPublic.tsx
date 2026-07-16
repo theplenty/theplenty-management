@@ -466,7 +466,7 @@ export default function WeddingLandingPublic() {
           <p className="mt-10 text-[14px] md:text-[16px] text-[#8a7f71]">안녕하세요.</p>
           <h1 className="mt-3 font-serif text-[22px] md:text-[30px] font-bold text-[#3f342a] leading-relaxed">
             {data.groom_name} 신랑님
-            <span className="mx-1.5 text-[#d76a77]">💗</span>
+            <span className="mx-2 text-[#c9a96a]">♡</span>
             {data.bride_name} 신부님
           </h1>
           <p className="mt-8 font-serif text-[17px] md:text-[22px] leading-relaxed text-[#5d5245]">
