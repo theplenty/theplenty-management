@@ -457,7 +457,7 @@ export default function WeddingLandingPublic() {
           className="absolute inset-0"
           style={{
             background:
-              'linear-gradient(180deg, rgba(250,247,241,0.96) 0%, rgba(250,247,241,0.93) 55%, rgba(250,247,241,0.8) 72%, rgba(250,247,241,0.45) 88%, rgba(250,247,241,0.3) 96%, #faf7f1 100%)',
+              'linear-gradient(180deg, rgba(250,247,241,0.88) 0%, rgba(250,247,241,0.82) 55%, rgba(250,247,241,0.62) 72%, rgba(250,247,241,0.32) 88%, rgba(250,247,241,0.18) 96%, #faf7f1 100%)',
           }}
         />
         <div className={`${S.wrap} relative pt-14 md:pt-20 pb-32 md:pb-44 text-center`}>
