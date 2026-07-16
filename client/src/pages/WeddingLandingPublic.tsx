@@ -447,9 +447,10 @@ export default function WeddingLandingPublic() {
     <Shell>
       {/* 1. Hero — 포토월 배경 + 크림 베일(위는 진하게=가독성, 아래로 옅어져 꽃이 비침) */}
       <header className="relative overflow-hidden">
+        {/* PC(가로 화면)에서는 세로 사진의 중간 흰 벽만 보이므로, 꽃+벽이 함께 보이는 하단부(70%)로 앵커 */}
         <div
           aria-hidden
-          className="absolute inset-0 bg-cover bg-center"
+          className="absolute inset-0 bg-cover bg-center md:[background-position:center_70%]"
           style={{ backgroundImage: `url(${HERO_BG_URL})` }}
         />
         <div
@@ -460,7 +461,11 @@ export default function WeddingLandingPublic() {
               'linear-gradient(180deg, rgba(250,247,241,0.88) 0%, rgba(250,247,241,0.82) 55%, rgba(250,247,241,0.62) 72%, rgba(250,247,241,0.32) 88%, rgba(250,247,241,0.18) 96%, #faf7f1 100%)',
           }}
         />
-        <div className={`${S.wrap} relative pt-14 md:pt-20 pb-32 md:pb-44 text-center`}>
+        {/* 크림색 글로우(text-shadow, 상속됨) — 배경 사진 위에서도 글자가 또렷하게 */}
+        <div
+          className={`${S.wrap} relative pt-14 md:pt-20 pb-32 md:pb-44 text-center`}
+          style={{ textShadow: '0 0 14px rgba(250,247,241,0.95), 0 2px 24px rgba(250,247,241,0.85)' }}
+        >
           <img src={LOGO_URL} alt="PLENTY CONVENTION" className="mx-auto w-48 md:w-64" />
           <div className="text-[10px] md:text-[11.5px] tracking-[0.5em] text-[#b7ab9b] mt-3">WEDDING</div>
           <p className="mt-10 text-[14px] md:text-[16px] text-[#8a7f71]">안녕하세요.</p>
