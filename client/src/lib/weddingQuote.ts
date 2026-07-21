@@ -2,9 +2,12 @@
 // 미리보기(innerHTML)와 인쇄(새 창) 양쪽에서 동일한 마크업을 쓴다.
 
 import {
-  type CalcInputs, type MarginResult, type WeddingCalcSettings,
+  type CalcInputs, type CourseKey, type FlowerGrade, type MarginResult, type WeddingCalcSettings,
   flowerName, won,
 } from './weddingCalc';
+
+// 플렌티 키컬러 (그린) — 견적서 강조용
+const QUOTE_GREEN = '#1f6b3f';
 
 // 견적서 전용 스타일 (참조 HTML의 .q* 클래스)
 export const QUOTE_CSS = `
@@ -18,7 +21,7 @@ export const QUOTE_CSS = `
 .qt td{border:1px solid #e4ded3;padding:5px 6px;vertical-align:top}
 .qt td.n{text-align:right;white-space:nowrap}
 .qrmk{color:#7a756c;font-size:10.5px;line-height:1.4;margin-top:2px}
-.qtot{display:flex;justify-content:space-between;font-size:15px;font-weight:800;background:#5b4a3a;color:#fff;padding:10px 14px;border-radius:8px;margin-top:14px}
+.qtot{display:flex;justify-content:space-between;font-size:16.5px;font-weight:800;background:#1f6b3f;color:#fff;padding:12px 14px;border-radius:8px;margin-top:14px}
 .qfoot{font-size:11px;color:#7a756c;margin-top:14px;text-align:center;border-top:1px solid #e4ded3;padding-top:8px}
 `;
 
@@ -40,19 +43,73 @@ function esc(s: string): string {
 
 // 견적서 본문 HTML (qbox 내부). 참조 HTML showQuote() 포팅.
 export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: MarginResult): string {
-  const courseFull = { A: 'Western A Course', B: 'Western B Course', C: 'Western C Course' }[inp.course];
-  const fb = qrow(
-    `Food — ${courseFull} (${won(L.listMeal)} × ${L.guests}명)`,
-    cfg.courseDesc[inp.course], L.mealList, L.mealRev,
-    inp.mealDiscount > 0 ? `식대 ${inp.mealDiscount}% 할인` : ''
-  );
+  // ── FOOD: A/B/C 코스 전부 표기 — 선택 코스만 고객가·합계 포함, 나머지는 단가·할인만 보여줌
+  //    (고객이 돌아가서 코스를 바꿀 수 있으므로 비교 기준 제공)
+  const selMark = ` <b style="color:${QUOTE_GREEN}">✓ 선택</b>`;
+  const courseRows = (['A', 'B', 'C'] as CourseKey[])
+    .map((ck) => {
+      const unit = ck === 'A' ? L.pr.A : ck === 'B' ? L.pr.B : L.pr.C;
+      const list = unit * L.guests;
+      const saved = list * (inp.mealDiscount / 100);
+      const benCell =
+        saved > 0
+          ? `<span style="color:#c0392b">▼${won(saved)}<br><span style="font-size:9.5px">식대 ${inp.mealDiscount}% 할인</span></span>`
+          : '–';
+      if (ck === inp.course) {
+        return (
+          `<tr><td>Food — Western ${ck} Course (${won(unit)} × ${L.guests}명)${selMark}` +
+          `<div class="qrmk">${esc(cfg.courseDesc[ck])}</div></td>` +
+          `<td class="n" style="color:#999;${saved > 0 ? 'text-decoration:line-through' : ''}">${won(L.mealList)}</td>` +
+          `<td class="n">${benCell}</td><td class="n"><b>${won(L.mealRev)}</b></td></tr>`
+        );
+      }
+      // 미선택 코스 — 고객가 빈칸 (합계 미포함)
+      return (
+        `<tr><td style="color:#8a8478">Food — Western ${ck} Course (${won(unit)} × ${L.guests}명)` +
+        `<div class="qrmk">${esc(cfg.courseDesc[ck])}</div>` +
+        `<div class="qrmk">코스 변경 선택 가능 — 합계 미포함</div></td>` +
+        `<td class="n" style="color:#999;${saved > 0 ? 'text-decoration:line-through' : ''}">${won(list)}</td>` +
+        `<td class="n">${benCell}</td><td class="n"></td></tr>`
+      );
+    })
+    .join('');
   let bev = '';
   cfg.bevItems.forEach((it) => {
     bev += `<tr><td>${esc(it.n)}<div class="qrmk">${esc(it.rmk)}</div></td><td class="n" style="color:#999">${won(it.p)}</td><td class="n">–</td><td class="n">실수량 정산</td></tr>`;
   });
-  const flowerLine = L.flowerBenefit > 0
-    ? qrow(`Flower — ${flowerName(inp.flowerGive)} 제공 (${flowerName(inp.flowerBill)} 가격 적용)`, cfg.flowerDesc[inp.flowerGive], L.flowerGiveP, L.flowerRev, `${flowerName(inp.flowerGive)} 무료 업그레이드`)
-    : qrow(`Flower — ${flowerName(inp.flowerGive)}`, cfg.flowerDesc[inp.flowerGive], L.flowerGiveP, L.flowerRev, '');
+  // ── FLOWER: Basic/Luxury/Grand 전부 표기 — 제공 등급만 고객가·합계 포함
+  const gradeDefs: { g: FlowerGrade; label: string; price: number }[] = [
+    { g: 'basic', label: 'Basic', price: L.pr.fB },
+    { g: 'lux', label: 'Luxury', price: L.pr.fL },
+    { g: 'grand', label: 'Grand', price: L.pr.fG },
+  ];
+  const flowerRows = gradeDefs
+    .map(({ g, label, price }) => {
+      if (g === inp.flowerGive) {
+        const name =
+          L.flowerBenefit > 0
+            ? `Flower — ${label} 제공 (${flowerName(inp.flowerBill)} 가격 적용)`
+            : `Flower — ${label}`;
+        const benCell =
+          L.flowerBenefit > 0
+            ? `<span style="color:#c0392b">▼${won(L.flowerBenefit)}<br><span style="font-size:9.5px">${label} 무료 업그레이드</span></span>`
+            : '–';
+        return (
+          `<tr><td>${name}${selMark}<div class="qrmk">${esc(cfg.flowerDesc[g])}</div></td>` +
+          `<td class="n" style="color:#999;${L.flowerBenefit > 0 ? 'text-decoration:line-through' : ''}">${won(L.flowerGiveP)}</td>` +
+          `<td class="n">${benCell}</td><td class="n"><b>${won(L.flowerRev)}</b></td></tr>`
+        );
+      }
+      // 미선택 등급 — 고객가 빈칸 (합계 미포함)
+      return (
+        `<tr><td style="color:#8a8478">Flower — ${label}` +
+        `<div class="qrmk">${esc(cfg.flowerDesc[g])}</div>` +
+        `<div class="qrmk">업그레이드 선택 가능 — 합계 미포함</div></td>` +
+        `<td class="n" style="color:#999">${won(price)}</td>` +
+        `<td class="n">–</td><td class="n"></td></tr>`
+      );
+    })
+    .join('');
   const rentDetail = cfg.rentItems.map((it) => `<div class="qrmk">· <b>${esc(it.n)}</b> — ${esc(it.rmk)}</div>`).join('');
   const rentPkg = `<tr><td><b>RENTAL & DIRECTION 패키지</b> (전 고객 묶음 제공)${rentDetail}</td>` +
     `<td class="n" style="color:#999;text-decoration:line-through">${won(cfg.rentList)}</td>` +
@@ -71,13 +128,19 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
       <div><b>Event Hall</b> : 플렌티 컨벤션 / L층</div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;background:#fbe9e7;border:1px solid #f0b7ae;border-radius:9px;padding:11px 16px;margin-bottom:5px">
-      <div style="font-size:13px;color:#7a2018">고객님께서 받으신 <b>총 혜택</b></div>
+      <div style="font-size:13px;color:#7a2018">고객님께서 받으신 <b>총 혜택</b>${(() => {
+        // 가톨릭 동문 / 성모병원 임직원 — 특별 혜택 대상임을 명시
+        const ctName = cfg.ctypes[inp.ctype]?.name || '';
+        return /가톨릭|성모/.test(ctName)
+          ? ` <span style="font-weight:800;color:${QUOTE_GREEN}">(${esc(ctName)} 혜택 포함)</span>`
+          : '';
+      })()}</div>
       <div style="font-size:22px;font-weight:800;color:#c0392b">₩ ${won(L.totalBenefit)} 할인</div></div>
     <div style="font-size:11px;color:#7a756c;text-align:right;margin-bottom:8px">정상가 ${won(L.listTotal)}원 → 최종 ${won(L.A)}원</div>
     <div class="qsec">1) FOOD & BEVERAGE <span style="font-size:10px;color:#7a756c">*Currency: KRW</span></div>
-    <table class="qt"><tr><th>ITEM</th><th class="n">정상가</th><th class="n">혜택</th><th class="n">고객가</th></tr>${fb}${bev}</table>
+    <table class="qt"><tr><th>ITEM</th><th class="n">정상가</th><th class="n">혜택</th><th class="n">고객가</th></tr>${courseRows}${bev}</table>
     <div class="qsec">2) FLOWER</div>
-    <table class="qt"><tr><th>ITEM</th><th class="n">정상가</th><th class="n">혜택</th><th class="n">고객가</th></tr>${flowerLine}</table>
+    <table class="qt"><tr><th>ITEM</th><th class="n">정상가</th><th class="n">혜택</th><th class="n">고객가</th></tr>${flowerRows}</table>
     <div class="qsec">3) RENTAL FEE & DIRECTION</div>
     <table class="qt"><tr><th>ITEM</th><th class="n">정상가</th><th class="n">혜택</th><th class="n">고객가</th></tr>${rentPkg}${optRows}</table>
     <div class="qsec">4) OTHERS / SPECIAL GIFT</div>
