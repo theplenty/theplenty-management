@@ -108,13 +108,6 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
         } else {
           setBlockUntil(plusDays(7)); // 기본 가블록 7일
         }
-        // 연결 고객 로드
-        if (customerIds[0]) {
-          const c = await api.get<{ customer: WeddingCustomer }>(
-            `/api/customers/wedding/${customerIds[0]}`
-          );
-          if (alive) setCustomer(c.customer);
-        }
       } catch (e) {
         console.error('[landing] load error', e);
       } finally {
@@ -126,6 +119,28 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, consultCustomerId]);
+
+  // 연결 고객 로드 — customerIds가 나중에 도착해도(모달 링크 로딩 레이스) 다시 불러온다.
+  // 과거: 탭 mount 시 1회만 로드 → 링크 로딩보다 먼저 열면 고객 없이 발행되어 견적 누락됨.
+  const customerId = consultCustomerId || customerIds[0] || '';
+  useEffect(() => {
+    if (!customerId) {
+      setCustomer(null);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      try {
+        const c = await api.get<{ customer: WeddingCustomer }>(`/api/customers/wedding/${customerId}`);
+        if (alive) setCustomer(c.customer);
+      } catch (e) {
+        console.error('[landing] 고객 로드 실패', e);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [customerId]);
 
   // 예식후보 자동 매칭 — 지정된 것 > 행사 시작일과 같은 날짜 > 첫 후보
   const inquiries = customer?.event_inquiries || [];
@@ -183,6 +198,16 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
 
   async function save(patch?: Partial<WeddingLanding>) {
     if (!eventId && !isConsult) return;
+    // 발행/저장인데 견적 스냅샷이 없으면 경고 (닫기/열기 토글(patch)은 제외)
+    // — 고객 링크 로딩 전 발행 등으로 견적 섹션이 조용히 빠지는 사고 방지
+    if (!patch && !quoteSnapshot) {
+      const ok = confirm(
+        '⚠ 맞춤 견적 스냅샷이 없습니다.\n' +
+          '(연결 고객 미로딩이거나, 예식후보에 마진계산기 견적이 저장되지 않음)\n\n' +
+          '이대로 발행하면 랜딩에 견적 섹션이 표시되지 않습니다. 계속할까요?'
+      );
+      if (!ok) return;
+    }
     setSaving(true);
     try {
       const res = await api.put<{
