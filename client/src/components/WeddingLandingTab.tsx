@@ -172,6 +172,11 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
       inputs.otherOn = cfg.otherItems.map((it, i) => saved.otherOn?.[i] ?? !it.off);
       inputs.otherSvc = cfg.otherItems.map((it, i) => saved.otherSvc?.[i] ?? !!it.svc);
       inputs.otherQty = cfg.otherItems.map((it, i) => saved.otherQty?.[i] ?? it.qty ?? 1);
+      // 견적서 Date & Time — 예식후보의 실제 일시를 그대로 표기 (슬롯 라벨 '점심/저녁' 대신)
+      if (matchedInquiry.wedding_datetime) {
+        inputs.wdate = matchedInquiry.wedding_datetime.slice(0, 10);
+        inputs.wtime = matchedInquiry.wedding_datetime.slice(11, 16);
+      }
       const L = computeMargin(inputs, cfg);
       // 혜택 내역 — 랜딩 견적 카드에 노출 (금액 있는 것만)
       const benefits: WeddingLandingBenefit[] = [];

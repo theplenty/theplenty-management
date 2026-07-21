@@ -209,7 +209,8 @@ export interface CalcInputs {
   groom: string;
   bride: string;
   wdate: string;         // YYYY-MM-DD
-  time: string;          // '토 점심' 등
+  wtime?: string;        // 예식 시간 HH:mm — 견적서 표기용 (마진 계산은 time 슬롯 사용)
+  time: string;          // '토 점심' 등 (계산 기준 슬롯)
   guests: number;
   ctype: number;         // ctypes 인덱스
   course: CourseKey;
@@ -241,6 +242,7 @@ export function defaultInputs(cfg: WeddingCalcSettings, prefill?: Partial<CalcIn
     groom: prefill?.groom ?? '',
     bride: prefill?.bride ?? '',
     wdate: prefill?.wdate ?? '',
+    wtime: prefill?.wtime ?? '',
     time: prefill?.time ?? TIME_OPTIONS[0],
     guests: prefill?.guests ?? 250,
     ctype: ctypeIdx,

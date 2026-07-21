@@ -111,9 +111,11 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
         init = defaultInputs(loaded, prefillFromInquiry());
         fresh = true;
       }
-      // 예식후보의 '예식날짜 및 시간'을 항상 그대로 반영 (예식일 + 타임 자동 세팅)
+      // 예식후보의 '예식날짜 및 시간'을 항상 그대로 반영
+      // (wtime=실제 시각 그대로 — 견적서에 표기 / time=계산용 슬롯, 내부 마진 계산에만 사용)
       if (inquiry.wedding_datetime) {
         init.wdate = inquiry.wedding_datetime.slice(0, 10);
+        init.wtime = inquiry.wedding_datetime.slice(11, 16);
         const t = timeFromDatetime(inquiry.wedding_datetime);
         if (t) init.time = t;
       }
@@ -250,13 +252,27 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
                 <Field label="신랑"><input className="cin" value={inputs.groom} onChange={(e) => setInp({ groom: e.target.value })} /></Field>
                 <Field label="신부"><input className="cin" value={inputs.bride} onChange={(e) => setInp({ bride: e.target.value })} /></Field>
                 <Field label="예식일"><input type="date" className="cin" value={inputs.wdate} onChange={(e) => applyWithPreset({ wdate: e.target.value })} /></Field>
+                <Field label="예식시간 (견적서에 그대로 표기)">
+                  <input
+                    type="time"
+                    className="cin"
+                    value={inputs.wtime || ''}
+                    onChange={(e) => {
+                      const wtime = e.target.value;
+                      // 시간을 바꾸면 계산용 타임 슬롯(점심/저녁)도 자동 갱신
+                      const t = timeFromDatetime(`${inputs.wdate}T${wtime}`);
+                      if (t) applyWithPreset({ wtime, time: t });
+                      else setInp({ wtime });
+                    }}
+                  />
+                </Field>
                 <Field label="보증인원"><input type="number" className="cin" value={inputs.guests} onChange={(e) => setInp({ guests: Number(e.target.value) })} /></Field>
                 <Field label="고객 유형">
                   <select className="cin" value={inputs.ctype} onChange={(e) => applyCustomerType(Number(e.target.value))}>
                     {cfg.ctypes.map((c, i) => <option key={i} value={i}>{c.name}</option>)}
                   </select>
                 </Field>
-                <Field label="타임">
+                <Field label="타임 (마진 계산 기준 — 견적서엔 미표기)">
                   <select className="cin" value={inputs.time} onChange={(e) => applyWithPreset({ time: e.target.value })}>
                     {TIME_OPTIONS.map((t) => <option key={t}>{t}</option>)}
                   </select>
