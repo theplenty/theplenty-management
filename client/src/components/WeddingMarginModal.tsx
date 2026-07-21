@@ -255,10 +255,15 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, canEdit
                   </select>
                 </Field>
               </div>
-              <label className="flex items-center gap-1.5 mt-2 text-xs text-[#5b4a3a] font-medium cursor-pointer">
-                <input type="checkbox" checked={inputs.flowerUp} onChange={(e) => applyUpgrade(e.target.checked)} />
-                🎁 플라워 무료 업그레이드 (청구 Basic · 제공 Luxury)
-              </label>
+              <div className="flex items-center gap-1.5 mt-2 text-xs text-[#5b4a3a] font-medium">
+                <input
+                  type="checkbox"
+                  className="cursor-pointer"
+                  checked={inputs.flowerUp}
+                  onChange={(e) => applyUpgrade(e.target.checked)}
+                />
+                <span>🎁 플라워 무료 업그레이드 (청구 Basic · 제공 Luxury)</span>
+              </div>
               {result.flowerBenefit > 0 && (
                 <div className="mt-2 text-[11px] bg-[#fff7e8] border-l-2 border-[#b8860b] rounded px-2 py-1.5">
                   🎁 무료 업그레이드({flowerName(inputs.flowerBill)}→{flowerName(inputs.flowerGive)}) — 고객 체감 <b>+{won(result.flowerBenefit)}</b> / 회사 실비용 <b>+{won(result.flowerBenefit * cfg.cost.flowerCostR / 100)}</b> · 대관 현금할인 대비 <b className="text-[#1f9d5b]">{won(result.flowerBenefit * (1 - cfg.cost.flowerCostR / 100))} 유리</b>
@@ -280,11 +285,19 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, canEdit
               <div className="text-[10.5px] text-gray-400 mt-0.5">기간·시즌에 따라 대관 할인가를 직접 입력해 조정할 수 있습니다 · 전 고객 묶음 제공</div>
               <div className="mt-2 space-y-1">
                 <div className="text-[11px] text-gray-400">추가 옵션 (별도 청구 · 무료 아님)</div>
+                {/* label로 줄 전체를 감싸면 주변 아무 곳이나 클릭해도 토글되므로, 체크박스에만 반응하도록 div 사용 */}
                 {cfg.optItems.map((it, i) => (
-                  <label key={i} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                    <input type="checkbox" checked={inputs.opt[i]} onChange={(e) => { const opt = [...inputs.opt]; opt[i] = e.target.checked; setInp({ opt }); }} />
-                    {it.n} <span className="text-gray-400">({won(it.p)})</span>
-                  </label>
+                  <div key={i} className="flex items-center gap-1.5 text-xs">
+                    <input
+                      type="checkbox"
+                      className="cursor-pointer"
+                      checked={inputs.opt[i]}
+                      onChange={(e) => { const opt = [...inputs.opt]; opt[i] = e.target.checked; setInp({ opt }); }}
+                    />
+                    <span>
+                      {it.n} <span className="text-gray-400">({won(it.p)})</span>
+                    </span>
+                  </div>
                 ))}
               </div>
             </Section>
