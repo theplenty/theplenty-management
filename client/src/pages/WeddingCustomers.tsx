@@ -1019,6 +1019,7 @@ export default function WeddingCustomers() {
                     idx={idx}
                     groom={form.groom_name}
                     bride={form.bride_name}
+                    source={form.source}
                     canEditSettings={canEditCalcSettings}
                     canSave
                     onClose={() => setCalcOpenId(null)}

@@ -18,10 +18,35 @@ interface Props {
   idx: number;
   groom: string;
   bride: string;
+  source?: string;           // 고객 유입경로 — 고객유형 자동 매핑용
   canEditSettings: boolean;  // admin: 기준값 편집
   canSave: boolean;          // 웨딩 write 권한: 예식후보에 저장. false면 뷰어.
   onClose: () => void;
   onSaved: (updated: WeddingEventInquiry) => void;
+}
+
+// 예식후보의 '예식날짜 및 시간'(YYYY-MM-DDTHH:mm) → 계산기 타임 라벨
+// 일요일은 '일 점심' 고정, 토요일은 16시 기준 점심/저녁. 평일이면 null(기본값 유지).
+function timeFromDatetime(dt?: string | null): string | null {
+  if (!dt) return null;
+  const d = new Date(dt);
+  if (isNaN(d.getTime())) return null;
+  const day = d.getDay();
+  if (day === 0) return '일 점심';
+  if (day === 6) return d.getHours() >= 16 ? '토 저녁' : '토 점심';
+  return null;
+}
+
+// 고객 '유입경로' → 고객유형(ctypes) 인덱스 매핑. 못 찾으면 null(기본값 유지).
+function ctypeFromSource(cfg: WeddingCalcSettings, source?: string): number | null {
+  if (!source) return null;
+  const find = (kws: string[]) => cfg.ctypes.findIndex((c) => kws.some((k) => c.name.includes(k)));
+  let idx = -1;
+  if (source.includes('가톨릭')) idx = find(['가톨릭']);
+  else if (source.includes('성모') || source.includes('병원')) idx = find(['성모', '병원', '임직원']);
+  else if (source.includes('컨설팅') || source.includes('워크인')) idx = find(['워크인', '컨설팅']);
+  else idx = find(['일반']);
+  return idx >= 0 ? idx : null;
 }
 
 type Tab = 'builder' | 'quote' | 'admin';
@@ -41,7 +66,7 @@ function NumInput({ value, onChange, w }: { value: number; onChange: (v: number)
   );
 }
 
-export default function WeddingMarginModal({ inquiry, idx, groom, bride, canEditSettings, canSave, onClose, onSaved }: Props) {
+export default function WeddingMarginModal({ inquiry, idx, groom, bride, source, canEditSettings, canSave, onClose, onSaved }: Props) {
   const [cfg, setCfg] = useState<WeddingCalcSettings | null>(null);
   const [inputs, setInputs] = useState<CalcInputs | null>(null);
   const [tab, setTab] = useState<Tab>('builder');
@@ -68,6 +93,7 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, canEdit
       setCfg(loaded);
       // 프리필: 저장된 calc_payload 우선, 없으면 고객/예식후보에서
       let init: CalcInputs;
+      let fresh = false; // 저장된 계산 없이 새로 여는 경우
       if (inquiry.calc_payload) {
         try {
           const saved = JSON.parse(inquiry.calc_payload) as Partial<CalcInputs>;
@@ -79,9 +105,33 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, canEdit
           init.otherQty = loaded.otherItems.map((it, i) => saved.otherQty?.[i] ?? it.qty ?? 1);
         } catch {
           init = defaultInputs(loaded, prefillFromInquiry());
+          fresh = true;
         }
       } else {
         init = defaultInputs(loaded, prefillFromInquiry());
+        fresh = true;
+      }
+      // 예식후보의 '예식날짜 및 시간'을 항상 그대로 반영 (예식일 + 타임 자동 세팅)
+      if (inquiry.wedding_datetime) {
+        init.wdate = inquiry.wedding_datetime.slice(0, 10);
+        const t = timeFromDatetime(inquiry.wedding_datetime);
+        if (t) init.time = t;
+      }
+      // 새로 여는 경우: 고객 '유입경로' → 고객유형 자동 매핑 + 해당 기본값(할인·플라워) 적용
+      // (저장된 계산이 있으면 직원이 고른 고객유형·할인율을 존중)
+      if (fresh) {
+        const ci = ctypeFromSource(loaded, source);
+        if (ci != null) {
+          const c = loaded.ctypes[ci];
+          init.ctype = ci;
+          init.mealDiscount = c?.mealDisc ?? init.mealDiscount;
+          init.flowerUp = c?.flowerUp ?? false;
+          init.flowerBill = 'basic';
+          init.flowerGive = c?.flowerUp ? 'lux' : 'basic';
+        }
+        // 슬롯(예식일·고객유형·타임) 표준 할인%가 있으면 그걸 우선 적용
+        const preset = findPreset(init, loaded);
+        if (preset) init.mealDiscount = preset.discount;
       }
       setInputs(init);
     })();

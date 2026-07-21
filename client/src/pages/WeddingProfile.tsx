@@ -256,6 +256,7 @@ export default function WeddingProfile() {
                 idx={idx}
                 groom={c.groom_name}
                 bride={c.bride_name}
+                source={c.source}
                 canEditSettings={canEditCalcSettings}
                 canSave={canSaveInquiry}
                 onSave={saveInquiry}
@@ -393,12 +394,13 @@ function CopyableContact({
 }
 
 function WeddingInquiryCard({
-  inq, idx, groom, bride, canEditSettings, canSave, onSave,
+  inq, idx, groom, bride, source, canEditSettings, canSave, onSave,
 }: {
   inq: WeddingEventInquiry;
   idx: number;
   groom: string;
   bride: string;
+  source?: string; // 유입경로 — 마진계산기 고객유형 자동 매핑용
   canEditSettings: boolean;
   canSave: boolean;
   onSave: (updated: WeddingEventInquiry) => void;
@@ -427,6 +429,7 @@ function WeddingInquiryCard({
           idx={idx}
           groom={groom}
           bride={bride}
+          source={source}
           canEditSettings={canEditSettings}
           canSave={canSave}
           onClose={() => setCalcOpen(false)}
