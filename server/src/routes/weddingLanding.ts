@@ -15,7 +15,9 @@
 //   consult        — 상담만 하고 간 고객(customer_id)에 직접 연결. 행사 없이 발행.
 //                    GET/PUT /api/customers/wedding/:customerId/landing
 //                    만료 기준은 block_until(열람 기한). 고객이 DEF 행사로 계약되면 contracted.
-//                    같은 고객의 가블록(block) 랜딩이 발행되면 자동으로 닫힘.
+//
+// 중복 생성 방지: 같은 고객에게 반대 모드의 랜딩이 '열림(active)' 상태로 존재하면
+//                생성 시 409 duplicate_landing 으로 거절 (기존 링크를 닫아야 새로 발행 가능).
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
@@ -94,6 +96,23 @@ landingStaffRouter.put('/:eventId/landing', (req, res) => {
   const body = req.body as Partial<WeddingLanding>;
   const now = new Date().toISOString();
   let landing = store.wedding_landings.find((l) => l.event_id === ev.id);
+
+  // 중복 방지 — 같은 고객에게 상담형(consult) 랜딩이 열려 있으면 [생성]과 [다시 열기] 거절
+  if (!landing || body.closed === false) {
+    const linkedCustIds = store.event_customers
+      .filter((l) => l.event_id === ev.id)
+      .map((l) => l.customer_id);
+    const dupConsult = store.wedding_landings.find(
+      (l) =>
+        l.mode === 'consult' &&
+        l.customer_id &&
+        linkedCustIds.includes(l.customer_id) &&
+        landingState(l) === 'active'
+    );
+    if (dupConsult) {
+      return res.status(409).json({ error: 'duplicate_landing', other: 'consult' });
+    }
+  }
   if (!landing) {
     landing = {
       id: nanoid(10),
@@ -117,19 +136,6 @@ landingStaffRouter.put('/:eventId/landing', (req, res) => {
   }
   applyLandingBody(landing, body, now);
   persistDoc('wedding_landings', landing.id);
-
-  // 같은 고객의 상담형(consult) 랜딩 자동 닫기 — 문구가 다른 두 링크가 동시에 살아있지 않도록
-  const linkedCustIds = store.event_customers
-    .filter((l) => l.event_id === ev.id)
-    .map((l) => l.customer_id);
-  for (const cl of store.wedding_landings) {
-    if (cl.mode === 'consult' && cl.customer_id && linkedCustIds.includes(cl.customer_id) && !cl.closed) {
-      cl.closed = true;
-      cl.updated_at = now;
-      persistDoc('wedding_landings', cl.id);
-    }
-  }
-
   res.json({ landing, state: landingState(landing), smtp_configured: smtpConfigured() });
 });
 
@@ -180,6 +186,18 @@ landingConsultRouter.put('/wedding/:customerId/landing', (req, res) => {
   let landing = store.wedding_landings.find(
     (l) => l.mode === 'consult' && l.customer_id === cust.id
   );
+  // 중복 방지 — 이 고객의 행사에 가블록(block) 랜딩이 열려 있으면 [생성]과 [다시 열기] 거절
+  if (!landing || body.closed === false) {
+    const evIds = store.event_customers
+      .filter((l) => l.customer_id === cust.id)
+      .map((l) => l.event_id);
+    const dupBlock = store.wedding_landings.find(
+      (l) => (l.mode || 'block') !== 'consult' && evIds.includes(l.event_id) && landingState(l) === 'active'
+    );
+    if (dupBlock) {
+      return res.status(409).json({ error: 'duplicate_landing', other: 'block' });
+    }
+  }
   if (!landing) {
     landing = {
       id: nanoid(10),

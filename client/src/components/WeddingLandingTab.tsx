@@ -3,7 +3,7 @@
 // 견적은 발행 시점에 예식후보의 calc_payload → 고객용 HTML로 스냅샷 저장 (내부 마진 미포함).
 
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '../lib/api';
+import { api, type ApiError } from '../lib/api';
 import {
   DEFAULT_WEDDING_CALC,
   computeMargin,
@@ -229,7 +229,24 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
       setState(res.state);
       setSmtpConfigured(res.smtp_configured);
     } catch (e) {
-      alert('저장 실패');
+      const err = e as ApiError;
+      const payload = err.payload as { error?: string; other?: 'block' | 'consult' } | undefined;
+      if (err.status === 409 && payload?.error === 'duplicate_landing') {
+        // 반대 경로(행사 캘린더 ↔ 고객정보)에 이미 열린 랜딩이 있음 — 중복 생성 차단
+        alert(
+          payload.other === 'consult'
+            ? '⚠ 이미 랜딩페이지가 생성되어 있어 중복 생성할 수 없습니다.\n\n' +
+                '이 고객에게는 상담형 랜딩(고객정보에서 발행)이 열려 있습니다.\n' +
+                '가블록 랜딩으로 전환하려면: 웨딩 상담 DB → 고객 상세 → 💌 고객 랜딩에서\n' +
+                '기존 링크를 [수동 닫기]한 뒤 여기서 다시 발행해 주세요.'
+            : '⚠ 이미 랜딩페이지가 생성되어 있어 중복 생성할 수 없습니다.\n\n' +
+                '이 고객에게는 가블록 랜딩(행사 캘린더에서 발행)이 열려 있습니다.\n' +
+                '상담형이 필요하면: 행사 수정 → 💌 고객 랜딩 탭에서\n' +
+                '기존 링크를 [수동 닫기]한 뒤 여기서 다시 발행해 주세요.'
+        );
+      } else {
+        alert('저장 실패');
+      }
       console.error(e);
     } finally {
       setSaving(false);
