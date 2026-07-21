@@ -80,10 +80,15 @@ landingStaffRouter.get('/:eventId/landing', (req, res) => {
   const ev = store.events.find((e) => e.id === req.params.eventId);
   if (!ev) return res.status(404).json({ error: 'event_not_found' });
   const landing = store.wedding_landings.find((l) => l.event_id === ev.id) || null;
+  const custIds = store.event_customers
+    .filter((l) => l.event_id === ev.id)
+    .map((l) => l.customer_id);
   res.json({
     landing,
     state: landing ? landingState(landing) : null,
     smtp_configured: smtpConfigured(),
+    // 반대 경로(상담형)에서 이미 링크를 생성했는지 — 발행 화면 안내용
+    sibling: siblingInfo('consult', custIds),
   });
 });
 
@@ -173,6 +178,8 @@ landingConsultRouter.get('/wedding/:customerId/landing', (req, res) => {
     landing,
     state: landing ? landingState(landing) : null,
     smtp_configured: smtpConfigured(),
+    // 반대 경로(가블록형)에서 이미 링크를 생성했는지 — 발행 화면 안내용
+    sibling: siblingInfo('block', [cust.id]),
   });
 });
 
@@ -259,6 +266,31 @@ async function mediaSetting(): Promise<unknown> {
   return row?.value ?? null;
 }
 
+// 같은 고객의 '열려 있는' 다른 랜딩 찾기 — 닫힌/만료된 옛 링크를 열면 최신 랜딩으로 자동 연결용
+function activeSibling(landing: WeddingLanding): WeddingLanding | null {
+  const cust = landingCustomer(landing);
+  if (!cust) return null;
+  return (
+    store.wedding_landings.find((l) => {
+      if (l.id === landing.id) return false;
+      if (landingState(l) !== 'active') return false;
+      return landingCustomer(l)?.id === cust.id;
+    }) || null
+  );
+}
+
+// 반대 모드 랜딩 존재 여부 (직원 발행 화면 안내용) — 상태 무관, 존재하면 반환
+function siblingInfo(opposite: 'block' | 'consult', custIds: string[]) {
+  const found = store.wedding_landings.find((l) => {
+    const mode = l.mode || 'block';
+    if (mode !== opposite) return false;
+    if (opposite === 'consult') return !!l.customer_id && custIds.includes(l.customer_id);
+    const c = landingCustomer(l);
+    return !!c && custIds.includes(c.id);
+  });
+  return found ? { mode: opposite, state: landingState(found) } : null;
+}
+
 // 랜딩 → 연결 고객 해석 (block: 행사의 CONTACT POINT 우선 / consult: customer_id 직접)
 function landingCustomer(landing: WeddingLanding) {
   if (landing.mode === 'consult') {
@@ -282,9 +314,18 @@ function landingDatetime(landing: WeddingLanding): string {
 }
 
 landingPublicRouter.get('/landing/:token', async (req, res) => {
-  const landing = store.wedding_landings.find((l) => l.token === req.params.token);
+  let landing = store.wedding_landings.find((l) => l.token === req.params.token);
   if (!landing) return res.status(404).json({ error: 'invalid_token' });
-  const state = landingState(landing);
+  let state = landingState(landing);
+  // 자동 연결 — 닫힘/만료된 옛 링크여도, 같은 고객의 열려 있는 최신 랜딩이 있으면 그걸 보여줌
+  // (상담형 → 가블록형 전환 시 고객이 카톡의 옛 링크를 눌러도 항상 최신 페이지)
+  if (state === 'closed' || state === 'expired') {
+    const alt = activeSibling(landing);
+    if (alt) {
+      landing = alt;
+      state = landingState(alt);
+    }
+  }
   const mode = landing.mode || 'block';
 
   const cust = landingCustomer(landing);
@@ -380,9 +421,17 @@ landingOgRouter.get('/l/:token', async (req, res) => {
 });
 
 landingPublicRouter.post('/landing/:token/cta', async (req, res) => {
-  const landing = store.wedding_landings.find((l) => l.token === req.params.token);
+  let landing = store.wedding_landings.find((l) => l.token === req.params.token);
   if (!landing) return res.status(404).json({ error: 'invalid_token' });
-  const state = landingState(landing);
+  let state = landingState(landing);
+  // 자동 연결 — 옛 링크에서 누른 CTA도 열려 있는 최신 랜딩에 기록
+  if (state === 'closed' || state === 'expired') {
+    const alt = activeSibling(landing);
+    if (alt) {
+      landing = alt;
+      state = landingState(alt);
+    }
+  }
   if (state === 'closed') return res.status(400).json({ error: 'landing_closed' });
 
   const action = (req.body as { action?: string }).action;

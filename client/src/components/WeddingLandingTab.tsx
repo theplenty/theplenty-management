@@ -58,6 +58,7 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
     : `/api/events/${eventId}/landing`;
   const [landing, setLanding] = useState<WeddingLanding | null>(null);
   const [state, setState] = useState<WeddingLandingState | null>(null);
+  const [sibling, setSibling] = useState<{ mode: 'block' | 'consult'; state: WeddingLandingState } | null>(null); // 반대 경로 랜딩 존재 안내
   const [smtpConfigured, setSmtpConfigured] = useState(false);
   const [customer, setCustomer] = useState<WeddingCustomer | null>(null);
   const [cfg, setCfg] = useState<WeddingCalcSettings | null>(null);
@@ -82,9 +83,12 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
     (async () => {
       try {
         const [landingRes, cfgRes] = await Promise.all([
-          api.get<{ landing: WeddingLanding | null; state: WeddingLandingState | null; smtp_configured: boolean }>(
-            apiBase
-          ),
+          api.get<{
+            landing: WeddingLanding | null;
+            state: WeddingLandingState | null;
+            smtp_configured: boolean;
+            sibling?: { mode: 'block' | 'consult'; state: WeddingLandingState } | null;
+          }>(apiBase),
           api
             .get<{ setting: { value: WeddingCalcSettings } }>('/api/settings/wedding-calc')
             .catch(() => null),
@@ -92,6 +96,7 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
         if (!alive) return;
         setLanding(landingRes.landing);
         setState(landingRes.state);
+        setSibling(landingRes.sibling ?? null);
         setSmtpConfigured(landingRes.smtp_configured);
         const loaded = cfgRes?.setting?.value ?? DEFAULT_WEDDING_CALC;
         setCfg({
@@ -289,6 +294,22 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
           가예약(INQ) 고객에게 보내는 <b>모바일 랜딩 링크</b>입니다. 가블록 안내·상담 중시항목·맞춤
           견적·홀 소개·FAQ가 포함되며, <b>LOS 전환·가블록 종료일 경과 시 자동으로 닫힙니다.</b>{' '}
           DEF(계약완료)가 되면 &lsquo;계약 완료 감사&rsquo; 화면으로 바뀝니다.
+        </div>
+      )}
+
+      {/* 반대 경로(상담형 ↔ 가블록형)에 이미 링크가 있으면 안내 */}
+      {sibling && (
+        <div className="text-xs bg-amber-50 border border-amber-300 text-amber-900 rounded-md p-2.5 leading-relaxed">
+          ⚠{' '}
+          <b>
+            {sibling.mode === 'consult' ? '상담형(고객정보)' : '가블록형(행사 캘린더)'}에서 이미 링크
+            생성을 완료하였습니다.
+          </b>{' '}
+          {sibling.state === 'active'
+            ? '해당 링크가 열려 있는 동안에는 여기서 새로 발행할 수 없습니다. 전환하려면 기존 링크를 먼저 [수동 닫기] 해주세요. (닫힌 옛 링크는 새 랜딩으로 자동 연결됩니다)'
+            : `현재 ${
+                sibling.state === 'expired' ? '만료' : sibling.state === 'contracted' ? '계약 완료' : '닫힘'
+              } 상태라 여기서 발행할 수 있고, 고객이 갖고 있는 옛 링크도 새 랜딩으로 자동 연결됩니다.`}
         </div>
       )}
 
