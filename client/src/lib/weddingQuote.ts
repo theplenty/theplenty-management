@@ -24,6 +24,27 @@ export const QUOTE_CSS = `
 .qrmk{color:#7a756c;font-size:11px;line-height:1.35;margin-top:1px}
 .qtot{display:flex;justify-content:space-between;font-size:16.5px;font-weight:800;background:#1f6b3f;color:#fff;padding:10px 14px;border-radius:8px;margin-top:10px}
 .qfoot{font-size:11px;color:#7a756c;margin-top:10px;text-align:center;border-top:1px solid #e4ded3;padding-top:6px}
+.qban{display:flex;justify-content:space-between;align-items:center;background:#fbe9e7;border:1px solid #f0b7ae;border-radius:9px;padding:9px 14px;margin-bottom:5px}
+.qban .l{font-size:13px;color:#7a2018}
+.qban .amt{font-size:22px;font-weight:800;color:#c0392b}
+.qsub{font-size:11px;color:#7a756c;text-align:right;margin-bottom:8px}
+@media print{
+  @page{size:A4;margin:9mm}
+  .qbox{border:none;max-width:none;padding:0}
+  .qhead{padding-bottom:4px;margin-bottom:6px}
+  .qhead .t{font-size:18px}
+  .qmeta{font-size:11px;gap:1px 14px;margin-bottom:5px}
+  .qban{padding:5px 12px;border-radius:7px;margin-bottom:4px}
+  .qban .l{font-size:11.5px}
+  .qban .amt{font-size:16px}
+  .qsub{font-size:9.5px;margin-bottom:4px}
+  .qsec{font-size:11px;margin:5px 0 2px;padding-left:6px}
+  .qt{font-size:10.5px}
+  .qt th,.qt td{padding:1px 5px}
+  .qrmk{font-size:9.3px;line-height:1.25;margin-top:0}
+  .qtot{font-size:13.5px;padding:6px 12px;margin-top:6px;border-radius:6px}
+  .qfoot{font-size:9px;margin-top:5px;padding-top:3px}
+}
 `;
 
 function qrow(name: string, rmk: string, list: number, cust: number, benLabel: string): string {
@@ -158,16 +179,16 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
       <div><b>Guaranteed Min.</b> : ${won(L.guests)} 명 (+10% 추가 식사 제공 가능)</div>
       <div><b>Event Hall</b> : 플렌티 컨벤션 / L층</div>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;background:#fbe9e7;border:1px solid #f0b7ae;border-radius:9px;padding:11px 16px;margin-bottom:5px">
-      <div style="font-size:13px;color:#7a2018">고객님께서 받으신 <b>총 혜택</b>${(() => {
+    <div class="qban">
+      <div class="l">고객님께서 받으신 <b>총 혜택</b>${(() => {
         // 가톨릭 동문 / 성모병원 임직원 — 특별 혜택 대상임을 명시
         const ctName = cfg.ctypes[inp.ctype]?.name || '';
         return /가톨릭|성모/.test(ctName)
           ? ` <span style="font-weight:800;color:${QUOTE_GREEN}">(${esc(ctName)} 혜택 포함)</span>`
           : '';
       })()}</div>
-      <div style="font-size:22px;font-weight:800;color:#c0392b">₩ ${won(L.totalBenefit)} 할인</div></div>
-    <div style="font-size:11px;color:#7a756c;text-align:right;margin-bottom:8px">정상가 ${won(L.listTotal)}원 → 최종 ${won(L.A)}원</div>
+      <div class="amt">₩ ${won(L.totalBenefit)} 할인</div></div>
+    <div class="qsub">정상가 ${won(L.listTotal)}원 → 최종 ${won(L.A)}원</div>
     <div class="qsec">1) FOOD & BEVERAGE <span style="font-size:10px;color:#7a756c">*Currency: KRW</span></div>
     <table class="qt"><tr><th>ITEM</th><th class="n">정상가</th><th class="n">혜택</th><th class="n">고객가</th></tr>${courseRows}${noodleRow}${bev}</table>
     <div class="qsec">2) FLOWER</div>
