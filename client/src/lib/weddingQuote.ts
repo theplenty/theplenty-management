@@ -115,10 +115,31 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
   const rentPkg = `<tr><td><b>RENTAL & DIRECTION 패키지</b> (전 고객 묶음 제공)${rentDetail}</td>` +
     `<td class="n" style="color:#999;text-decoration:line-through">${won(cfg.rentList)}</td>` +
     `<td class="n"><span style="color:#c0392b">▼${won(L.rentBenefit)}</span></td><td class="n"><b>${won(L.rentRev)}</b></td></tr>`;
+  // ── 추가옵션 노출 — 미선택이어도 정상가를 보여주고 고객가는 'option' (합계 미포함)
+  //    대상: 서브홀 대관료 · 중계TV 추가 · 웨딩 스냅 현수막 · 포토백월 현수막
+  const exposeOpt = /서브홀 대관료|중계TV/;
+  const exposeOther = /현수막/;
+  const optionRow = (name: string, rmk: string, p: number): string =>
+    `<tr><td style="color:#8a8478">${esc(name)}<div class="qrmk">${esc(rmk)}</div>` +
+    `<div class="qrmk">선택 가능 — 합계 미포함</div></td>` +
+    `<td class="n" style="color:#999">${won(p)}</td>` +
+    `<td class="n">–</td><td class="n" style="color:#8a8478">option</td></tr>`;
   let optRows = '';
-  L.optLines.forEach((it) => { optRows += qrow(it.n + ' (옵션)', it.rmk, it.p, it.p, ''); });
+  cfg.optItems.forEach((it, i) => {
+    if (inp.opt[i]) optRows += qrow(it.n + ' (옵션)', it.rmk, it.p, it.p, '');
+    else if (exposeOpt.test(it.n)) optRows += optionRow(it.n + ' (옵션)', it.rmk, it.p);
+  });
   let otherRows = '';
-  L.otherLines.forEach((it) => { otherRows += qrow(it.n, it.rmk, it.p, it.svc ? 0 : it.p, it.svc ? '무상 제공 혜택' : ''); });
+  cfg.otherItems.forEach((it, i) => {
+    if (inp.otherOn[i]) {
+      const q = it.qtyMode ? (inp.otherQty[i] || 0) : 1;
+      const value = it.p * q;
+      const isSvc = inp.otherSvc[i];
+      otherRows += qrow(it.n + (it.qtyMode ? ` (${q}병/개)` : ''), it.rmk, value, isSvc ? 0 : value, isSvc ? '무상 제공 혜택' : '');
+    } else if (exposeOther.test(it.n)) {
+      otherRows += optionRow(it.n, it.rmk, it.p);
+    }
+  });
 
   return `
     <div class="qhead"><div class="t">PLENTY CONVENTION</div><div style="font-size:12px;color:#7a756c;letter-spacing:.2em">WEDDING ESTIMATE</div></div>

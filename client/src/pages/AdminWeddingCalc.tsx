@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import {
   type WeddingCalcSettings, type WCPreset, type WCSeason,
-  DEFAULT_WEDDING_CALC,
+  DEFAULT_WEDDING_CALC, normalizeCalcSettings,
 } from '../lib/weddingCalc';
 
 const SEASONS: WCSeason[] = ['워크인', '임직원', '비수기'];
@@ -31,12 +31,7 @@ export default function AdminWeddingCalc() {
     api.get<{ setting: { value: WeddingCalcSettings } }>('/api/settings/wedding-calc')
       .then((r) => {
         const v = r.setting?.value ?? DEFAULT_WEDDING_CALC;
-        setCfg({
-          ...v,
-          presets: (v.presets && v.presets.length) ? v.presets : DEFAULT_WEDDING_CALC.presets,
-          tierTeamlead: v.tierTeamlead ?? DEFAULT_WEDDING_CALC.tierTeamlead,
-          tierExecFloor: v.tierExecFloor ?? DEFAULT_WEDDING_CALC.tierExecFloor,
-        });
+        setCfg(normalizeCalcSettings(v));
       })
       .catch(() => setCfg(JSON.parse(JSON.stringify(DEFAULT_WEDDING_CALC))));
   }, []);

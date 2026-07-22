@@ -97,6 +97,7 @@ const DEFAULT_WEDDING_CALC: WeddingCalcSettings = {
     { n: '레드와인(SVC)', p: 60000, qty: 20, qtyMode: true, rmk: '당일 와인 소모량 중 SVC 제공 (일자·보증인원·가톨릭 여부별 수량 상이)', svc: true },
     { n: '웰컴 리셉션', p: 1000000, rmk: '1시간 전 로비 리셉션(샴페인/주스 택1) · 후기·만족도 설문 작성', svc: true },
     { n: '웨딩 스냅 현수막', p: 880000, rmk: '로비 배너(스냅) 현수막 주문제작 세팅&철수', svc: false, off: true },
+    { n: '포토백월 현수막', p: 880000, rmk: '포토백월 현수막 주문제작 세팅&철수', svc: false, off: true },
   ],
   bevItems: [
     { n: '레드와인', p: 60000, rmk: '테이블 세팅 / 테이블당 1 BTL 게런티' },

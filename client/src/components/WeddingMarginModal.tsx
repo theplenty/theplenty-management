@@ -8,7 +8,7 @@ import {
   type WeddingCalcSettings, type CalcInputs, type CourseKey, type FlowerGrade,
   DEFAULT_WEDDING_CALC, defaultInputs, computeMargin, won, pctText, TIER_HEX,
   flowerName, TIME_OPTIONS, summaryText, findPreset, seasonFor, periodFor,
-  mealDiscountOptions,
+  mealDiscountOptions, normalizeCalcSettings,
 } from '../lib/weddingCalc';
 import { buildQuoteHtml, QUOTE_CSS, openQuotePrint } from '../lib/weddingQuote';
 import type { WeddingEventInquiry } from '../types';
@@ -83,13 +83,8 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
         if (res.setting?.value) loaded = res.setting.value;
       } catch { /* 폴백: DEFAULT */ }
       if (!alive) return;
-      // 구버전 설정 호환 — preset/등급기준이 없으면 기본값으로 보강
-      loaded = {
-        ...loaded,
-        presets: (loaded.presets && loaded.presets.length) ? loaded.presets : DEFAULT_WEDDING_CALC.presets,
-        tierTeamlead: loaded.tierTeamlead ?? DEFAULT_WEDDING_CALC.tierTeamlead,
-        tierExecFloor: loaded.tierExecFloor ?? DEFAULT_WEDDING_CALC.tierExecFloor,
-      };
+      // 구버전 설정 호환 — preset/등급기준/추가된 기타옵션을 기본값으로 보강
+      loaded = normalizeCalcSettings(loaded);
       setCfg(loaded);
       // 프리필: 저장된 calc_payload 우선, 없으면 고객/예식후보에서
       let init: CalcInputs;

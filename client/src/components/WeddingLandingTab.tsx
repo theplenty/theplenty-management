@@ -9,6 +9,7 @@ import {
   computeMargin,
   defaultInputs,
   flowerName,
+  normalizeCalcSettings,
   won,
   type CalcInputs,
   type WeddingCalcSettings,
@@ -99,12 +100,7 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
         setSibling(landingRes.sibling ?? null);
         setSmtpConfigured(landingRes.smtp_configured);
         const loaded = cfgRes?.setting?.value ?? DEFAULT_WEDDING_CALC;
-        setCfg({
-          ...loaded,
-          presets: loaded.presets?.length ? loaded.presets : DEFAULT_WEDDING_CALC.presets,
-          tierTeamlead: loaded.tierTeamlead ?? DEFAULT_WEDDING_CALC.tierTeamlead,
-          tierExecFloor: loaded.tierExecFloor ?? DEFAULT_WEDDING_CALC.tierExecFloor,
-        });
+        setCfg(normalizeCalcSettings(loaded));
         if (landingRes.landing) {
           setBlockUntil(landingRes.landing.block_until || plusDays(7));
           setPriorities(landingRes.landing.priorities || []);
