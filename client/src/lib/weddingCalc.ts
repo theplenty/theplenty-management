@@ -83,7 +83,7 @@ export const DEFAULT_WEDDING_CALC: WeddingCalcSettings = {
     { n: '웨딩무대', rmk: '웨딩 무대 + 버진로드 세팅' },
     { n: '홀 장식', rmk: '홀 천장 장식 세팅 (휘장)' },
     { n: '포토테이블', rmk: '포토테이블 세팅 (액자 최대 8개 / 인화 사진 별도)' },
-    { n: '포토월(로비)', rmk: '플렌티 3단 화이트 포토월 기본 세팅 (로비)' },
+    { n: '포토백월(로비)', rmk: '플렌티 화이트 포토월 기본 세팅(로비)' },
     { n: '웨딩용품', rmk: '방명록·성혼선언문·봉투·펜·장갑·웨딩 메뉴카드' },
   ],
   optItems: [
@@ -174,8 +174,12 @@ export function DEFAULT_PRESETS(): WCPreset[] {
 export function normalizeCalcSettings(loaded: WeddingCalcSettings): WeddingCalcSettings {
   const otherNames = new Set((loaded.otherItems || []).map((it) => it.n));
   const missingOthers = DEFAULT_WEDDING_CALC.otherItems.filter((it) => !otherNames.has(it.n));
+  // 명칭 변경 마이그레이션 — 저장된 설정의 옛 이름을 현재 이름으로 치환
+  const rentItems = (loaded.rentItems || []).map((it) =>
+    it.n === '포토월(로비)' ? { ...it, n: '포토백월(로비)', rmk: '플렌티 화이트 포토월 기본 세팅(로비)' } : it);
   return {
     ...loaded,
+    rentItems,
     otherItems: missingOthers.length ? [...loaded.otherItems, ...missingOthers] : loaded.otherItems,
     presets: loaded.presets && loaded.presets.length ? loaded.presets : DEFAULT_WEDDING_CALC.presets,
     tierTeamlead: loaded.tierTeamlead ?? DEFAULT_WEDDING_CALC.tierTeamlead,

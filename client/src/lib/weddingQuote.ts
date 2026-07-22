@@ -12,25 +12,25 @@ const QUOTE_GREEN = '#1f6b3f';
 // 견적서 전용 스타일 (참조 HTML의 .q* 클래스)
 export const QUOTE_CSS = `
 .qbox,.qbox *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.qbox{background:#fff;border:1px solid #ccc;max-width:840px;margin:0 auto;padding:26px 30px;color:#2b2b2b;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif}
-.qhead{text-align:center;border-bottom:2px solid #5b4a3a;padding-bottom:8px;margin-bottom:12px}
+.qbox{background:#fff;border:1px solid #ccc;max-width:840px;margin:0 auto;padding:22px 28px;color:#2b2b2b;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif}
+.qhead{text-align:center;border-bottom:2px solid #5b4a3a;padding-bottom:6px;margin-bottom:10px}
 .qhead .t{font-size:22px;font-weight:800;letter-spacing:.25em;color:#5b4a3a}
-.qmeta{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:12.5px;margin-bottom:10px}.qmeta b{color:#5b4a3a}
-.qsec{font-size:13px;font-weight:800;color:#5b4a3a;margin:14px 0 4px;border-left:4px solid #5b4a3a;padding-left:7px}
-.qt{width:100%;border-collapse:collapse;font-size:11.5px}
-.qt th{background:#f4f1ec;border:1px solid #ddd;padding:5px 6px}
-.qt td{border:1px solid #e4ded3;padding:5px 6px;vertical-align:top}
+.qmeta{display:grid;grid-template-columns:1fr 1fr;gap:2px 18px;font-size:12.5px;margin-bottom:8px}.qmeta b{color:#5b4a3a}
+.qsec{font-size:13px;font-weight:800;color:#5b4a3a;margin:10px 0 3px;border-left:4px solid #5b4a3a;padding-left:7px}
+.qt{width:100%;border-collapse:collapse;font-size:12px}
+.qt th{background:#f4f1ec;border:1px solid #ddd;padding:4px 6px}
+.qt td{border:1px solid #e4ded3;padding:4px 6px;vertical-align:top}
 .qt td.n{text-align:right;white-space:nowrap}
-.qrmk{color:#7a756c;font-size:10.5px;line-height:1.4;margin-top:2px}
-.qtot{display:flex;justify-content:space-between;font-size:16.5px;font-weight:800;background:#1f6b3f;color:#fff;padding:12px 14px;border-radius:8px;margin-top:14px}
-.qfoot{font-size:11px;color:#7a756c;margin-top:14px;text-align:center;border-top:1px solid #e4ded3;padding-top:8px}
+.qrmk{color:#7a756c;font-size:11px;line-height:1.35;margin-top:1px}
+.qtot{display:flex;justify-content:space-between;font-size:16.5px;font-weight:800;background:#1f6b3f;color:#fff;padding:10px 14px;border-radius:8px;margin-top:10px}
+.qfoot{font-size:11px;color:#7a756c;margin-top:10px;text-align:center;border-top:1px solid #e4ded3;padding-top:6px}
 `;
 
 function qrow(name: string, rmk: string, list: number, cust: number, benLabel: string): string {
   const saved = list - cust;
   const custS = cust === 0 ? '<b style="color:#c0392b">SVC 무상</b>' : won(cust);
   const ben = saved > 0
-    ? `<span style="color:#c0392b">▼${won(saved)}${benLabel ? '<br><span style="font-size:9.5px">' + benLabel + '</span>' : ''}</span>`
+    ? `<span style="color:#c0392b">▼${won(saved)}${benLabel ? '<br><span style="font-size:10px">' + benLabel + '</span>' : ''}</span>`
     : '–';
   return `<tr><td>${esc(name)}${rmk ? `<div class="qrmk">${esc(rmk)}</div>` : ''}</td>` +
     `<td class="n" style="color:#999;${saved > 0 ? 'text-decoration:line-through' : ''}">${won(list)}</td>` +
@@ -54,7 +54,7 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
       const saved = list * (inp.mealDiscount / 100);
       const benCell =
         saved > 0
-          ? `<span style="color:#c0392b">▼${won(saved)}<br><span style="font-size:9.5px">식대 ${inp.mealDiscount}% 할인</span></span>`
+          ? `<span style="color:#c0392b">▼${won(saved)}<br><span style="font-size:10px">식대 ${inp.mealDiscount}% 할인</span></span>`
           : '–';
       if (ck === inp.course) {
         return (
@@ -67,8 +67,7 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
       // 미선택 코스 — 고객가 빈칸 (합계 미포함)
       return (
         `<tr><td style="color:#8a8478">Food — Western ${ck} Course (${won(unit)} × ${L.guests}명)` +
-        `<div class="qrmk">${esc(cfg.courseDesc[ck])}</div>` +
-        `<div class="qrmk">코스 변경 선택 가능 — 합계 미포함</div></td>` +
+        `<div class="qrmk">${esc(cfg.courseDesc[ck])} · 코스 변경 선택 가능 — 합계 미포함</div></td>` +
         `<td class="n" style="color:#999;${saved > 0 ? 'text-decoration:line-through' : ''}">${won(list)}</td>` +
         `<td class="n">${benCell}</td><td class="n"></td></tr>`
       );
@@ -93,7 +92,7 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
             : `Flower — ${label}`;
         const benCell =
           L.flowerBenefit > 0
-            ? `<span style="color:#c0392b">▼${won(L.flowerBenefit)}<br><span style="font-size:9.5px">${label} 무료 업그레이드</span></span>`
+            ? `<span style="color:#c0392b">▼${won(L.flowerBenefit)}<br><span style="font-size:10px">${label} 무료 업그레이드</span></span>`
             : '–';
         return (
           `<tr><td>${name}${selMark}<div class="qrmk">${esc(cfg.flowerDesc[g])}</div></td>` +
@@ -104,14 +103,16 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
       // 미선택 등급 — 고객가 빈칸 (합계 미포함)
       return (
         `<tr><td style="color:#8a8478">Flower — ${label}` +
-        `<div class="qrmk">${esc(cfg.flowerDesc[g])}</div>` +
-        `<div class="qrmk">업그레이드 선택 가능 — 합계 미포함</div></td>` +
+        `<div class="qrmk">${esc(cfg.flowerDesc[g])} · 업그레이드 선택 가능 — 합계 미포함</div></td>` +
         `<td class="n" style="color:#999">${won(price)}</td>` +
         `<td class="n">–</td><td class="n"></td></tr>`
       );
     })
     .join('');
-  const rentDetail = cfg.rentItems.map((it) => `<div class="qrmk">· <b>${esc(it.n)}</b> — ${esc(it.rmk)}</div>`).join('');
+  // 패키지 구성 — 2단 컬럼으로 압축 (한 줄짜리 항목 8개가 세로로 길어지는 것 방지)
+  const rentDetail = `<div style="columns:2;column-gap:18px;margin-top:2px">` +
+    cfg.rentItems.map((it) => `<div class="qrmk" style="break-inside:avoid">· <b>${esc(it.n)}</b> — ${esc(it.rmk)}</div>`).join('') +
+    `</div>`;
   const rentPkg = `<tr><td><b>RENTAL & DIRECTION 패키지</b> (전 고객 묶음 제공)${rentDetail}</td>` +
     `<td class="n" style="color:#999;text-decoration:line-through">${won(cfg.rentList)}</td>` +
     `<td class="n"><span style="color:#c0392b">▼${won(L.rentBenefit)}</span></td><td class="n"><b>${won(L.rentRev)}</b></td></tr>`;
@@ -120,10 +121,12 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
   const exposeOpt = /서브홀 대관료|중계TV/;
   const exposeOther = /현수막/;
   const optionRow = (name: string, rmk: string, p: number): string =>
-    `<tr><td style="color:#8a8478">${esc(name)}<div class="qrmk">${esc(rmk)}</div>` +
-    `<div class="qrmk">선택 가능 — 합계 미포함</div></td>` +
+    `<tr><td style="color:#8a8478">${esc(name)}` +
+    `<div class="qrmk">${rmk ? esc(rmk) + ' · ' : ''}선택 가능 — 합계 미포함</div></td>` +
     `<td class="n" style="color:#999">${won(p)}</td>` +
     `<td class="n">–</td><td class="n" style="color:#8a8478">option</td></tr>`;
+  // 웨딩국수 — 식사 추가 옵션 (1인 5,000원), 미포함 시에도 금액 노출
+  const noodleRow = optionRow(`웨딩국수 (${won(5000)} × ${L.guests}명)`, '', 5000 * L.guests);
   let optRows = '';
   cfg.optItems.forEach((it, i) => {
     if (inp.opt[i]) optRows += qrow(it.n + ' (옵션)', it.rmk, it.p, it.p, '');
@@ -160,7 +163,7 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
       <div style="font-size:22px;font-weight:800;color:#c0392b">₩ ${won(L.totalBenefit)} 할인</div></div>
     <div style="font-size:11px;color:#7a756c;text-align:right;margin-bottom:8px">정상가 ${won(L.listTotal)}원 → 최종 ${won(L.A)}원</div>
     <div class="qsec">1) FOOD & BEVERAGE <span style="font-size:10px;color:#7a756c">*Currency: KRW</span></div>
-    <table class="qt"><tr><th>ITEM</th><th class="n">정상가</th><th class="n">혜택</th><th class="n">고객가</th></tr>${courseRows}${bev}</table>
+    <table class="qt"><tr><th>ITEM</th><th class="n">정상가</th><th class="n">혜택</th><th class="n">고객가</th></tr>${courseRows}${noodleRow}${bev}</table>
     <div class="qsec">2) FLOWER</div>
     <table class="qt"><tr><th>ITEM</th><th class="n">정상가</th><th class="n">혜택</th><th class="n">고객가</th></tr>${flowerRows}</table>
     <div class="qsec">3) RENTAL FEE & DIRECTION</div>
