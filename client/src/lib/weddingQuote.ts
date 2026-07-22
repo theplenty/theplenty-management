@@ -11,6 +11,7 @@ const QUOTE_GREEN = '#1f6b3f';
 
 // 견적서 전용 스타일 (참조 HTML의 .q* 클래스)
 export const QUOTE_CSS = `
+.qbox,.qbox *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .qbox{background:#fff;border:1px solid #ccc;max-width:840px;margin:0 auto;padding:26px 30px;color:#2b2b2b;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif}
 .qhead{text-align:center;border-bottom:2px solid #5b4a3a;padding-bottom:8px;margin-bottom:12px}
 .qhead .t{font-size:22px;font-weight:800;letter-spacing:.25em;color:#5b4a3a}
