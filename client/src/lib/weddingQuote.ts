@@ -125,8 +125,14 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
     `<div class="qrmk">${rmk ? esc(rmk) + ' · ' : ''}선택 가능 — 합계 미포함</div></td>` +
     `<td class="n" style="color:#999">${won(p)}</td>` +
     `<td class="n">–</td><td class="n" style="color:#8a8478">option</td></tr>`;
-  // 웨딩국수 — 식사 추가 옵션 (1인 5,000원), 미포함 시에도 금액 노출
-  const noodleRow = optionRow(`웨딩국수 (${won(5000)} × ${L.guests}명)`, '', 5000 * L.guests);
+  // 웨딩국수 — 식사 추가 옵션 (1인 단가 × 보증인원). 미선택도 금액 노출, 선택 시 합계 포함
+  const noodleP = cfg.noodleP ?? 5000;
+  const noodleName = `웨딩국수 (${won(noodleP)} × ${L.guests}명)`;
+  const noodleRow = inp.noodle
+    ? `<tr><td>${noodleName}${selMark}</td>` +
+      `<td class="n" style="color:#999">${won(L.noodleRev)}</td>` +
+      `<td class="n">–</td><td class="n"><b>${won(L.noodleRev)}</b></td></tr>`
+    : optionRow(noodleName, '', noodleP * L.guests);
   let optRows = '';
   cfg.optItems.forEach((it, i) => {
     if (inp.opt[i]) optRows += qrow(it.n + ' (옵션)', it.rmk, it.p, it.p, '');

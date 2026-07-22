@@ -76,6 +76,7 @@ const DEFAULT_WEDDING_CALC: WeddingCalcSettings = {
   },
   rentList: 19000000,
   rentSpecial: 8500000,
+  noodleP: 5000,
   rentItems: [
     { n: '홀 대관료', rmk: '예식 2시간 (예식 간격 6시간)' },
     { n: '예식연출(미디어월)', rmk: '대형 400인치 LED 미디어월 1-2부 예식 연출' },

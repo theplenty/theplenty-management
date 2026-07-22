@@ -44,6 +44,7 @@ export interface WeddingCalcSettings {
   flowerDesc: { basic: string; lux: string; grand: string };
   rentList: number;
   rentSpecial: number;
+  noodleP?: number;      // 웨딩국수 1인 단가 (기본 5,000원)
   rentItems: WCRentItem[];
   optItems: WCOptItem[];
   otherItems: WCOtherItem[];
@@ -76,6 +77,7 @@ export const DEFAULT_WEDDING_CALC: WeddingCalcSettings = {
   },
   rentList: 19000000,
   rentSpecial: 8500000,
+  noodleP: 5000,
   rentItems: [
     { n: '홀 대관료', rmk: '예식 2시간 (예식 간격 6시간)' },
     { n: '예식연출(미디어월)', rmk: '대형 400인치 LED 미디어월 1-2부 예식 연출' },
@@ -180,6 +182,7 @@ export function normalizeCalcSettings(loaded: WeddingCalcSettings): WeddingCalcS
   return {
     ...loaded,
     rentItems,
+    noodleP: loaded.noodleP ?? DEFAULT_WEDDING_CALC.noodleP,
     otherItems: missingOthers.length ? [...loaded.otherItems, ...missingOthers] : loaded.otherItems,
     presets: loaded.presets && loaded.presets.length ? loaded.presets : DEFAULT_WEDDING_CALC.presets,
     tierTeamlead: loaded.tierTeamlead ?? DEFAULT_WEDDING_CALC.tierTeamlead,
@@ -235,6 +238,7 @@ export interface CalcInputs {
   ctype: number;         // ctypes 인덱스
   course: CourseKey;
   mealDiscount: number;  // %
+  noodle?: boolean;      // 웨딩국수 (1인 단가 × 보증인원) — option, 선택 시 합계 포함
   flowerBill: FlowerGrade;
   flowerGive: FlowerGrade;
   flowerUp: boolean;
@@ -268,6 +272,7 @@ export function defaultInputs(cfg: WeddingCalcSettings, prefill?: Partial<CalcIn
     ctype: ctypeIdx,
     course: prefill?.course ?? 'A',
     mealDiscount: prefill?.mealDiscount ?? (ct?.mealDisc ?? 0),
+    noodle: prefill?.noodle ?? false,
     flowerBill: prefill?.flowerBill ?? 'basic',
     flowerGive: prefill?.flowerGive ?? (ct?.flowerUp ? 'lux' : 'basic'),
     flowerUp: prefill?.flowerUp ?? (ct?.flowerUp ?? false),
@@ -332,6 +337,7 @@ export interface MarginResult {
   listMeal: number; effMeal: number; mealRev: number; mealList: number; mealBenefit: number;
   flowerGiveP: number; flowerRev: number; flowerBenefit: number;
   rentRev: number; rentBenefit: number;
+  noodleRev: number;
   optLines: WCOptItem[];
   otherLines: QuoteLine[];
   A: number; totalBenefit: number; listTotal: number;
@@ -378,9 +384,12 @@ export function computeMargin(inp: CalcInputs, cfg: WeddingCalcSettings): Margin
     otherLines.push({ n: it.n + (it.qtyMode ? ` (${q}병/개)` : ''), p: value, rmk: it.rmk, svc: isSvc });
   });
 
-  const A = mealRev + flowerRev + rentRev + optRev + otherRev;
+  // 웨딩국수 — 1인 단가 × 보증인원, 선택 시 정가 그대로 청구 (할인 없음)
+  const noodleRev = inp.noodle ? (cfg.noodleP ?? 5000) * guests : 0;
+
+  const A = mealRev + flowerRev + rentRev + optRev + otherRev + noodleRev;
   const totalBenefit = mealBenefit + flowerBenefit + rentBenefit + otherBenefit;
-  const listTotal = mealList + flowerGiveP + cfg.rentList + optRev + otherListSum;
+  const listTotal = mealList + flowerGiveP + cfg.rentList + optRev + otherListSum + noodleRev;
 
   function costAt(fF: number, lF: number): CostScenario {
     const food = courseFoodCost(cfg, inp.course) * (1 + fF) * guests;
@@ -409,7 +418,7 @@ export function computeMargin(inp: CalcInputs, cfg: WeddingCalcSettings): Margin
 
   return {
     pr, guests, listMeal, effMeal, mealRev, mealList, mealBenefit,
-    flowerGiveP, flowerRev, flowerBenefit, rentRev, rentBenefit,
+    flowerGiveP, flowerRev, flowerBenefit, rentRev, rentBenefit, noodleRev,
     optLines, otherLines, A, totalBenefit, listTotal, now, fut, tierInfo, headroom,
     preset, autoMargin,
   };

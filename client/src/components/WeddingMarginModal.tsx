@@ -301,6 +301,17 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
                   </div>
                 </Field>
               </div>
+              {/* 웨딩국수 — option. 미선택도 견적서에 금액 노출, 체크 시 합계 포함 */}
+              <div className="flex items-center gap-1.5 mt-2 text-xs font-medium">
+                <input
+                  type="checkbox"
+                  className="cursor-pointer accent-[#5b4a3a]"
+                  checked={!!inputs.noodle}
+                  onChange={(e) => setInp({ noodle: e.target.checked })}
+                />
+                <span>웨딩국수 ({won(cfg.noodleP ?? 5000)}원 × {result.guests}명 = <b>{won((cfg.noodleP ?? 5000) * result.guests)}</b>원)</span>
+                <span className="text-[11px] text-gray-400">— 미선택 시 견적서에 option으로만 노출</span>
+              </div>
             </Section>
 
             <Section title="③ FLOWER">
@@ -441,7 +452,7 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
               <table className="w-full text-[11.5px]">
                 <tbody>
                   <Row l={`식대 (${inputs.course}코스 ${won(result.effMeal)}×${result.guests})`} r={won(result.mealRev)} />
-                  <Row l="플라워(청구) / 렌탈패키지 / 옵션·기타" r={won(result.flowerRev + result.rentRev + result.optLines.reduce((s, it) => s + it.p, 0) + result.otherLines.filter((o) => !o.svc).reduce((s, o) => s + o.p, 0))} />
+                  <Row l="플라워(청구) / 렌탈패키지 / 옵션·기타" r={won(result.flowerRev + result.rentRev + result.noodleRev + result.optLines.reduce((s, it) => s + it.p, 0) + result.otherLines.filter((o) => !o.svc).reduce((s, o) => s + o.p, 0))} />
                   <Row l="A 고객견적" r={won(result.A)} bold />
                   <Row l="식대원가(행사시점) / 외부인건비" r={'-' + won(result.fut.food + result.fut.ext)} />
                   <Row l="플라워원가(제공) / 고정경비" r={'-' + won(result.fut.flowerCost + cfg.cost.fixed)} />

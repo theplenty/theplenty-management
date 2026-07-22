@@ -733,6 +733,7 @@ export interface WeddingCalcSettings {
   flowerDesc: { basic: string; lux: string; grand: string };
   rentList: number;
   rentSpecial: number;
+  noodleP?: number;
   rentItems: WCRentItem[];
   optItems: WCOptItem[];
   otherItems: WCOtherItem[];
