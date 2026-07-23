@@ -206,10 +206,35 @@ export function openQuotePrint(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
   const w = window.open('', '_blank', 'width=900,height=1000');
   if (!w) { alert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.'); return; }
   const title = `견적서_${inp.groom || ''}_${inp.bride || ''}`.replace(/_+$/, '');
+  const btnCss = 'flex:1;color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;cursor:pointer';
   w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>${esc(title)}</title>
     <style>body{margin:0;background:#fff;padding:16px}${QUOTE_CSS}
     @media print{body{padding:0}.qbox{border:none;max-width:none}.no-print{display:none}}</style></head>
-    <body><div class="no-print" style="max-width:840px;margin:0 auto 10px"><button onclick="window.print()" style="width:100%;background:#5b4a3a;color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;cursor:pointer">🖨 인쇄 / PDF 저장</button></div>
-    <div class="qbox">${buildQuoteHtml(inp, cfg, L)}</div></body></html>`);
+    <body><div class="no-print" style="max-width:840px;margin:0 auto 10px;display:flex;gap:8px">
+    <button onclick="window.print()" style="${btnCss};background:#5b4a3a">🖨 인쇄 / PDF 저장</button>
+    <button id="jpgbtn" onclick="saveJpg()" style="${btnCss};background:#1f6b3f">🖼 JPG로 저장</button></div>
+    <div class="qbox">${buildQuoteHtml(inp, cfg, L)}</div>
+    <script>
+    function saveJpg(){
+      var btn=document.getElementById('jpgbtn'); btn.disabled=true; btn.textContent='저장 중...';
+      var run=function(){
+        window.html2canvas(document.querySelector('.qbox'),{scale:2,backgroundColor:'#ffffff',useCORS:true}).then(function(c){
+          var a=document.createElement('a');
+          a.href=c.toDataURL('image/jpeg',0.95);
+          a.download=document.title+'.jpg';
+          a.click();
+          btn.disabled=false; btn.textContent='🖼 JPG로 저장';
+        }).catch(function(){ btn.disabled=false; btn.textContent='🖼 JPG로 저장'; alert('이미지 생성에 실패했습니다. 다시 시도해 주세요.'); });
+      };
+      if(window.html2canvas){ run(); }
+      else{
+        var s=document.createElement('script');
+        s.src='https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+        s.onload=run;
+        s.onerror=function(){ btn.disabled=false; btn.textContent='🖼 JPG로 저장'; alert('이미지 라이브러리 로드에 실패했습니다. 인터넷 연결을 확인해 주세요.'); };
+        document.head.appendChild(s);
+      }
+    }
+    <\/script></body></html>`);
   w.document.close();
 }

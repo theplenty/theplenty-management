@@ -96,8 +96,8 @@ export const DEFAULT_WEDDING_CALC: WeddingCalcSettings = {
   otherItems: [
     { n: '신부대기실 핑거푸드', p: 550000, rmk: '쿠키·초콜릿·마카롱 등 제공', svc: true },
     { n: '2부 케익 + 샴페인', p: 550000, rmk: '2부 케익(실물 1단+클레이 4단) + 샴페인 1병', svc: true },
-    { n: '레드와인(SVC)', p: 60000, qty: 20, qtyMode: true, rmk: '당일 와인 소모량 중 SVC 제공 (일자·보증인원·가톨릭 여부별 수량 상이)', svc: true },
-    { n: '웰컴 리셉션', p: 1000000, rmk: '1시간 전 로비 리셉션(샴페인/주스 택1) · 후기·만족도 설문 작성', svc: true },
+    { n: '레드와인(SVC)', p: 60000, qty: 20, qtyMode: true, rmk: '당일 와인 소모량 중 SVC 제공', svc: true },
+    { n: '웰컴 리셉션', p: 1000000, rmk: '1시간 전 로비 리셉션(샴페인/주스 택1)', svc: true },
     { n: '웨딩 스냅 현수막', p: 880000, rmk: '로비 배너(스냅) 현수막 주문제작 세팅&철수', svc: false, off: true },
     { n: '포토백월 현수막', p: 880000, rmk: '포토백월 현수막 주문제작 세팅&철수', svc: false, off: true },
   ],
@@ -179,11 +179,18 @@ export function normalizeCalcSettings(loaded: WeddingCalcSettings): WeddingCalcS
   // 명칭 변경 마이그레이션 — 저장된 설정의 옛 이름을 현재 이름으로 치환
   const rentItems = (loaded.rentItems || []).map((it) =>
     it.n === '포토월(로비)' ? { ...it, n: '포토백월(로비)', rmk: '플렌티 화이트 포토월 기본 세팅(로비)' } : it);
+  // 옛 설명 문구 치환 (정확히 일치할 때만 — admin이 직접 고친 문구는 보존)
+  const OLD_RMK: Record<string, string> = {
+    '당일 와인 소모량 중 SVC 제공 (일자·보증인원·가톨릭 여부별 수량 상이)': '당일 와인 소모량 중 SVC 제공',
+    '1시간 전 로비 리셉션(샴페인/주스 택1) · 후기·만족도 설문 작성': '1시간 전 로비 리셉션(샴페인/주스 택1)',
+  };
+  const otherItems = [...(loaded.otherItems || []), ...missingOthers].map((it) =>
+    OLD_RMK[it.rmk] ? { ...it, rmk: OLD_RMK[it.rmk] } : it);
   return {
     ...loaded,
     rentItems,
     noodleP: loaded.noodleP ?? DEFAULT_WEDDING_CALC.noodleP,
-    otherItems: missingOthers.length ? [...loaded.otherItems, ...missingOthers] : loaded.otherItems,
+    otherItems,
     presets: loaded.presets && loaded.presets.length ? loaded.presets : DEFAULT_WEDDING_CALC.presets,
     tierTeamlead: loaded.tierTeamlead ?? DEFAULT_WEDDING_CALC.tierTeamlead,
     tierExecFloor: loaded.tierExecFloor ?? DEFAULT_WEDDING_CALC.tierExecFloor,
