@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { matchesAnyField } from '../lib/koreanSearch';
 import { nanoid } from '../lib/clientId';
-import Modal from './Modal';
 import {
   CUSTOMER_ROLE_OPTIONS,
   type CustomerRole,
@@ -122,8 +121,13 @@ export default function EventCustomerLinks({ eventType, links, onChange }: Props
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [showSuggest, setShowSuggest] = useState(false);
-  // 연결된 업체 클릭 시 상세 팝업 — 고객정보 DB 내용을 한눈에 확인
-  const [detailCustomer, setDetailCustomer] = useState<AnyCustomer | null>(null);
+
+  // 연결된 업체 클릭 → 고객정보 페이지의 원래 수정 팝업을 새 탭으로 (?focus= 딥링크).
+  // 새 탭이라 행사수정 모달의 미저장 내용은 그대로 유지된다.
+  function openCustomerPopup(c: AnyCustomer) {
+    const base = c.customer_type === 'MICE' ? '/customers/mice' : '/customers/wedding';
+    window.open(`${base}?focus=${c.id}`, '_blank');
+  }
 
   useEffect(() => {
     let aborted = false;
@@ -290,9 +294,9 @@ export default function EventCustomerLinks({ eventType, links, onChange }: Props
                       {c ? (
                         <button
                           type="button"
-                          onClick={() => setDetailCustomer(c)}
+                          onClick={() => openCustomerPopup(c)}
                           className="text-left hover:underline focus:outline-none focus:underline"
-                          title="클릭하여 고객정보 DB 상세 보기"
+                          title="클릭하여 고객정보에서 열기 (새 탭)"
                         >
                           {describeCustomer(c)}
                           <span className="ml-1 text-[10px] text-gray-400">🔍</span>
@@ -389,145 +393,6 @@ export default function EventCustomerLinks({ eventType, links, onChange }: Props
         </div>
       )}
 
-      {/* 고객정보 DB 상세 팝업 — 연결된 업체 이름 클릭 시 표시. */}
-      <Modal
-        open={!!detailCustomer}
-        onClose={() => setDetailCustomer(null)}
-        title="고객정보 DB"
-        widthClass="max-w-2xl"
-        footer={
-          <button onClick={() => setDetailCustomer(null)} className="btn-primary">
-            닫기
-          </button>
-        }
-      >
-        {detailCustomer && <CustomerDetailView customer={detailCustomer} />}
-      </Modal>
-    </div>
-  );
-}
-
-// ===== 고객정보 DB 상세 미니뷰 — 행사수정 안에서 빠르게 확인용 =====
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-[11px] text-gray-500 mb-0.5">{label}</div>
-      <div className="text-sm text-gray-900 break-all">{value || <span className="text-gray-400">-</span>}</div>
-    </div>
-  );
-}
-
-function CustomerDetailView({ customer }: { customer: AnyCustomer }) {
-  if (customer.customer_type === 'MICE') {
-    const c = customer;
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="업체명" value={c.organization_name} />
-          <Field label="구분" value={c.mice_category} />
-          <Field label="공식 연락처" value={c.official_phone} />
-          <Field label="공식 이메일" value={c.official_email} />
-          {c.official_website && <Field label="공식 홈페이지" value={c.official_website} />}
-        </div>
-        {c.memo && (
-          <div>
-            <div className="text-[11px] text-gray-500 mb-0.5">메모</div>
-            <div className="text-sm text-gray-900 whitespace-pre-wrap bg-gray-50 border rounded p-2">
-              {c.memo}
-            </div>
-          </div>
-        )}
-        <div>
-          <div className="text-xs font-semibold text-gray-700 mb-2">
-            문의 ({c.inquiries.length}건)
-          </div>
-          {c.inquiries.length === 0 ? (
-            <div className="text-xs text-gray-400">등록된 문의가 없습니다.</div>
-          ) : (
-            <ul className="space-y-2">
-              {c.inquiries.map((inq, idx) => (
-                <li key={inq.id} className="border rounded p-2 text-xs">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold">#{idx + 1}</span>
-                    <span className="badge bg-gray-100 text-gray-700">{inq.progress_status}</span>
-                    {inq.inquiry_event_date_text && (
-                      <span className="text-gray-600">· {inq.inquiry_event_date_text}</span>
-                    )}
-                  </div>
-                  {inq.contacts.length > 0 && (
-                    <div className="text-gray-700">
-                      담당자:{' '}
-                      {inq.contacts
-                        .map((ct) => `${ct.name || '(이름없음)'} ${ct.phone || ''} ${ct.email || ''}`.trim())
-                        .join(' / ')}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-    );
-  }
-  // WEDDING
-  const c = customer;
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="행사명" value={c.wedding_event_name} />
-        <Field label="진행 단계" value={c.progress_status} />
-        <Field label="신랑" value={`${c.groom_name || ''} ${c.groom_phone || ''} ${c.groom_email || ''}`.trim()} />
-        <Field label="신부" value={`${c.bride_name || ''} ${c.bride_phone || ''} ${c.bride_email || ''}`.trim()} />
-        <Field label="신규문의일자" value={c.inquiry_date} />
-        <Field label="희망상담일자" value={c.desired_consultation_date} />
-        {c.source && <Field label="유입경로" value={`${c.source} ${c.source_detail || ''}`.trim()} />}
-        {c.desired_budget && <Field label="희망예산" value={c.desired_budget} />}
-        {c.competing_venues && <Field label="비교 웨딩홀" value={c.competing_venues} />}
-      </div>
-      {c.first_inform_comment && (
-        <div>
-          <div className="text-[11px] text-gray-500 mb-0.5">최초 안내사항</div>
-          <div className="text-sm text-gray-900 whitespace-pre-wrap bg-gray-50 border rounded p-2">
-            {c.first_inform_comment}
-          </div>
-        </div>
-      )}
-      {c.memo && (
-        <div>
-          <div className="text-[11px] text-gray-500 mb-0.5">메모</div>
-          <div className="text-sm text-gray-900 whitespace-pre-wrap bg-gray-50 border rounded p-2">
-            {c.memo}
-          </div>
-        </div>
-      )}
-      <div>
-        <div className="text-xs font-semibold text-gray-700 mb-2">
-          예식 후보 ({c.event_inquiries.length}건)
-        </div>
-        {c.event_inquiries.length === 0 ? (
-          <div className="text-xs text-gray-400">등록된 예식 후보가 없습니다.</div>
-        ) : (
-          <ul className="space-y-2">
-            {c.event_inquiries.map((eq, idx) => (
-              <li key={eq.id} className="border rounded p-2 text-xs">
-                <div className="font-semibold mb-1">#{idx + 1}</div>
-                {eq.wedding_datetime && <div>예식일시: {eq.wedding_datetime}</div>}
-                {eq.guaranteed_guest_count != null && (
-                  <div>예상 인원: {eq.guaranteed_guest_count}명</div>
-                )}
-                {eq.estimate_amount && <div>견적: {eq.estimate_amount}</div>}
-                {eq.assigned_manager_name && <div>담당지배인: {eq.assigned_manager_name}</div>}
-                {eq.visit_consultation_comment && (
-                  <div className="text-gray-500 mt-1 whitespace-pre-wrap">
-                    {eq.visit_consultation_comment}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
     </div>
   );
 }
