@@ -449,6 +449,12 @@ export function weddingConsultationByYear(
     if (c.progress_status === 'DEF') e.d++;
     map.set(y, e);
   }
+  // 데이터가 없어도 내년까지 행 노출 (다음 연도 상담 예약 대비) + 중간 빈 연도 채움
+  const nextYear = new Date().getFullYear() + 1;
+  const dataYears = Array.from(map.keys());
+  const minY = dataYears.length ? Math.min(...dataYears) : nextYear;
+  const maxY = Math.max(nextYear, ...dataYears);
+  for (let y = minY; y <= maxY; y++) if (!map.has(y)) map.set(y, { c: 0, d: 0 });
   return Array.from(map.entries())
     .sort(([a], [b]) => a - b)
     .map(([year, e]) => ({
