@@ -169,6 +169,17 @@ export default function Dashboard() {
 
   // ===== Section 3 — 유입경로 =====
   const yearlyTotals = useMemo(() => weddingYearlyTotals(wedding), [wedding]);
+
+  // 연도 선택지 — 데이터가 있는 가장 이른 연도부터 내년까지 (2027 준비 + 과거 데이터 조회)
+  const yearOptions = useMemo(() => {
+    const nowY = new Date().getFullYear();
+    const minY = yearlyTotals.length
+      ? Math.min(yearlyTotals[0].year, nowY - 2)
+      : nowY - 2;
+    const out: number[] = [];
+    for (let y = minY; y <= nowY + 1; y++) out.push(y);
+    return out;
+  }, [yearlyTotals]);
   const sourceBreakdown = useMemo(
     () => weddingSourceBreakdown(wedding, year, false),
     [wedding, year]
@@ -249,7 +260,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div style={{ fontFamily: "'Inter', Arial, Helvetica, sans-serif" }}>
-        <HeroHeader year={year} setYear={setYear} onRefresh={load} />
+        <HeroHeader year={year} setYear={setYear} years={yearOptions} onRefresh={load} />
         <div
           className="mt-12 py-16 text-center"
           style={{
@@ -271,7 +282,7 @@ export default function Dashboard() {
       style={{ fontFamily: "'Inter', Arial, Helvetica, sans-serif", color: NV.ink }}
       className="space-y-16"
     >
-      <HeroHeader year={year} setYear={setYear} onRefresh={load} />
+      <HeroHeader year={year} setYear={setYear} years={yearOptions} onRefresh={load} />
 
       {error && (
         <div
@@ -631,13 +642,14 @@ export default function Dashboard() {
 function HeroHeader({
   year,
   setYear,
+  years,
   onRefresh,
 }: {
   year: number;
   setYear: (y: number) => void;
+  years: number[];
   onRefresh: () => void;
 }) {
-  const now = new Date().getFullYear();
   return (
     <div className="relative w-full border border-gray-200 rounded-lg bg-white px-6 py-5">
       <div className="flex items-start justify-between gap-6 flex-wrap">
@@ -656,7 +668,7 @@ function HeroHeader({
             onChange={(e) => setYear(Number(e.target.value))}
             className="appearance-none px-3 py-1.5 text-sm font-semibold border border-gray-300 rounded bg-white text-gray-800"
           >
-            {[now - 2, now - 1, now, now + 1].map((y) => (
+            {years.map((y) => (
               <option key={y} value={y} style={{ color: NV.ink }}>
                 {y}년
               </option>

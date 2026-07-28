@@ -394,6 +394,12 @@ export function weddingYearlyTotals(customers: WeddingCustomer[]): Array<{ year:
     const y = new Date(t).getFullYear();
     map.set(y, (map.get(y) || 0) + 1);
   }
+  // 데이터가 없어도 내년까지 행 노출 (다음 연도 준비용) + 중간 빈 연도 채움
+  const nextYear = new Date().getFullYear() + 1;
+  const dataYears = Array.from(map.keys());
+  const minY = dataYears.length ? Math.min(...dataYears) : nextYear;
+  const maxY = Math.max(nextYear, ...dataYears);
+  for (let y = minY; y <= maxY; y++) if (!map.has(y)) map.set(y, 0);
   return Array.from(map.entries())
     .sort(([a], [b]) => a - b)
     .map(([year, total]) => ({ year, total }));
