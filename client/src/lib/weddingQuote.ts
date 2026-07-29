@@ -73,13 +73,18 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
       const unit = ck === 'A' ? L.pr.A : ck === 'B' ? L.pr.B : L.pr.C;
       const list = unit * L.guests;
       const saved = list * (inp.mealDiscount / 100);
+      // 1인 단가 표기 — 할인 시 할인 전 단가에 취소선, 할인된 단가를 실제 단가로
+      const discUnit = Math.round(unit * (1 - inp.mealDiscount / 100));
+      const unitLabel = saved > 0
+        ? `<span style="color:#999;text-decoration:line-through">${won(unit)}</span> ${won(discUnit)}`
+        : won(unit);
       const benCell =
         saved > 0
           ? `<span style="color:#c0392b">▼${won(saved)}<br><span style="font-size:10px">식대 ${inp.mealDiscount}% 할인</span></span>`
           : '–';
       if (ck === inp.course) {
         return (
-          `<tr><td>Food — Western ${ck} Course (${won(unit)} × ${L.guests}명)${selMark}` +
+          `<tr><td>Food — Western ${ck} Course (${unitLabel} × ${L.guests}명)${selMark}` +
           `<div class="qrmk">${esc(cfg.courseDesc[ck])}</div></td>` +
           `<td class="n" style="color:#999;${saved > 0 ? 'text-decoration:line-through' : ''}">${won(L.mealList)}</td>` +
           `<td class="n">${benCell}</td><td class="n"><b>${won(L.mealRev)}</b></td></tr>`
@@ -87,7 +92,7 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
       }
       // 미선택 코스 — 고객가 빈칸 (합계 미포함)
       return (
-        `<tr><td style="color:#8a8478">Food — Western ${ck} Course (${won(unit)} × ${L.guests}명)` +
+        `<tr><td style="color:#8a8478">Food — Western ${ck} Course (${unitLabel} × ${L.guests}명)` +
         `<div class="qrmk">${esc(cfg.courseDesc[ck])} · 코스 변경 선택 가능 — 합계 미포함</div></td>` +
         `<td class="n" style="color:#999;${saved > 0 ? 'text-decoration:line-through' : ''}">${won(list)}</td>` +
         `<td class="n">${benCell}</td><td class="n"></td></tr>`
@@ -138,9 +143,9 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
     `<td class="n" style="color:#999;text-decoration:line-through">${won(cfg.rentList)}</td>` +
     `<td class="n"><span style="color:#c0392b">▼${won(L.rentBenefit)}</span></td><td class="n"><b>${won(L.rentRev)}</b></td></tr>`;
   // ── 추가옵션 노출 — 미선택이어도 정상가를 보여주고 고객가는 'option' (합계 미포함)
-  //    대상: 서브홀 대관료 · 중계TV 추가 · 웨딩 스냅 현수막 · 포토백월 현수막
+  //    대상: 서브홀 대관료 · 중계TV 추가 · 웨딩 스냅 현수막 · 포토백월 현수막 · 웰컴 리셉션(유료 구매 가능 안내)
   const exposeOpt = /서브홀 대관료|중계TV/;
-  const exposeOther = /현수막/;
+  const exposeOther = /현수막|웰컴/;
   const optionRow = (name: string, rmk: string, p: number): string =>
     `<tr><td style="color:#8a8478">${esc(name)}` +
     `<div class="qrmk">${rmk ? esc(rmk) + ' · ' : ''}선택 가능 — 합계 미포함</div></td>` +
