@@ -1,3 +1,4 @@
+import { weekdayKoOf } from '../lib/dateFmt';
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import Modal from '../components/Modal';
@@ -10,7 +11,7 @@ function fmt(ts: string | null): string {
   const d = new Date(ts);
   if (isNaN(d.getTime())) return ts;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function AdminApiKeys() {

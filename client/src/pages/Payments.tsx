@@ -2,6 +2,7 @@
 // 관리자: CRUD / 세일즈·연회: 읽기 전용
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fmtDateW, weekdayKo } from '../lib/dateFmt';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { canWritePayments } from '../auth/permissions';
@@ -281,7 +282,7 @@ export default function Payments() {
                       <p className="text-xs text-gray-500 truncate">{ev.halls?.join(', ')}</p>
                     </div>
                     <div className="flex-shrink-0 flex flex-col items-end gap-0.5">
-                      <span className="text-xs text-gray-400">{ev.start_datetime?.slice(5, 10)}</span>
+                      <span className="text-xs text-gray-400">{ev.start_datetime ? `${ev.start_datetime.slice(5, 10)} (${weekdayKo(ev.start_datetime)})` : ''}</span>
                       {hasAlert && <span className="text-[10px] text-red-500">카드미입금</span>}
                     </div>
                   </div>
@@ -305,7 +306,7 @@ export default function Payments() {
             <div className="bg-white rounded-lg border p-3 flex items-start justify-between">
               <div>
                 <h3 className="font-semibold text-base">{selectedEvent.event_name}</h3>
-                <p className="text-sm text-gray-500">{selectedEvent.halls?.join(', ')} · {selectedEvent.start_datetime?.slice(0, 10)}</p>
+                <p className="text-sm text-gray-500">{selectedEvent.halls?.join(', ')} · {fmtDateW(selectedEvent.start_datetime)}</p>
               </div>
               <span className={`text-xs px-2 py-0.5 rounded-full ${
                 selectedEvent.event_type === 'MICE' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'
@@ -351,7 +352,7 @@ export default function Payments() {
                 {payments.filter(isDepositOverdue).map((p) => (
                   <p key={p.id} className="text-xs">
                     {PAYMENT_TYPE_LABEL[p.payment_type]} {fmtW(p.amount)} ({CARD_COMPANY_LABEL[p.card_company!]}) —
-                    결제일 {p.paid_at}, {CARD_DEPOSIT_DAYS[p.card_company!]}영업일 초과
+                    결제일 {fmtDateW(p.paid_at)}, {CARD_DEPOSIT_DAYS[p.card_company!]}영업일 초과
                   </p>
                 ))}
               </div>
@@ -488,7 +489,7 @@ export default function Payments() {
                               'bg-gray-100 text-gray-700'
                             }`}>{PAYMENT_TYPE_LABEL[p.payment_type]}</span>
                           </td>
-                          <td className="px-3 py-2 text-xs text-gray-600">{p.paid_at}</td>
+                          <td className="px-3 py-2 text-xs text-gray-600">{fmtDateW(p.paid_at)}</td>
                           <td className="px-3 py-2 text-right font-medium tabular-nums">
                             {p.payment_type === 'refund' ? (
                               <span className="text-red-600">-{fmtW(p.amount)}</span>
@@ -500,7 +501,7 @@ export default function Payments() {
                               <div>
                                 <p>{p.card_company ? CARD_COMPANY_LABEL[p.card_company] : ''}</p>
                                 {p.bank_deposit_date ? (
-                                  <p className="text-green-600">입금 {p.bank_deposit_date}</p>
+                                  <p className="text-green-600">입금 {fmtDateW(p.bank_deposit_date)}</p>
                                 ) : overdue ? (
                                   <p className="text-red-600 font-medium">⚠ 미입금</p>
                                 ) : (

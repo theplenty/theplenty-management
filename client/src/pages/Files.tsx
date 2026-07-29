@@ -1,3 +1,4 @@
+import { weekdayKoOf, insertWeekday } from '../lib/dateFmt';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -23,7 +24,7 @@ function fmtDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function Files() {
@@ -127,7 +128,7 @@ export default function Files() {
             <tbody>
               {collabs.slice(0, 12).map((c) => (
                 <tr key={c.id} className="border-t">
-                  <td className="px-4 py-2 text-xs text-gray-500">{c.created_at.slice(0, 10)}</td>
+                  <td className="px-4 py-2 text-xs text-gray-500">{insertWeekday(c.created_at.slice(0, 10))}</td>
                   <td className="px-4 py-2">
                     <Link to="/collaborations" className="text-blue-600 hover:underline">
                       {c.customer_event_name}

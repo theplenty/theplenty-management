@@ -1,3 +1,4 @@
+import { weekdayKoOf } from '../lib/dateFmt';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
@@ -69,7 +70,7 @@ function fmt(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // 테이블 헤더 클릭 정렬용 — key별 sortValue 매핑. has_review 는 boolean → number 로 변환.

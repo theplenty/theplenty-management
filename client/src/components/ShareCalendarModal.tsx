@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { weekdayKoOf } from '../lib/dateFmt';
 import Modal from './Modal';
 import { Field } from './Field';
 import { api } from '../lib/api';
@@ -191,7 +192,7 @@ export default function ShareCalendarModal({ open, onClose }: Props) {
                       </td>
                       <td className="px-3 py-2">{s.label}</td>
                       <td className="px-3 py-2 text-xs text-gray-500">
-                        {new Date(s.created_at).toLocaleDateString('ko-KR')}
+                        {new Date(s.created_at).toLocaleDateString('ko-KR')} ({weekdayKoOf(new Date(s.created_at))})
                       </td>
                       <td className="px-3 py-2 text-xs">
                         <code className="text-[11px] break-all text-gray-700">

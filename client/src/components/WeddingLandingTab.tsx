@@ -3,6 +3,7 @@
 // 견적은 발행 시점에 예식후보의 calc_payload → 고객용 HTML로 스냅샷 저장 (내부 마진 미포함).
 
 import { useEffect, useMemo, useState } from 'react';
+import { insertWeekday } from '../lib/dateFmt';
 import { api, type ApiError } from '../lib/api';
 import {
   DEFAULT_WEDDING_CALC,
@@ -401,7 +402,7 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
             >
               {inquiries.map((q, i) => (
                 <option key={q.id} value={q.id}>
-                  #{i + 1} {q.wedding_datetime ? q.wedding_datetime.replace('T', ' ') : '(일시 미정)'}
+                  #{i + 1} {q.wedding_datetime ? insertWeekday(q.wedding_datetime.replace('T', ' ')) : '(일시 미정)'}
                   {q.estimate_amount ? ` · ${q.estimate_amount}원` : ''}
                 </option>
               ))}

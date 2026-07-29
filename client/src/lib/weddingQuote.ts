@@ -5,6 +5,7 @@ import {
   type CalcInputs, type CourseKey, type FlowerGrade, type MarginResult, type WeddingCalcSettings,
   flowerName, won,
 } from './weddingCalc';
+import { insertWeekday } from './dateFmt';
 
 // 플렌티 키컬러 (그린) — 견적서 강조용
 const QUOTE_GREEN = '#1f6b3f';
@@ -180,7 +181,7 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
     <div class="qhead"><div class="t">PLENTY CONVENTION</div><div style="font-size:12px;color:#7a756c;letter-spacing:.2em">WEDDING ESTIMATE</div></div>
     <div class="qmeta">
       <div><b>Name of Event</b> : ${esc(inp.groom) || '_____'} & ${esc(inp.bride) || '_____'} 님</div>
-      <div><b>Date & Time</b> : ${esc(inp.wdate) || '____'}${inp.wtime ? ` ${esc(inp.wtime)}` : ` (${esc(inp.time)})`}</div>
+      <div><b>Date & Time</b> : ${inp.wdate ? esc(insertWeekday(inp.wdate)) : '____'}${inp.wtime ? ` ${esc(inp.wtime)}` : ` (${esc(inp.time)})`}</div>
       <div><b>Guaranteed Min.</b> : ${won(L.guests)} 명 (+10% 추가 식사 제공 가능)</div>
       <div><b>Event Hall</b> : 플렌티 컨벤션 / L층</div>
     </div>

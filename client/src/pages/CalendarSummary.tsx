@@ -2,6 +2,7 @@
 // 셀에 그대로 펼쳐 보여주고, 보이는 화면 그대로 출력(window.print)한다.
 // 공개 공유 링크(로그인 없이 열람)도 발급/복사 가능.
 
+import { weekdayKoOf } from '../lib/dateFmt';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -14,7 +15,7 @@ const EXCLUDED_STATUSES = new Set<EventStatus>(['상담취소', '미팅', '미�
 function nowStamp(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function CalendarSummary() {

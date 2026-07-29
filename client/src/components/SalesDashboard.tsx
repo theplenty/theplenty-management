@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { fmtDateW, fmtDateTimeW } from '../lib/dateFmt';
 import {
   type ActiveUserOption,
   type MiceCustomer,
@@ -541,7 +542,7 @@ function MiceDrillTable({
                 </span>
               </td>
               <td className="px-3 py-2 text-gray-600">
-                {(it.inquiry.call_date || it.inquiry.created_at).slice(0, 10)}
+                {fmtDateW(it.inquiry.call_date || it.inquiry.created_at)}
               </td>
               <td className="px-3 py-2 text-gray-600">
                 {it.inquiry.inquiry_event_date_text || '-'}
@@ -603,10 +604,10 @@ function WeddingDrillTable({
                 {c.bride_phone && <span className="text-xs text-gray-500 block">{c.bride_phone}</span>}
               </td>
               <td className="px-3 py-2 text-gray-600">
-                {(c.inquiry_date || c.created_at).slice(0, 10)}
+                {fmtDateW(c.inquiry_date || c.created_at)}
               </td>
               <td className="px-3 py-2 text-gray-600">
-                {c.desired_consultation_date?.slice(0, 16).replace('T', ' ') || '-'}
+                {c.desired_consultation_date ? fmtDateTimeW(c.desired_consultation_date) : '-'}
               </td>
               <td className="px-3 py-2 text-gray-600">
                 {c.source || '-'}
@@ -860,7 +861,7 @@ function RecentOutcallsCard({ items }: { items: Array<{ inquiry: import('../type
                   </span>
                 </div>
                 <div className="text-gray-500 truncate">
-                  {it.inquiry.created_at.slice(0, 10)} · {it.inquiry.assigned_manager_name || '담당 미지정'}
+                  {fmtDateW(it.inquiry.created_at)} · {it.inquiry.assigned_manager_name || '담당 미지정'}
                 </div>
               </button>
             </li>
@@ -927,7 +928,7 @@ function ScheduledConsultsCard({
               >
                 <div className="font-semibold text-gray-900 truncate">{c.wedding_event_name || '(이름 없음)'}</div>
                 <div className="text-gray-500 truncate">
-                  {c.desired_consultation_date?.slice(0, 16).replace('T', ' ') || '날짜 미정'}
+                  {c.desired_consultation_date ? fmtDateTimeW(c.desired_consultation_date) : '날짜 미정'}
                 </div>
               </button>
             </li>
@@ -955,7 +956,7 @@ function CancelledConsultsCard({ items }: { items: WeddingCustomer[] }) {
                 className="w-full text-left p-2 rounded border bg-white hover:bg-amber-50 text-xs"
               >
                 <div className="font-semibold text-gray-900 truncate">{c.wedding_event_name || '(이름 없음)'}</div>
-                <div className="text-gray-500 truncate">최종 수정 {c.updated_at.slice(0, 10)}</div>
+                <div className="text-gray-500 truncate">최종 수정 {fmtDateW(c.updated_at)}</div>
               </button>
             </li>
           ))}
@@ -999,7 +1000,7 @@ function StaleWeddingCard({
                   </span>
                 </div>
                 <div className="text-gray-500 truncate">
-                  {it.customer.progress_status} · {it.customer.inquiry_date?.slice(0, 10) || '문의일 미정'}
+                  {it.customer.progress_status} · {it.customer.inquiry_date ? fmtDateW(it.customer.inquiry_date) : '문의일 미정'}
                 </div>
               </button>
             </li>

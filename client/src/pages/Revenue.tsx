@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { fmtDateW } from '../lib/dateFmt';
 import { useAuth } from '../auth/AuthContext';
 import { canWriteRevenue } from '../auth/permissions';
 import { api } from '../lib/api';
@@ -738,7 +739,7 @@ export default function Revenue() {
                     >
                       <td className="px-3 py-2 text-gray-500">{rowNum}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
-                        {ev.start_datetime.slice(0, 10)}
+                        {fmtDateW(ev.start_datetime)}
                       </td>
                       <td className="px-3 py-2 font-medium max-w-[220px]">
                         <div className="flex items-center gap-1.5">
@@ -769,7 +770,7 @@ export default function Revenue() {
                         </span>
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-gray-600">
-                        {ev.contract_date ?? '—'}
+                        {ev.contract_date ? fmtDateW(ev.contract_date) : '—'}
                       </td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         {fmtKRW(ev.contract_amount)}
@@ -973,7 +974,7 @@ function ExpandedPanel({
           <div>
             <label className="block text-xs text-gray-500 mb-1">계약일</label>
             {ro ? (
-              <div className="text-sm text-gray-800">{editForm.contract_date || '—'}</div>
+              <div className="text-sm text-gray-800">{editForm.contract_date ? fmtDateW(editForm.contract_date) : '—'}</div>
             ) : (
               <input
                 type="date"
@@ -1088,7 +1089,7 @@ function ExpandedPanel({
             </div>
             <div>
               <div className="text-xs text-gray-500 mb-0.5">입금일자</div>
-              <div className="text-sm text-gray-800">{invoice.payment_date || '—'}</div>
+              <div className="text-sm text-gray-800">{invoice.payment_date ? fmtDateW(invoice.payment_date) : '—'}</div>
             </div>
             <div>
               <div className="text-xs text-gray-500 mb-0.5">계산서 발행</div>
@@ -1100,7 +1101,7 @@ function ExpandedPanel({
             </div>
             <div>
               <div className="text-xs text-gray-500 mb-0.5">세금계산서 발행일자</div>
-              <div className="text-sm text-gray-800">{invoice.tax_invoice_issue_date || '—'}</div>
+              <div className="text-sm text-gray-800">{invoice.tax_invoice_issue_date ? fmtDateW(invoice.tax_invoice_issue_date) : '—'}</div>
             </div>
           </div>
         )}

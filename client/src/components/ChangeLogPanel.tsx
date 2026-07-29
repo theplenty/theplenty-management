@@ -1,3 +1,4 @@
+import { weekdayKoOf } from '../lib/dateFmt';
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import type { ChangeLog, ChangeLogEntityType } from '../types';
@@ -24,7 +25,7 @@ function fmt(ts: string): string {
   const d = new Date(ts);
   if (isNaN(d.getTime())) return ts;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // before/after 가 객체/배열인 경우 — JSX 에 그대로 박으면 React error #31 ("Objects are not valid

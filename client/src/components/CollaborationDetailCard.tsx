@@ -2,6 +2,7 @@
 // 역할에 따라 회신 폼(주방/연회) / 결정 폼(세일즈) 을 인라인으로 노출.
 // 행사 모달 탭과 대시보드 양쪽에서 재사용.
 
+import { weekdayKoOf, insertWeekday } from '../lib/dateFmt';
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import {
@@ -45,7 +46,7 @@ function fmtDateTime(iso: string | null): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const pad = (x: number) => String(x).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function CollaborationDetailCard({
@@ -107,7 +108,7 @@ export default function CollaborationDetailCard({
             <div className="text-[11px] text-gray-500">
               작성자 {cr.created_by_name} · {fmtDateTime(cr.created_at)}
             </div>
-            <Row label="행사 예정일" value={cr.event_date || '-'} />
+            <Row label="행사 예정일" value={cr.event_date ? insertWeekday(cr.event_date) : '-'} />
             <Row label="고객 요청 사항" value={cr.customer_request} />
             <div>
               <span className="text-[11px] text-gray-500">표준 대비 다른 부분</span>

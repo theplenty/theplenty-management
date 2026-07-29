@@ -1,3 +1,4 @@
+import { weekdayKoOf, insertWeekday } from '../lib/dateFmt';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { Field } from './Field';
@@ -51,7 +52,7 @@ function fmt(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function ReviewTab({ eventId, canWrite, eventStartDatetime, eventStatus }: Props) {
@@ -259,7 +260,7 @@ export default function ReviewTab({ eventId, canWrite, eventStartDatetime, event
         </div>
         <div className="text-xs text-yellow-700 mt-2">
           현재 상태: {eventStatus}
-          {eventStartDatetime && ` · 행사일: ${eventStartDatetime.slice(0, 10)}`}
+          {eventStartDatetime && ` · 행사일: ${insertWeekday(eventStartDatetime.slice(0, 10))}`}
         </div>
       </div>
     );
@@ -475,7 +476,7 @@ function FinalInvoiceSection({
                 {f.file_name}
               </a>
               <div className="flex items-center gap-3 text-xs text-gray-500 ml-3 shrink-0">
-                <span>{new Date(f.uploaded_at).toLocaleString('ko-KR')}</span>
+                <span>{fmt(f.uploaded_at)}</span>
                 {canWrite && (
                   <button
                     onClick={() => onDelete(f)}

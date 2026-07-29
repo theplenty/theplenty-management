@@ -1,3 +1,4 @@
+import { weekdayKoOf, insertWeekday } from '../lib/dateFmt';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -48,7 +49,7 @@ function fmt(s: string | null | undefined): string {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function fmtPhone(p: string | null | undefined): string {
@@ -331,7 +332,7 @@ function MiceInquiryCard({
         </div>
       )}
       {inq.call_date && (
-        <div className="text-[11px] text-gray-500 mt-1">최근 통화: {inq.call_date}</div>
+        <div className="text-[11px] text-gray-500 mt-1">최근 통화: {insertWeekday(inq.call_date)}</div>
       )}
     </li>
   );

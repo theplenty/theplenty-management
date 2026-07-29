@@ -1,3 +1,4 @@
+import { weekdayKoOf, insertWeekday } from '../lib/dateFmt';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -50,12 +51,12 @@ function fmt(s: string | null | undefined): string {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function fmtDateOnly(s: string | null | undefined): string {
   if (!s) return '-';
-  return s.slice(0, 10);
+  return insertWeekday(s.slice(0, 10));
 }
 
 // 전화번호 정규화 표시 ("01012345678" → "010-1234-5678")

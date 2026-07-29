@@ -1,3 +1,4 @@
+import { weekdayKoOf, fmtDateTimeW } from '../lib/dateFmt';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { detectConflict } from '../lib/conflictCheck';
@@ -757,7 +758,7 @@ export default function EventFormModal({
                   </span>
                 </div>
                 <div className="text-xs text-gray-600">
-                  {c.halls.join(' / ') || '홀 미지정'} · {c.start_datetime} ~ {c.end_datetime}
+                  {c.halls.join(' / ') || '홀 미지정'} · {fmtDateTimeW(c.start_datetime)} ~ {fmtDateTimeW(c.end_datetime)}
                 </div>
                 {c.assigned_manager_name && (
                   <div className="text-xs text-gray-500">담당: {c.assigned_manager_name}</div>
@@ -804,7 +805,7 @@ function fmtDateTime(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function BasicInfoTab({

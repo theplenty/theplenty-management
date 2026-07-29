@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { weekdayKoOf } from '../lib/dateFmt';
 import { api } from '../lib/api';
 import { fuzzyMatch, buildSearchEntry, fuzzyMatchEntry, type SearchEntry } from '../lib/koreanSearch';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
@@ -129,12 +130,13 @@ const MICE_COLUMNS: MiceCol[] = [
             <br />
             <span className="text-gray-400">
               {c.last_modified_at &&
-                new Date(c.last_modified_at).toLocaleString('ko-KR', {
+                `${new Date(c.last_modified_at).toLocaleString('ko-KR', {
                   month: '2-digit',
                   day: '2-digit',
+                })} (${weekdayKoOf(new Date(c.last_modified_at))}) ${new Date(c.last_modified_at).toLocaleString('ko-KR', {
                   hour: '2-digit',
                   minute: '2-digit',
-                })}
+                })}`}
             </span>
           </>
         ) : (

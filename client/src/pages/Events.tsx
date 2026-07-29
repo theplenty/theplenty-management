@@ -1,3 +1,4 @@
+import { weekdayKoOf } from '../lib/dateFmt';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { canCreateEvent, isAdmin } from '../auth/permissions';
@@ -940,7 +941,7 @@ function fmt(s: string): string {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // 수정·등록 시점이 최근 24시간 이내면 New 표시.
@@ -966,7 +967,7 @@ function fmtRange(start: string, end: string): string {
   const e = end ? new Date(end) : null;
   if (isNaN(s.getTime())) return start;
   const pad = (n: number) => String(n).padStart(2, '0');
-  const sStr = `${s.getFullYear()}-${pad(s.getMonth() + 1)}-${pad(s.getDate())} ${pad(s.getHours())}:${pad(s.getMinutes())}`;
+  const sStr = `${s.getFullYear()}-${pad(s.getMonth() + 1)}-${pad(s.getDate())} (${weekdayKoOf(s)}) ${pad(s.getHours())}:${pad(s.getMinutes())}`;
   if (!e || isNaN(e.getTime())) return sStr;
   const sameDay =
     s.getFullYear() === e.getFullYear() &&
@@ -974,6 +975,6 @@ function fmtRange(start: string, end: string): string {
     s.getDate() === e.getDate();
   const eStr = sameDay
     ? `${pad(e.getHours())}:${pad(e.getMinutes())}`
-    : `${e.getFullYear()}-${pad(e.getMonth() + 1)}-${pad(e.getDate())} ${pad(e.getHours())}:${pad(e.getMinutes())}`;
+    : `${e.getFullYear()}-${pad(e.getMonth() + 1)}-${pad(e.getDate())} (${weekdayKoOf(e)}) ${pad(e.getHours())}:${pad(e.getMinutes())}`;
   return `${sStr} ~ ${eStr}`;
 }

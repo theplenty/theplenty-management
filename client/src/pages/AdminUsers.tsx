@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { weekdayKoOf } from '../lib/dateFmt';
 import { api } from '../lib/api';
 import { ROLE_LABEL, type Role, type Team, type User } from '../types';
 import { invalidateActiveUsers } from '../lib/useActiveUsers';
@@ -226,7 +227,7 @@ export default function AdminUsers() {
                       </select>
                     </td>
                     <td className="px-4 py-2 text-xs text-gray-500">
-                      {new Date(u.created_at).toLocaleDateString('ko-KR')}
+                      {new Date(u.created_at).toLocaleDateString('ko-KR')} ({weekdayKoOf(new Date(u.created_at))})
                     </td>
                     <td className="px-4 py-2">
                       <button

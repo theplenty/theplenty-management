@@ -1,3 +1,4 @@
+import { weekdayKoOf, insertWeekday } from '../lib/dateFmt';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { buildSearchEntry, fuzzyMatchEntry, type SearchEntry } from '../lib/koreanSearch';
@@ -85,12 +86,13 @@ const WEDDING_COLUMNS: WedCol[] = [
         {c.event_inquiries
           .map((i) =>
             i.wedding_datetime
-              ? new Date(i.wedding_datetime).toLocaleString('ko-KR', {
+              ? `${new Date(i.wedding_datetime).toLocaleString('ko-KR', {
                   month: 'numeric',
                   day: 'numeric',
+                })} (${weekdayKoOf(new Date(i.wedding_datetime))}) ${new Date(i.wedding_datetime).toLocaleString('ko-KR', {
                   hour: '2-digit',
                   minute: '2-digit',
-                })
+                })}`
               : '미정'
           )
           .join(' / ') || '-'}
@@ -163,11 +165,11 @@ function joinDateTime(date: string, time: string): string | null {
 }
 function fmtDateOrDateTime(s: string | null | undefined): string {
   if (!s) return '-';
-  if (!s.includes('T')) return s;
+  if (!s.includes('T')) return insertWeekday(s);
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function emptyEventInquiry(authorId: string, authorName: string): WeddingEventInquiry {

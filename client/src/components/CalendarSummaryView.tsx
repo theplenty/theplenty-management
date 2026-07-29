@@ -3,6 +3,7 @@
 // 모바일: 셀당 2건 + 날짜 탭 시 하단에 그날 요약 카드 리스트.
 
 import { useEffect, useMemo, useState } from 'react';
+import { insertWeekday } from '../lib/dateFmt';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
@@ -197,7 +198,7 @@ export default function CalendarSummaryView({ events }: { events: SummaryEvent[]
       {isMobile && selectedDate && (
         <div className="mt-3">
           <div className="text-sm font-semibold text-gray-700 mb-2">
-            {selectedDate} 요약 ({dayEvents.length}건)
+            {insertWeekday(selectedDate)} 요약 ({dayEvents.length}건)
           </div>
           {dayEvents.length === 0 ? (
             <div className="text-xs text-gray-400 text-center py-4 bg-white border rounded">

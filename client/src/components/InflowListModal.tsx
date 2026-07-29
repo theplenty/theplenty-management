@@ -1,6 +1,7 @@
 // 신규유입 리스트 모달 — 대시보드의 카드 클릭 시 표시.
 // MICE / WEDDING 별로 컬럼이 다르므로 두 가지 모드 지원.
 
+import { weekdayKoOf, insertWeekday } from '../lib/dateFmt';
 import Modal from './Modal';
 import { StatusBadge } from './Field';
 import type {
@@ -24,7 +25,7 @@ function fmtDate(s: string | null | undefined): string {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)})`;
 }
 
 function fmtDateTime(s: string | null | undefined): string {
@@ -32,13 +33,13 @@ function fmtDateTime(s: string | null | undefined): string {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // 날짜만 저장된 값은 그대로, 시간이 포함된 값은 시간까지 표시
 function fmtDateOrDateTime(s: string | null | undefined): string {
   if (!s) return '-';
-  if (!s.includes('T')) return s;
+  if (!s.includes('T')) return insertWeekday(s);
   return fmtDateTime(s);
 }
 

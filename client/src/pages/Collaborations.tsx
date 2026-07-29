@@ -1,6 +1,7 @@
 // 협업요청서 대시보드 — 리스트 + 필터 + 통계.
 // 행을 펼치면 CollaborationDetailCard 로 회신/결정까지 그 자리에서 처리.
 
+import { weekdayKoOf } from '../lib/dateFmt';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   COLLAB_TEAM_LABEL,
@@ -27,7 +28,7 @@ function fmtDateTime(iso: string | null): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 function fmtMoney(n: number | null): string {
   return n == null ? '-' : n.toLocaleString('ko-KR');

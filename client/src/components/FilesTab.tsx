@@ -1,3 +1,4 @@
+import { weekdayKoOf } from '../lib/dateFmt';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { uploadFileToStorage } from '../lib/firebase';
@@ -29,7 +30,7 @@ function fmtDateTime(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** 파일 확장자 추출 (예: ".pdf") */

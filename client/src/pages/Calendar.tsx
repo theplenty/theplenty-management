@@ -1,3 +1,4 @@
+import { weekdayKoOf, fmtDateTimeW } from '../lib/dateFmt';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
@@ -356,7 +357,7 @@ export default function Calendar() {
         navigate(`/customers/wedding#consult-${consult.id}`);
       } else {
         alert(
-          `[상담]\n행사명: ${consult.wedding_event_name}\n신랑: ${consult.groom_name} ${consult.groom_phone}\n신부: ${consult.bride_name} ${consult.bride_phone}\n희망상담일자: ${consult.desired_consultation_date}`
+          `[상담]\n행사명: ${consult.wedding_event_name}\n신랑: ${consult.groom_name} ${consult.groom_phone}\n신부: ${consult.bride_name} ${consult.bride_phone}\n희망상담일자: ${fmtDateTimeW(consult.desired_consultation_date)}`
         );
       }
       return;
@@ -646,7 +647,7 @@ export default function Calendar() {
             }
             const consult = arg.event.extendedProps.consultation as WeddingCustomer | undefined;
             if (consult) {
-              arg.el.title = `[상담] ${consult.wedding_event_name}\n신랑: ${consult.groom_name} ${consult.groom_phone}\n신부: ${consult.bride_name} ${consult.bride_phone}\n희망상담일자: ${consult.desired_consultation_date}\n진행단계: ${consult.progress_status}`;
+              arg.el.title = `[상담] ${consult.wedding_event_name}\n신랑: ${consult.groom_name} ${consult.groom_phone}\n신부: ${consult.bride_name} ${consult.bride_phone}\n희망상담일자: ${fmtDateTimeW(consult.desired_consultation_date)}\n진행단계: ${consult.progress_status}`;
               return;
             }
             const ev = arg.event.extendedProps.event as EventWithFood | undefined;
@@ -704,7 +705,7 @@ export default function Calendar() {
               navigate(`/customers/wedding#consult-${c.id}`);
             } else {
               alert(
-                `[상담]\n행사명: ${c.wedding_event_name}\n신랑: ${c.groom_name} ${c.groom_phone}\n신부: ${c.bride_name} ${c.bride_phone}\n희망상담일자: ${c.desired_consultation_date}`
+                `[상담]\n행사명: ${c.wedding_event_name}\n신랑: ${c.groom_name} ${c.groom_phone}\n신부: ${c.bride_name} ${c.bride_phone}\n희망상담일자: ${fmtDateTimeW(c.desired_consultation_date)}`
               );
             }
           }}
@@ -765,7 +766,7 @@ export default function Calendar() {
             {dupAnalysis.dupGroups.map((grp, i) => (
               <li key={grp.map((g) => g.id).join('|')} className="py-3 text-sm">
                 <div className="text-xs text-gray-500 mb-2">
-                  #{i + 1} · {grp[0].event_name} · {grp[0].start_datetime} ({grp.length}건)
+                  #{i + 1} · {grp[0].event_name} · {fmtDateTimeW(grp[0].start_datetime)} ({grp.length}건)
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {grp.map((ev) => (
@@ -811,7 +812,7 @@ function formatRange(start: string, end: string): string {
   const fmt = (s: string) => {
     const d = new Date(s);
     if (Number.isNaN(d.getTime())) return s;
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${weekdayKoOf(d)}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
   return `${fmt(start)} ~ ${fmt(end)}`;
 }
