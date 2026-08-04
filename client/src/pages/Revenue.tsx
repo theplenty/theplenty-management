@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fmtDateW } from '../lib/dateFmt';
 import { useAuth } from '../auth/AuthContext';
@@ -98,7 +98,8 @@ export default function Revenue() {
   const [error, setError] = useState<string | null>(null);
 
   const currentYear = new Date().getFullYear();
-  const [yearFilter, setYearFilter] = useState<number>(currentYear);
+  // '' = 전체 연도. 연도별로 나눠 뽑지 않고 한 번에 내보낼 수 있어야 해서 전체 옵션을 둔다.
+  const [yearFilter, setYearFilter] = useState<'' | number>(currentYear);
   const [monthFilter, setMonthFilter] = useState<'' | number>('');
   const [typeFilter, setTypeFilter] = useState<'' | 'MICE' | 'WEDDING'>('');
   // 매출 대상 3개 상태(DEF·INQ·LOS)를 기본으로 모두 표시. 필요 시 하나만 좁혀본다.
@@ -149,10 +150,20 @@ export default function Revenue() {
     setTimeout(() => setToast(null), 3000);
   }
 
+  // 연도 목록은 실제 데이터에서 뽑는다 — 하드코딩하면 2028년 이후 행사가 조회 불가가 된다.
+  const yearOptions = useMemo(() => {
+    const years = new Set<number>([currentYear]);
+    for (const e of events) {
+      const y = new Date(e.start_datetime).getFullYear();
+      if (!Number.isNaN(y)) years.add(y);
+    }
+    return [...years].sort((a, b) => a - b);
+  }, [events, currentYear]);
+
   // ─── Filtered events ───
   const filteredEvents = events.filter((e) => {
     const d = new Date(e.start_datetime);
-    if (d.getFullYear() !== yearFilter) return false;
+    if (yearFilter !== '' && d.getFullYear() !== yearFilter) return false;
     if (monthFilter !== '' && d.getMonth() + 1 !== monthFilter) return false;
     if (typeFilter !== '' && e.event_type !== typeFilter) return false;
     // 기본은 DEF·INQ·LOS 전체. 특정 상태만 보려면 필터에서 선택.
@@ -368,7 +379,7 @@ export default function Revenue() {
     const ws = wb.addWorksheet('매출현황');
 
     const headers = [
-      'event_id', '행사일', '행사명', '구분', '계약일', '계약금액', '실매출',
+      'event_id', '행사일', '행사명', '구분', '상태', '계약일', '계약금액', '실매출',
       '할인율(%)', '할인사유', '대관료(가톨릭)',
       ...revenueItems.map((i) => i.name_ko),
       '비고',
@@ -388,6 +399,7 @@ export default function Revenue() {
         ev.start_datetime.slice(0, 10),
         ev.event_name,
         ev.event_type,
+        ev.status, // DEF / INQ / LOS — 참고용 (업로드 시 무시됨)
         ev.contract_date ?? '',
         ev.contract_amount ?? '',
         ev.sales_total_amount ?? '',
@@ -400,17 +412,20 @@ export default function Revenue() {
       ws.addRow(row);
     }
 
-    const numCols = [6, 7, 10, ...revenueItems.map((_, i) => 11 + i)];
+    // '상태' 열이 5번에 들어가면서 이후 열 번호가 한 칸씩 밀린다.
+    // 금액 열: 계약금액(7) 실매출(8) 대관료(11) + 매출항목(12~)
+    const numCols = [7, 8, 11, ...revenueItems.map((_, i) => 12 + i)];
     for (const colIdx of numCols) {
       ws.getColumn(colIdx).numFmt = '#,##0';
       ws.getColumn(colIdx).width = 14;
     }
-    ws.getColumn(8).numFmt = '0.0';
+    ws.getColumn(9).numFmt = '0.0'; // 할인율(%)
     ws.getColumn(1).width = 12;
     ws.getColumn(2).width = 12;
     ws.getColumn(3).width = 30;
     ws.getColumn(4).width = 10;
-    ws.getColumn(5).width = 12;
+    ws.getColumn(5).width = 8;  // 상태
+    ws.getColumn(6).width = 12; // 계약일
 
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], {
@@ -431,7 +446,7 @@ export default function Revenue() {
     const ws = wb.addWorksheet('매출현황');
 
     const headers = [
-      'event_id', '행사일', '행사명', '구분', '계약일', '계약금액', '실매출',
+      'event_id', '행사일', '행사명', '구분', '상태', '계약일', '계약금액', '실매출',
       '할인율(%)', '할인사유', '대관료(가톨릭)',
       ...revenueItems.map((i) => i.name_ko),
       '비고',
@@ -447,6 +462,7 @@ export default function Revenue() {
         ev.start_datetime.slice(0, 10),
         ev.event_name,
         ev.event_type,
+        ev.status, // 참고용 — 어떤 행사인지 구분해서 금액을 채우도록
         '', '', '', '', '', '',
         ...revenueItems.map(() => ''),
         '',
@@ -457,7 +473,7 @@ export default function Revenue() {
     ws.getColumn(2).width = 12;
     ws.getColumn(3).width = 30;
     ws.getColumn(4).width = 10;
-    ws.getColumn(5).width = 12;
+    ws.getColumn(5).width = 8;
     for (let i = 6; i <= headers.length; i++) {
       ws.getColumn(i).width = 14;
     }
@@ -645,9 +661,10 @@ export default function Revenue() {
           <select
             className="border rounded px-2 py-1 text-sm"
             value={yearFilter}
-            onChange={(e) => setYearFilter(Number(e.target.value))}
+            onChange={(e) => setYearFilter(e.target.value === '' ? '' : Number(e.target.value))}
           >
-            {[2025, 2026, 2027].map((y) => (
+            <option value="">전체 연도</option>
+            {yearOptions.map((y) => (
               <option key={y} value={y}>{y}년</option>
             ))}
           </select>
