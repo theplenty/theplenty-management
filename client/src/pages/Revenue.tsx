@@ -8,8 +8,12 @@ import type { Event, EventWithFood, EventRevenueLine, RevenueItem, RevenueCatego
 import clsx from 'clsx';
 
 const PAGE_SIZE = 50;
-// 취소 계열 — 매출 대상이 아니므로 목록에서 제외
-const CANCELLED_STATUSES = new Set(['LOS', '상담취소', '미팅취소']);
+// 매출 대상 행사 상태 — 이 3개만 다룬다.
+// LOS(취소)를 포함하는 이유: 취소 수수료가 매출로 잡히는 행사가 있다.
+// 상담취소·미팅·미팅취소·시식은 매출이 발생하지 않으므로 제외.
+// (행사 상태에 'TEN'은 없다 — TEN은 MICE 문의상태/웨딩 진행단계 쪽 값이다)
+const REVENUE_STATUSES = ['DEF', 'INQ', 'LOS'] as const;
+type RevenueStatus = (typeof REVENUE_STATUSES)[number];
 
 type SortCol = 'date' | 'contract_amount' | 'discount_rate' | 'sales_total' | 'gateway_fee' | 'grand_total';
 type SortDir = 'asc' | 'desc';
@@ -66,13 +70,14 @@ const CATEGORY_BADGE: Record<RevenueCategory, string> = {
 
 const STATUS_BADGE: Record<string, string> = {
   DEF: 'bg-green-100 text-green-700',
-  TEN: 'bg-blue-100 text-blue-700',
   INQ: 'bg-yellow-100 text-yellow-700',
+  LOS: 'bg-red-100 text-red-700',
 };
 
 function statusLabel(s: string) {
   if (s === 'DEF') return '확정';
-  if (s === 'TEN') return '잠정';
+  if (s === 'INQ') return '문의';
+  if (s === 'LOS') return '취소';
   return s;
 }
 
@@ -96,8 +101,8 @@ export default function Revenue() {
   const [yearFilter, setYearFilter] = useState<number>(currentYear);
   const [monthFilter, setMonthFilter] = useState<'' | number>('');
   const [typeFilter, setTypeFilter] = useState<'' | 'MICE' | 'WEDDING'>('');
-  // 기본은 확정 행사만 — 필요 시 '전체'로 바꿔 문의·미팅 단계 행사에도 매출 입력 가능
-  const [statusFilter, setStatusFilter] = useState<'CONFIRMED' | 'ALL'>('CONFIRMED');
+  // 매출 대상 3개 상태(DEF·INQ·LOS)를 기본으로 모두 표시. 필요 시 하나만 좁혀본다.
+  const [statusFilter, setStatusFilter] = useState<'ALL' | RevenueStatus>('ALL');
 
   // ─── Sort & Page ───
   const [sortCol, setSortCol] = useState<SortCol>('date');
@@ -127,10 +132,11 @@ export default function Revenue() {
     ])
       .then(([evRes, items]) => {
         const evList = (evRes.events ?? (evRes as unknown as EventWithFood[]));
-        // 취소 계열만 제외하고 모두 보관 — 표시 여부는 statusFilter 가 결정.
-        // (확정 전 행사에도 계약금액이 잡히는 경우가 있어, 목록에서 아예 빠지면
-        //  엑셀 내보내기·일괄등록 대상에서도 사라진다)
-        setEvents(evList.filter((e) => !CANCELLED_STATUSES.has(e.status as string)));
+        // DEF·INQ·LOS 만 매출 대상. 목록에서 빠지면 엑셀 내보내기·일괄등록 대상에서도 사라지므로
+        // 여기서 3개를 모두 보관하고, 좁혀보는 것은 statusFilter 가 담당한다.
+        setEvents(
+          evList.filter((e) => (REVENUE_STATUSES as readonly string[]).includes(e.status as string))
+        );
         setRevenueItems(Array.isArray(items) ? items : []);
       })
       .catch((e) => setError(String(e)))
@@ -149,12 +155,8 @@ export default function Revenue() {
     if (d.getFullYear() !== yearFilter) return false;
     if (monthFilter !== '' && d.getMonth() + 1 !== monthFilter) return false;
     if (typeFilter !== '' && e.event_type !== typeFilter) return false;
-    // 기본은 확정(DEF/TEN)만. '전체'로 바꾸면 문의·미팅 단계 행사까지 포함해
-    // 매출 입력/엑셀 일괄등록이 가능하다.
-    if (statusFilter === 'CONFIRMED') {
-      const s = e.status as string;
-      if (s !== 'DEF' && s !== 'TEN') return false;
-    }
+    // 기본은 DEF·INQ·LOS 전체. 특정 상태만 보려면 필터에서 선택.
+    if (statusFilter !== 'ALL' && (e.status as string) !== statusFilter) return false;
     return true;
   });
 
@@ -549,7 +551,9 @@ export default function Revenue() {
       // Reload events
       const evRes = await api.get<{ events: EventWithFood[] }>('/api/events');
       const evList = evRes.events ?? (evRes as unknown as EventWithFood[]);
-      setEvents(evList.filter((e) => (e.status as string) === 'DEF' || (e.status as string) === 'TEN'));
+      setEvents(
+        evList.filter((e) => (REVENUE_STATUSES as readonly string[]).includes(e.status as string))
+      );
       setLineMap({});
     } catch {
       showToast('가져오기 중 오류가 발생했습니다.', false);
@@ -678,11 +682,13 @@ export default function Revenue() {
           <select
             className="border rounded px-2 py-1 text-sm"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as 'CONFIRMED' | 'ALL')}
-            title="확정 전 행사에도 매출을 입력하려면 '전체'를 선택하세요"
+            onChange={(e) => setStatusFilter(e.target.value as 'ALL' | RevenueStatus)}
+            title="LOS(취소)도 취소 수수료가 매출로 잡힐 수 있어 포함됩니다"
           >
-            <option value="CONFIRMED">확정만 (DEF/TEN)</option>
-            <option value="ALL">전체 (문의·미팅 포함)</option>
+            <option value="ALL">전체 (DEF·INQ·LOS)</option>
+            <option value="DEF">DEF 확정</option>
+            <option value="INQ">INQ 문의</option>
+            <option value="LOS">LOS 취소</option>
           </select>
         </label>
         <span className="text-sm text-gray-500 ml-auto">
