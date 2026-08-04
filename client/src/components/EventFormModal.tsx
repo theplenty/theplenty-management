@@ -17,6 +17,7 @@ import {
   type FoodItem,
   type Hall,
   type Invoice,
+  type RevenueItem,
   type UsageType,
   type MiceCustomer,
   type WeddingCustomer,
@@ -29,7 +30,13 @@ import ErrorBoundary from './ErrorBoundary';
 import { Field } from './Field';
 import FoodMenuInput from './FoodMenuInput';
 import EventCustomerLinks from './EventCustomerLinks';
-import InvoiceTab, { type InvoiceDraft, emptyInvoiceDraft } from './InvoiceTab';
+import RevenueTab, {
+  type InvoiceDraft,
+  type RevenueDraft,
+  emptyInvoiceDraft,
+  emptyRevenueDraft,
+  toNum,
+} from './RevenueTab';
 import CancellationTab, {
   type CancellationDraft,
   emptyCancellationDraft,
@@ -67,7 +74,7 @@ interface Props {
   // 관리자 삭제 콜백 — 부모가 목록에서 제거 처리. 미제공 시 삭제 버튼 미노출.
   onDeleted?: (eventId: string) => void;
   // 모달 열릴 때 처음 보일 탭 — 미지정 시 '기본정보'.
-  initialTab?: 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review' | 'collaboration' | 'landing';
+  initialTab?: 'basic' | 'customer' | 'revenue' | 'files' | 'cancel' | 'review' | 'collaboration' | 'landing';
 }
 
 interface FormState {
@@ -89,7 +96,7 @@ interface FormState {
   contract_date: string; // 계약일 (YYYY-MM-DD)
 }
 
-type TabKey = 'basic' | 'customer' | 'invoice' | 'files' | 'cancel' | 'review' | 'collaboration' | 'landing';
+type TabKey = 'basic' | 'customer' | 'revenue' | 'files' | 'cancel' | 'review' | 'collaboration' | 'landing';
 
 interface TabDef {
   key: TabKey;
@@ -101,7 +108,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { key: 'basic', label: '기본정보', visible: () => true },
   { key: 'customer', label: '업체정보', visible: () => true },
-  { key: 'invoice', label: '가톨릭대관료', visible: () => true },
+  { key: 'revenue', label: '매출', visible: () => true },
   { key: 'files', label: '첨부파일', visible: () => true },
   { key: 'collaboration', label: '협업요청서', visible: () => true },
   // 웨딩 가예약 고객용 공개 랜딩 링크 — WEDDING 행사에만 노출
@@ -180,6 +187,11 @@ export default function EventFormModal({
   const [foods, setFoods] = useState<DraftFoodItem[]>([]);
   const [links, setLinks] = useState<DraftCustomerLink[]>([]);
   const [invoice, setInvoice] = useState<InvoiceDraft>(emptyInvoiceDraft());
+  // 매출 — 행사 PATCH 와 별도 API(admin 전용)를 쓰므로 상태도 분리해서 관리
+  const [revenue, setRevenue] = useState<RevenueDraft>(emptyRevenueDraft());
+  const [revenueItems, setRevenueItems] = useState<RevenueItem[]>([]);
+  const [revenueLoading, setRevenueLoading] = useState(false);
+  const [revenueLoaded, setRevenueLoaded] = useState(false);
   const [cancellation, setCancellation] = useState<CancellationDraft>(
     emptyCancellationDraft()
   );
@@ -261,6 +273,9 @@ export default function EventFormModal({
       setCancellation(emptyCancellationDraft());
       setBeoPayload(undefined);
     }
+    // 매출은 탭을 열 때 별도 API 로 가져온다 — 모달을 열 때마다 초기화
+    setRevenue(emptyRevenueDraft());
+    setRevenueLoaded(false);
     setTab(initialTab || 'basic');
   }, [
     open,
@@ -273,6 +288,50 @@ export default function EventFormModal({
     allowedTypes,
     initialTab,
   ]);
+
+  // 매출 탭을 처음 열 때만 조회 (모달 열 때마다 전건 조회하면 낭비라 lazy).
+  useEffect(() => {
+    if (tab !== 'revenue' || revenueLoaded || !initialEvent?.id) return;
+    let cancelled = false;
+    setRevenueLoading(true);
+    setRevenueLoaded(true);
+    api
+      .get<{ event: Event; revenue_lines: { revenue_item_id: string; amount: number | null }[]; revenue_items: RevenueItem[] }>(
+        `/api/events/${initialEvent.id}/revenue`
+      )
+      .then((res) => {
+        if (cancelled) return;
+        const ev = res.event as unknown as Record<string, unknown>;
+        const amounts: Record<string, string> = {};
+        for (const l of res.revenue_lines || []) {
+          if (l.amount != null) amounts[l.revenue_item_id] = Number(l.amount).toLocaleString('ko-KR');
+        }
+        const numStr = (v: unknown) =>
+          typeof v === 'number' && v ? Number(v).toLocaleString('ko-KR') : '';
+        setRevenueItems(res.revenue_items || []);
+        setRevenue({
+          contract_amount: numStr(ev.contract_amount),
+          sales_total_amount: numStr(ev.sales_total_amount),
+          // 서버는 비율(0.07)로 보관 — 화면은 % 로 표시
+          discount_rate:
+            typeof ev.discount_rate === 'number' && ev.discount_rate
+              ? String(Number((ev.discount_rate * 100).toFixed(2)))
+              : '',
+          discount_reason: (ev.discount_reason as string) || '',
+          gateway_fee: numStr(ev.gateway_fee),
+          amounts,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setRevenueLoaded(false); // 실패 시 재시도 가능하게
+      })
+      .finally(() => {
+        if (!cancelled) setRevenueLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, revenueLoaded, initialEvent?.id]);
 
   const conflict = useMemo(() => {
     if (!form.start_datetime || !form.end_datetime || form.halls.length === 0) {
@@ -403,6 +462,30 @@ export default function EventFormModal({
       } else {
         res = await api.post('/api/events', payload);
       }
+
+      // 매출은 권한(admin)이 다른 별도 API. 탭을 실제로 열어 조회한 경우에만 저장한다
+      // (조회 전 상태의 빈 draft 를 그대로 PUT 하면 기존 매출을 지워버리므로).
+      if (admin && revenueLoaded && !revenueLoading) {
+        const pct = revenue.discount_rate ? Number(revenue.discount_rate) : null;
+        try {
+          const saved = await api.put<{ event: Event }>(`/api/events/${res.event.id}/revenue`, {
+            contract_amount: toNum(revenue.contract_amount) || null,
+            sales_total_amount: toNum(revenue.sales_total_amount) || null,
+            // 화면은 % — 서버는 비율(0.07)로 보관
+            discount_rate: pct != null && !Number.isNaN(pct) ? pct / 100 : null,
+            discount_reason: revenue.discount_reason,
+            gateway_fee: toNum(revenue.gateway_fee) || null,
+            lines: revenueItems
+              .map((it) => ({ revenue_item_id: it.id, amount: toNum(revenue.amounts[it.id] || '') }))
+              .filter((l) => l.amount > 0),
+          });
+          if (saved?.event) res.event = saved.event;
+        } catch (e) {
+          console.error(e);
+          alert('행사는 저장되었지만 매출 저장에 실패했습니다. 매출 탭에서 다시 시도해 주세요.');
+        }
+      }
+
       onSaved({ ...res.event, food_items: res.food_items }, res.customer_links);
       onClose();
       alert('저장되었습니다.');
@@ -672,9 +755,18 @@ export default function EventFormModal({
           />
         </ErrorBoundary>
       )}
-      {tab === 'invoice' && (
-        <ErrorBoundary title="INVOICE 탭에서 오류가 발생했습니다">
-          <InvoiceTab draft={invoice} onChange={setInvoice} />
+      {tab === 'revenue' && (
+        <ErrorBoundary title="매출 탭에서 오류가 발생했습니다">
+          <RevenueTab
+            invoice={invoice}
+            onInvoiceChange={setInvoice}
+            revenue={revenue}
+            onRevenueChange={setRevenue}
+            revenueItems={revenueItems}
+            canWriteRevenue={admin}
+            isNewEvent={!isEdit}
+            loading={revenueLoading}
+          />
         </ErrorBoundary>
       )}
       {tab === 'files' && (

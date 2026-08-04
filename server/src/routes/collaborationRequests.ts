@@ -84,6 +84,26 @@ function touch(cr: CollaborationRequest) {
   cr.updated_at = new Date().toISOString();
 }
 
+// 협업요청서는 작성 시점의 행사명·행사일을 자유 텍스트로 복사 보관한다(감사 목적).
+// 그 뒤 행사가 개명·일정변경되면 두 값이 어긋나므로, 응답에는 event 의 현재 값을
+// live_* 로 함께 실어 화면이 최신값을 표시할 수 있게 한다. 저장값은 그대로 둔다.
+function withLiveEvent<T extends { event_id: string; customer_event_name: string; event_date: string | null }>(
+  cr: T
+) {
+  const ev = store.events.find((e) => e.id === cr.event_id);
+  if (!ev) return { ...cr, live_event_name: null, live_event_date: null, event_out_of_sync: false };
+  const liveDate = (ev.start_datetime || '').slice(0, 10);
+  return {
+    ...cr,
+    live_event_name: ev.event_name,
+    live_event_date: liveDate,
+    // 작성 당시 값과 현재 값이 다르면 화면에서 '변경됨' 표시가 가능하도록 플래그
+    event_out_of_sync:
+      ev.event_name.trim() !== cr.customer_event_name.trim() ||
+      (!!cr.event_date && cr.event_date !== liveDate),
+  };
+}
+
 // ===== 목록 (대시보드/통계용) =====
 router.get('/', (req, res) => {
   const role = req.user!.role;
@@ -93,7 +113,8 @@ router.get('/', (req, res) => {
     .filter((cr) => visibleTo(cr, role))
     .filter((cr) => !deletedEventIds.has(cr.event_id))
     .filter((cr) => (eventId ? cr.event_id === eventId : true))
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+    .map(withLiveEvent);
   res.json({ requests: list });
 });
 
@@ -102,7 +123,7 @@ router.get('/:id', (req, res) => {
   const cr = store.collaboration_requests.find((c) => c.id === req.params.id);
   if (!cr) return res.status(404).json({ error: 'not_found' });
   if (!visibleTo(cr, req.user!.role)) return res.status(403).json({ error: 'forbidden' });
-  res.json({ request: cr });
+  res.json({ request: withLiveEvent(cr) });
 });
 
 // ===== 작성 (화면 1, 세일즈) =====

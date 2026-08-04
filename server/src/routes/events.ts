@@ -21,6 +21,7 @@ import type {
   CustomerRole,
   Invoice,
   Cancellation,
+  Role,
 } from '../types.js';
 
 // WEDDING 행사일 때, 연결된 WEDDING 고객의 첫 예식후보 담당지배인을 가져온다.
@@ -369,8 +370,27 @@ type EventBody = Partial<Event> & {
   cancellation?: Partial<Cancellation> | null;
 };
 
+// 매출 금액 필드 — 쓰기 권한이 admin 으로 제한된다 (PUT /api/events/:id/revenue 와 동일 정책).
+// events 의 생성/수정은 세일즈도 가능하고 body 를 Object.assign 으로 통째로 반영하므로,
+// 여기서 걸러내지 않으면 매출 API 의 admin 가드가 우회된다.
+// contract_date(계약일)는 기본정보 탭에서 전 직원이 입력하는 운영 필드라 제외.
+const REVENUE_ONLY_FIELDS = [
+  'contract_amount',
+  'sales_total_amount',
+  'discount_rate',
+  'discount_reason',
+  'gateway_fee',
+] as const;
+
+function stripRevenueFields(body: EventBody, role: Role): EventBody {
+  if (role === 'admin') return body;
+  const cleaned = { ...body } as Record<string, unknown>;
+  for (const f of REVENUE_ONLY_FIELDS) delete cleaned[f];
+  return cleaned as EventBody;
+}
+
 router.post('/', (req, res) => {
-  const body = req.body as EventBody;
+  const body = stripRevenueFields(req.body as EventBody, req.user!.role);
   const event_type = (body.event_type === 'WEDDING' ? 'WEDDING' : 'MICE') as CustomerType;
   if (!canWriteType(req.user!.role, event_type)) {
     return res.status(403).json({ error: 'forbidden' });
@@ -491,7 +511,7 @@ router.patch('/:id', (req, res) => {
   if (!canWriteType(req.user!.role, ev.event_type)) {
     return res.status(403).json({ error: 'forbidden' });
   }
-  const body = req.body as EventBody;
+  const body = stripRevenueFields(req.body as EventBody, req.user!.role);
   // diff 용으로 스칼라 필드만 스냅샷 (body 의 자식 컬렉션은 ev 에 없으므로 비교 노이즈 회피)
   const before: Record<string, unknown> = { ...ev };
   Object.assign(ev, body, {

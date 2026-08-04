@@ -16,6 +16,7 @@ import {
   listCollaborations,
   statusBadgeClass,
   sumAddedCost,
+  collabEventName,
 } from '../lib/collaboration';
 import CollaborationDetailCard from '../components/CollaborationDetailCard';
 
@@ -185,7 +186,7 @@ export default function Collaborations() {
                       onClick={() => setExpandedId(isOpen ? null : r.id)}
                     >
                       <td className="px-3 py-2 text-xs text-gray-600">{fmtDateTime(r.created_at)}</td>
-                      <td className="px-3 py-2 font-medium text-gray-900">{r.customer_event_name}</td>
+                      <td className="px-3 py-2 font-medium text-gray-900">{collabEventName(r)}</td>
                       <td className="px-3 py-2 text-gray-700">{r.created_by_name}</td>
                       <td className="px-3 py-2 text-xs">{r.target_teams.map((t) => COLLAB_TEAM_LABEL[t]).join('+')}</td>
                       <td className="px-3 py-2">

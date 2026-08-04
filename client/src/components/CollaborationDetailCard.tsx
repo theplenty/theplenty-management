@@ -12,6 +12,8 @@ import {
 } from '../auth/permissions';
 import {
   autoMargin,
+  collabEventName,
+  collabEventDate,
   countdown,
   decideCollaboration,
   deleteCollaboration,
@@ -65,7 +67,7 @@ export default function CollaborationDetailCard({
   const canDecide = canDecideCollaboration(role) && cr.status === '회신완료';
 
   async function handleDelete() {
-    if (!confirm(`[${cr.customer_event_name}] 협업요청서를 삭제하시겠습니까? (복구 불가)`)) return;
+    if (!confirm(`[${collabEventName(cr)}] 협업요청서를 삭제하시겠습니까? (복구 불가)`)) return;
     try {
       await deleteCollaboration(cr.id);
       onDeleted?.(cr.id);
@@ -84,7 +86,7 @@ export default function CollaborationDetailCard({
       >
         <span className={`badge border text-[11px] ${statusBadgeClass(cr.status)}`}>{cr.status}</span>
         <span className="font-semibold text-gray-900 truncate flex-1 min-w-[8rem]">
-          {cr.customer_event_name}
+          {collabEventName(cr)}
         </span>
         <span className="text-[11px] text-gray-500">
           대상 {cr.target_teams.map((t) => COLLAB_TEAM_LABEL[t]).join('+')}
@@ -108,7 +110,20 @@ export default function CollaborationDetailCard({
             <div className="text-[11px] text-gray-500">
               작성자 {cr.created_by_name} · {fmtDateTime(cr.created_at)}
             </div>
-            <Row label="행사 예정일" value={cr.event_date ? insertWeekday(cr.event_date) : '-'} />
+            <Row
+              label="행사 예정일"
+              value={(() => {
+                const d = collabEventDate(cr);
+                return d ? insertWeekday(d) : '-';
+              })()}
+            />
+            {cr.event_out_of_sync && (
+              <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                ⚠️ 작성 당시 정보와 현재 행사 정보가 다릅니다 — 위 값은 캘린더의 현재 값입니다.
+                (작성 시점: {cr.customer_event_name}
+                {cr.event_date ? ` · ${cr.event_date}` : ''})
+              </div>
+            )}
             <Row label="고객 요청 사항" value={cr.customer_request} />
             <div>
               <span className="text-[11px] text-gray-500">표준 대비 다른 부분</span>

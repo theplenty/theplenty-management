@@ -730,8 +730,13 @@ export interface CollaborationRequest {
   created_by_name: string;
   created_by_role: Role;
   created_at: string;
+  // 작성 시점에 복사 저장된 값 (감사용 스냅샷)
   customer_event_name: string;
   event_date: string | null;
+  // 연결된 행사의 현재 값 — 서버가 조인해서 채워준다. 표시는 이쪽을 우선한다.
+  live_event_name?: string | null;
+  live_event_date?: string | null;
+  event_out_of_sync?: boolean;
   customer_request: string;
   deviations: CollabDeviation[];
   deviation_other: string;

@@ -12,6 +12,7 @@ import {
   countdown,
   listCollaborations,
   type CollabAttention,
+  collabEventName,
 } from '../lib/collaboration';
 
 const POLL_MS = 45_000;
@@ -104,7 +105,7 @@ export default function CollaborationNotifyBadge() {
                     return (
                       <Item
                         key={r.id}
-                        name={r.customer_event_name}
+                        name={collabEventName(r)}
                         sub={`${r.created_by_name} 요청 · ${cd.expired ? cd.label : `${cd.label} 남음`}`}
                         urgent={cd.urgent}
                         onClick={() => {
@@ -121,7 +122,7 @@ export default function CollaborationNotifyBadge() {
                   {attn.needDecision.map((r) => (
                     <Item
                       key={r.id}
-                      name={r.customer_event_name}
+                      name={collabEventName(r)}
                       sub="회신 완료 — 최종 결정 대기"
                       onClick={() => {
                         setOpen(false);

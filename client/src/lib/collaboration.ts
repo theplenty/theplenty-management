@@ -11,6 +11,16 @@ import type {
   CollaborationRequest,
 } from '../types';
 
+// ===== 표시용 값 =====
+// 협업요청서는 작성 시점의 행사명/행사일을 복사 보관하므로, 그 뒤 행사가 개명·일정변경되면
+// 캘린더와 다른 값이 보인다. 서버가 함께 내려주는 현재 행사값(live_*)을 우선 표시한다.
+export function collabEventName(cr: CollaborationRequest): string {
+  return cr.live_event_name || cr.customer_event_name;
+}
+export function collabEventDate(cr: CollaborationRequest): string | null {
+  return cr.live_event_date || cr.event_date;
+}
+
 // ===== API =====
 export async function listCollaborations(eventId?: string): Promise<CollaborationRequest[]> {
   const q = eventId ? `?event_id=${encodeURIComponent(eventId)}` : '';

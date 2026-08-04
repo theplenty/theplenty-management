@@ -10,7 +10,7 @@ import {
   type EventFileType,
   type EventWithFood,
 } from '../types';
-import { listCollaborations, statusBadgeClass } from '../lib/collaboration';
+import { collabEventName, listCollaborations, statusBadgeClass } from '../lib/collaboration';
 
 const TYPE_BADGE: Record<EventFileType, string> = {
   estimate: 'bg-yellow-100 text-yellow-800',
@@ -131,7 +131,7 @@ export default function Files() {
                   <td className="px-4 py-2 text-xs text-gray-500">{insertWeekday(c.created_at.slice(0, 10))}</td>
                   <td className="px-4 py-2">
                     <Link to="/collaborations" className="text-blue-600 hover:underline">
-                      {c.customer_event_name}
+                      {collabEventName(c)}
                     </Link>
                   </td>
                   <td className="px-4 py-2 text-gray-700">{c.created_by_name}</td>

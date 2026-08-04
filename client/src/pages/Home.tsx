@@ -20,6 +20,7 @@ import {
   computeAttention,
   countdown,
   type CollabAttention,
+  collabEventName,
 } from '../lib/collaboration';
 import Dashboard from './Dashboard';
 
@@ -396,7 +397,7 @@ export default function Home() {
                           const cd = countdown(r.reply_due_at);
                           return (
                             <button key={r.id} onClick={() => navigate('/collaborations')} className="w-full text-left border rounded-md px-2.5 py-2 hover:bg-gray-50">
-                              <div className="font-medium text-gray-900 text-sm truncate">{r.customer_event_name}</div>
+                              <div className="font-medium text-gray-900 text-sm truncate">{collabEventName(r)}</div>
                               <div className={`text-[11px] ${cd.urgent ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
                                 {r.created_by_name} 요청 · {cd.expired ? cd.label : `${cd.label} 남음`}
                               </div>
@@ -412,7 +413,7 @@ export default function Home() {
                       <div className="space-y-1.5">
                         {attn.needDecision.map((r) => (
                           <button key={r.id} onClick={() => navigate('/collaborations')} className="w-full text-left border rounded-md px-2.5 py-2 hover:bg-gray-50">
-                            <div className="font-medium text-gray-900 text-sm truncate">{r.customer_event_name}</div>
+                            <div className="font-medium text-gray-900 text-sm truncate">{collabEventName(r)}</div>
                             <div className="text-[11px] text-gray-500">회신 완료 — 최종 결정 대기</div>
                           </button>
                         ))}
