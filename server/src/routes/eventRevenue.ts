@@ -7,6 +7,15 @@ import { DEFAULT_TENANT_ID } from '../types.js';
 const router = Router({ mergeParams: true });
 const ADMIN_ROLES = ['admin'] as const;
 
+// GET /api/revenue/all-lines — 전 행사의 세부 매출 라인을 한 번에 조회.
+// 엑셀 내보내기가 행을 하나씩 펼치지 않아도 세부항목을 채울 수 있게 하기 위함
+// (행별 조회만 있으면 펼쳐본 행사만 값이 실려 나가 왕복 시 데이터가 유실된다).
+router.get('/all-lines', requireActiveRole, (_req, res) => {
+  const deleted = new Set(store.events.filter((e) => e.deleted_at).map((e) => e.id));
+  const lines = store.event_revenue_lines.filter((l) => !deleted.has(l.event_id));
+  res.json({ revenue_lines: lines });
+});
+
 // GET /api/events/:eventId/revenue — 행사 매출 전체 조회
 router.get('/:eventId/revenue', requireActiveRole, (req, res) => {
   const event = store.events.find(e => e.id === req.params.eventId && !e.deleted_at);

@@ -8,6 +8,8 @@ import type { Event, EventWithFood, EventRevenueLine, RevenueItem, RevenueCatego
 import clsx from 'clsx';
 
 const PAGE_SIZE = 50;
+// 취소 계열 — 매출 대상이 아니므로 목록에서 제외
+const CANCELLED_STATUSES = new Set(['LOS', '상담취소', '미팅취소']);
 
 type SortCol = 'date' | 'contract_amount' | 'discount_rate' | 'sales_total' | 'gateway_fee' | 'grand_total';
 type SortDir = 'asc' | 'desc';
@@ -94,6 +96,8 @@ export default function Revenue() {
   const [yearFilter, setYearFilter] = useState<number>(currentYear);
   const [monthFilter, setMonthFilter] = useState<'' | number>('');
   const [typeFilter, setTypeFilter] = useState<'' | 'MICE' | 'WEDDING'>('');
+  // 기본은 확정 행사만 — 필요 시 '전체'로 바꿔 문의·미팅 단계 행사에도 매출 입력 가능
+  const [statusFilter, setStatusFilter] = useState<'CONFIRMED' | 'ALL'>('CONFIRMED');
 
   // ─── Sort & Page ───
   const [sortCol, setSortCol] = useState<SortCol>('date');
@@ -123,8 +127,10 @@ export default function Revenue() {
     ])
       .then(([evRes, items]) => {
         const evList = (evRes.events ?? (evRes as unknown as EventWithFood[]));
-        // DEF, TEN 만 표시 (TEN은 서버에서 올 수 있으므로 string 비교)
-        setEvents(evList.filter((e) => (e.status as string) === 'DEF' || (e.status as string) === 'TEN'));
+        // 취소 계열만 제외하고 모두 보관 — 표시 여부는 statusFilter 가 결정.
+        // (확정 전 행사에도 계약금액이 잡히는 경우가 있어, 목록에서 아예 빠지면
+        //  엑셀 내보내기·일괄등록 대상에서도 사라진다)
+        setEvents(evList.filter((e) => !CANCELLED_STATUSES.has(e.status as string)));
         setRevenueItems(Array.isArray(items) ? items : []);
       })
       .catch((e) => setError(String(e)))
@@ -143,11 +149,17 @@ export default function Revenue() {
     if (d.getFullYear() !== yearFilter) return false;
     if (monthFilter !== '' && d.getMonth() + 1 !== monthFilter) return false;
     if (typeFilter !== '' && e.event_type !== typeFilter) return false;
+    // 기본은 확정(DEF/TEN)만. '전체'로 바꾸면 문의·미팅 단계 행사까지 포함해
+    // 매출 입력/엑셀 일괄등록이 가능하다.
+    if (statusFilter === 'CONFIRMED') {
+      const s = e.status as string;
+      if (s !== 'DEF' && s !== 'TEN') return false;
+    }
     return true;
   });
 
   // 필터/정렬 변경 시 페이지 리셋
-  useEffect(() => { setPage(1); }, [yearFilter, monthFilter, typeFilter, sortCol, sortDir]);
+  useEffect(() => { setPage(1); }, [yearFilter, monthFilter, typeFilter, statusFilter, sortCol, sortDir]);
 
   // ─── Sorted events ───
   const sortedEvents = [...filteredEvents].sort((a, b) => {
@@ -333,6 +345,23 @@ export default function Revenue() {
   // ─── Excel Export ───
   async function exportExcel() {
     const ExcelJS = (await import('exceljs')).default;
+
+    // 세부 매출항목은 화면에서 행을 펼칠 때만 lineMap 에 캐시된다.
+    // 내보내기는 펼치지 않은 행사도 채워야 하므로 전 라인을 한 번에 받아 병합한다.
+    // (이걸 안 하면 export → 수정 → import 왕복에서 세부항목이 통째로 지워진다)
+    let allLines: Record<string, EventRevenueLine[]> = lineMap;
+    try {
+      const resp = await api.get<{ revenue_lines: EventRevenueLine[] }>('/api/revenue/all-lines');
+      const grouped: Record<string, EventRevenueLine[]> = {};
+      for (const l of resp.revenue_lines ?? []) {
+        (grouped[l.event_id] ||= []).push(l);
+      }
+      allLines = grouped;
+      setLineMap((prev) => ({ ...grouped, ...prev })); // 화면 캐시도 갱신 (편집 중 값은 유지)
+    } catch {
+      showToast('세부 매출항목을 불러오지 못해 일부 열이 비어 있을 수 있습니다.', false);
+    }
+
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('매출현황');
 
@@ -348,7 +377,7 @@ export default function Revenue() {
     headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
 
     for (const ev of filteredEvents) {
-      const lines = lineMap[ev.id] ?? [];
+      const lines = allLines[ev.id] ?? [];
       const amtByItemId: Record<string, number | null> = {};
       for (const l of lines) amtByItemId[l.revenue_item_id] = l.amount;
 
@@ -642,6 +671,18 @@ export default function Revenue() {
             <option value="">전체</option>
             <option value="MICE">MICE</option>
             <option value="WEDDING">WEDDING</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 text-sm text-gray-700">
+          <span>상태</span>
+          <select
+            className="border rounded px-2 py-1 text-sm"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as 'CONFIRMED' | 'ALL')}
+            title="확정 전 행사에도 매출을 입력하려면 '전체'를 선택하세요"
+          >
+            <option value="CONFIRMED">확정만 (DEF/TEN)</option>
+            <option value="ALL">전체 (문의·미팅 포함)</option>
           </select>
         </label>
         <span className="text-sm text-gray-500 ml-auto">
