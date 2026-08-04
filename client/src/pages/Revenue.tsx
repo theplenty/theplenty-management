@@ -6,6 +6,8 @@ import { canWriteRevenue } from '../auth/permissions';
 import { api } from '../lib/api';
 import {
   CARD_COMPANY_LABEL,
+  PAYMENT_METHOD_LABEL,
+  PAYMENT_TYPE_LABEL,
   type Event, type EventWithFood, type EventRevenueLine, type RevenueItem,
   type RevenueCategory, type Invoice, type Payment,
 } from '../types';
@@ -445,6 +447,8 @@ export default function Revenue() {
       '할인율(%)', '할인사유', '대관료(가톨릭)',
       ...revenueItems.map((i) => i.name_ko),
       '비고',
+      // 결제(정산) — 참고용. 업로드 시 무시되며, 결제 등록은 결제 내역에서 한다.
+      '결제계', '차액', '정산상태',
     ];
 
     const headerRow = ws.addRow(headers);
@@ -455,6 +459,8 @@ export default function Revenue() {
       const lines = allLines[ev.id] ?? [];
       const amtByItemId: Record<string, number | null> = {};
       for (const l of lines) amtByItemId[l.revenue_item_id] = l.amount;
+      const payTotal = paymentTotalByEvent[ev.id] ?? 0;
+      const settle = settlementOf(sumOrNull(ev.sales_total_amount, ev.gateway_fee), payTotal);
 
       const row = [
         ev.id,
@@ -470,6 +476,15 @@ export default function Revenue() {
         ev.gateway_fee ?? '',
         ...revenueItems.map((item) => amtByItemId[item.id] ?? ''),
         '',
+        payTotal || '',
+        settle.tone === 'none' ? '' : settle.diff,
+        settle.tone === 'ok'
+          ? '정산완료'
+          : settle.tone === 'due'
+          ? '미수'
+          : settle.tone === 'over'
+          ? '초과입금'
+          : '미입력',
       ];
       ws.addRow(row);
     }
@@ -488,6 +503,62 @@ export default function Revenue() {
     ws.getColumn(4).width = 10;
     ws.getColumn(5).width = 8;  // 상태
     ws.getColumn(6).width = 12; // 계약일
+    // 뒤쪽 결제 요약 3열 (비고 다음)
+    const payColStart = headers.length - 2; // 결제계
+    ws.getColumn(payColStart).numFmt = '#,##0';
+    ws.getColumn(payColStart).width = 14;
+    ws.getColumn(payColStart + 1).numFmt = '#,##0';
+    ws.getColumn(payColStart + 1).width = 14;
+    ws.getColumn(payColStart + 2).width = 10;
+
+    // ── 시트 2: 결제 내역 ──
+    // 결제는 행사당 여러 건이라 매출 시트에 못 넣는다. 별도 시트로 전건을 싣되
+    // event_id 를 같이 넣어 매출 시트와 대조(VLOOKUP)할 수 있게 한다.
+    const evById = new Map(filteredEvents.map((e) => [e.id, e]));
+    const payRows = payments
+      .filter((p) => evById.has(p.event_id))
+      .sort((a, b) => (a.paid_at < b.paid_at ? -1 : 1));
+
+    const ws2 = wb.addWorksheet('결제내역');
+    const payHeaders = [
+      'event_id', '행사일', '행사명', '구분', '결제구분', '금액', '결제일',
+      '수단', '카드사', '승인번호', '카드사 입금일', '입금액(수수료차감)', '사업자명', '비고',
+    ];
+    const payHeaderRow = ws2.addRow(payHeaders);
+    payHeaderRow.font = { bold: true };
+    payHeaderRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+
+    for (const p of payRows) {
+      const ev = evById.get(p.event_id)!;
+      ws2.addRow([
+        p.event_id,
+        ev.start_datetime.slice(0, 10),
+        ev.event_name,
+        ev.event_type,
+        PAYMENT_TYPE_LABEL[p.payment_type],
+        // 환불은 음수로 — 열 합계가 곧 결제계가 되도록
+        p.payment_type === 'refund' ? -(p.amount ?? 0) : (p.amount ?? 0),
+        p.paid_at ?? '',
+        PAYMENT_METHOD_LABEL[p.method],
+        p.card_company ? CARD_COMPANY_LABEL[p.card_company] : '',
+        p.approval_no ?? '',
+        p.bank_deposit_date ?? '',
+        p.bank_deposit_amount ?? '',
+        p.business_name ?? '',
+        p.note ?? '',
+      ]);
+    }
+    for (const c of [6, 12]) {
+      ws2.getColumn(c).numFmt = '#,##0';
+      ws2.getColumn(c).width = 14;
+    }
+    ws2.getColumn(1).width = 12;
+    ws2.getColumn(2).width = 12;
+    ws2.getColumn(3).width = 30;
+    ws2.getColumn(4).width = 10;
+    ws2.getColumn(5).width = 10;
+    ws2.getColumn(7).width = 12;
+    ws2.getColumn(11).width = 14;
 
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], {
