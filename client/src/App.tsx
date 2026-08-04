@@ -26,7 +26,6 @@ import Menus from './pages/Menus';
 import MenuCost from './pages/MenuCost';
 import AdminWeddingCalc from './pages/AdminWeddingCalc';
 import Revenue from './pages/Revenue';
-import Payments from './pages/Payments';
 import PublicCalendar from './pages/PublicCalendar';
 import PublicSummary from './pages/PublicSummary';
 import WeddingLandingPublic from './pages/WeddingLandingPublic';
@@ -177,15 +176,8 @@ function ProtectedRoutes() {
             </ProtectedRoute>
           }
         />
-        {/* 결제 매핑 — 조회: 활성 사용자 전원. 수정: admin only. */}
-        <Route
-          path="/payments"
-          element={
-            <ProtectedRoute allow={['admin', 'sales_mice', 'sales_wedding', 'banquet', 'kitchen']}>
-              <Payments />
-            </ProtectedRoute>
-          }
-        />
+        {/* 결제 매핑은 매출 관리로 통합 — 기존 북마크·링크 보호를 위해 리다이렉트 유지 */}
+        <Route path="/payments" element={<Navigate to="/revenue" replace />} />
         <Route
           path="/collaborations"
           element={

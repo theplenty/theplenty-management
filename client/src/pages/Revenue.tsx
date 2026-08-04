@@ -4,7 +4,12 @@ import { fmtDateW } from '../lib/dateFmt';
 import { useAuth } from '../auth/AuthContext';
 import { canWriteRevenue } from '../auth/permissions';
 import { api } from '../lib/api';
-import type { Event, EventWithFood, EventRevenueLine, RevenueItem, RevenueCategory, Invoice } from '../types';
+import {
+  CARD_COMPANY_LABEL,
+  type Event, type EventWithFood, type EventRevenueLine, type RevenueItem,
+  type RevenueCategory, type Invoice, type Payment,
+} from '../types';
+import PaymentSection from '../components/PaymentSection';
 import clsx from 'clsx';
 
 const PAGE_SIZE = 50;
@@ -74,6 +79,20 @@ const STATUS_BADGE: Record<string, string> = {
   LOS: 'bg-red-100 text-red-700',
 };
 
+// 정산 판정 — 매출계(실매출+대관료) 대비 결제 합계.
+// 매출·결제가 모두 0이면 아직 판단할 근거가 없으므로 'none'.
+function settlementOf(
+  salesSum: number | null,
+  payTotal: number
+): { diff: number; tone: 'ok' | 'due' | 'over' | 'none'; label: string } {
+  const sales = salesSum ?? 0;
+  if (!sales && !payTotal) return { diff: 0, tone: 'none', label: '미입력' };
+  const diff = sales - payTotal; // +면 미수, -면 초과 입금
+  if (diff === 0) return { diff, tone: 'ok', label: '✓ 완료' };
+  if (diff > 0) return { diff, tone: 'due', label: '미수' };
+  return { diff, tone: 'over', label: '초과' };
+}
+
 function statusLabel(s: string) {
   if (s === 'DEF') return '확정';
   if (s === 'INQ') return '문의';
@@ -94,6 +113,9 @@ export default function Revenue() {
   // ─── State ───
   const [events, setEvents] = useState<EventWithFood[]>([]);
   const [revenueItems, setRevenueItems] = useState<RevenueItem[]>([]);
+  // 결제 매핑 통합 — 전건 보관 후 행사별 집계
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [alerts, setAlerts] = useState<(Payment & { event_name: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -130,8 +152,13 @@ export default function Revenue() {
     Promise.all([
       api.get<{ events: EventWithFood[] }>('/api/events'),
       api.get<RevenueItem[]>('/api/revenue-items'),
+      // 결제는 전건을 받아 행사별로 집계한다 — 목록에서 정산 상태(차액)를 바로 보여주기 위함
+      api.get<{ payments: Payment[] }>('/api/payments').catch(() => ({ payments: [] })),
+      api
+        .get<{ alerts: (Payment & { event_name: string })[] }>('/api/payments/alerts')
+        .catch(() => ({ alerts: [] })),
     ])
-      .then(([evRes, items]) => {
+      .then(([evRes, items, payRes, alertRes]) => {
         const evList = (evRes.events ?? (evRes as unknown as EventWithFood[]));
         // DEF·INQ·LOS 만 매출 대상. 목록에서 빠지면 엑셀 내보내기·일괄등록 대상에서도 사라지므로
         // 여기서 3개를 모두 보관하고, 좁혀보는 것은 statusFilter 가 담당한다.
@@ -139,6 +166,8 @@ export default function Revenue() {
           evList.filter((e) => (REVENUE_STATUSES as readonly string[]).includes(e.status as string))
         );
         setRevenueItems(Array.isArray(items) ? items : []);
+        setPayments(payRes.payments ?? []);
+        setAlerts(alertRes.alerts ?? []);
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
@@ -149,6 +178,39 @@ export default function Revenue() {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3000);
   }
+
+  // 결제 추가/수정/삭제 후 목록·알림을 다시 받아 차액 표시를 최신으로 유지
+  async function reloadPayments() {
+    try {
+      const [payRes, alertRes] = await Promise.all([
+        api.get<{ payments: Payment[] }>('/api/payments'),
+        api
+          .get<{ alerts: (Payment & { event_name: string })[] }>('/api/payments/alerts')
+          .catch(() => ({ alerts: [] })),
+      ]);
+      setPayments(payRes.payments ?? []);
+      setAlerts(alertRes.alerts ?? []);
+    } catch {
+      showToast('결제 내역을 다시 불러오지 못했습니다.', false);
+    }
+  }
+
+  // 행사별 결제 합계 — 환불(refund)은 차감. 결제매핑 화면과 동일 규칙.
+  const paymentTotalByEvent = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const p of payments) {
+      const amt = p.amount ?? 0;
+      m[p.event_id] = (m[p.event_id] ?? 0) + (p.payment_type === 'refund' ? -amt : amt);
+    }
+    return m;
+  }, [payments]);
+
+  // 행사별 결제 건수 — 펼치지 않아도 결제가 걸려 있는지 알 수 있게
+  const paymentsByEvent = useMemo(() => {
+    const m: Record<string, Payment[]> = {};
+    for (const p of payments) (m[p.event_id] ||= []).push(p);
+    return m;
+  }, [payments]);
 
   // 연도 목록은 실제 데이터에서 뽑는다 — 하드코딩하면 2028년 이후 행사가 조회 불가가 된다.
   const yearOptions = useMemo(() => {
@@ -654,6 +716,24 @@ export default function Revenue() {
         </div>
       </div>
 
+      {/* 카드 미입금 알림 — 기존 결제매핑 페이지 상단에 있던 것을 이관 */}
+      {alerts.length > 0 && (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3">
+          <div className="text-sm font-semibold text-red-800 mb-1.5">
+            ⚠️ 카드사 입금 지연 {alerts.length}건 — 입금 기한(영업일)을 넘겼습니다
+          </div>
+          <div className="space-y-0.5 max-h-32 overflow-y-auto">
+            {alerts.map((a) => (
+              <div key={a.id} className="text-xs text-red-700">
+                · {a.event_name || '(행사 없음)'} — {fmtKRW(a.amount)}
+                {a.card_company ? ` (${CARD_COMPANY_LABEL[a.card_company]})` : ''} · 결제{' '}
+                {fmtDateW(a.paid_at)}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Filter bar */}
       <div className="bg-white rounded border p-3 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-1.5 text-sm text-gray-700">
@@ -774,6 +854,15 @@ export default function Revenue() {
                 >
                   매출계<SortIcon col="grand_total" />
                 </th>
+                <th className="px-3 py-2.5 text-right font-medium text-gray-600 whitespace-nowrap">
+                  결제계
+                </th>
+                <th className="px-3 py-2.5 text-right font-medium text-gray-600 whitespace-nowrap">
+                  차액
+                </th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600 whitespace-nowrap">
+                  정산
+                </th>
                 <th className="px-3 py-2.5 text-left font-medium text-gray-600">상태</th>
                 <th className="px-3 py-2.5 text-left font-medium text-gray-600 w-20"></th>
               </tr>
@@ -781,7 +870,7 @@ export default function Revenue() {
             <tbody className="divide-y">
               {pagedEvents.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-gray-400">
+                  <td colSpan={15} className="py-12 text-center text-gray-400">
                     조회된 행사가 없습니다.
                   </td>
                 </tr>
@@ -790,6 +879,8 @@ export default function Revenue() {
                 const isExpanded = expandedId === ev.id;
                 const salesSum = sumOrNull(ev.sales_total_amount, ev.gateway_fee);
                 const rowNum = (page - 1) * PAGE_SIZE + idx + 1;
+                const payTotal = paymentTotalByEvent[ev.id] ?? 0;
+                const settle = settlementOf(salesSum, payTotal);
 
                 return (
                   <Fragment key={ev.id}>
@@ -853,6 +944,32 @@ export default function Revenue() {
                       <td className="px-3 py-2 text-right whitespace-nowrap font-medium">
                         {fmtKRW(salesSum)}
                       </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {payTotal ? fmtKRW(payTotal) : '—'}
+                      </td>
+                      <td
+                        className={clsx(
+                          'px-3 py-2 text-right whitespace-nowrap font-medium',
+                          settle.tone === 'ok' && 'text-green-700',
+                          settle.tone === 'due' && 'text-yellow-700',
+                          settle.tone === 'over' && 'text-red-600'
+                        )}
+                      >
+                        {settle.tone === 'none' ? '—' : fmtKRW(settle.diff)}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span
+                          className={clsx(
+                            'text-xs px-1.5 py-0.5 rounded font-medium',
+                            settle.tone === 'ok' && 'bg-green-100 text-green-700',
+                            settle.tone === 'due' && 'bg-yellow-100 text-yellow-700',
+                            settle.tone === 'over' && 'bg-red-100 text-red-700',
+                            settle.tone === 'none' && 'bg-gray-100 text-gray-400'
+                          )}
+                        >
+                          {settle.label}
+                        </span>
+                      </td>
                       <td className="px-3 py-2">
                         <span
                           className={clsx(
@@ -880,7 +997,7 @@ export default function Revenue() {
                     {/* Expanded row */}
                     {isExpanded && editForm && (
                       <tr>
-                        <td colSpan={12} className="bg-blue-50/20 border-t border-b border-blue-100 p-4">
+                        <td colSpan={15} className="bg-blue-50/20 border-t border-b border-blue-100 p-4">
                           <ExpandedPanel
                             ev={ev}
                             invoice={ev.invoice ?? null}
@@ -897,6 +1014,68 @@ export default function Revenue() {
                               setEditForm(null);
                             }}
                           />
+
+                          {/* 정산 대조 — 매출계 vs 결제계. 두 값을 같은 화면에서 보게 하는 것이
+                              이 통합의 핵심이다 (따로 있으면 차액을 아무도 안 본다). */}
+                          <div
+                            className={clsx(
+                              'mt-5 rounded-lg border p-3',
+                              settle.tone === 'ok' && 'bg-green-50 border-green-200',
+                              settle.tone === 'due' && 'bg-yellow-50 border-yellow-200',
+                              settle.tone === 'over' && 'bg-red-50 border-red-200',
+                              settle.tone === 'none' && 'bg-gray-50 border-gray-200'
+                            )}
+                          >
+                            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                              <div className="flex items-center gap-3 text-sm">
+                                <span className="text-gray-500">
+                                  매출계 <strong className="text-gray-800">{fmtKRW(salesSum)}</strong>
+                                </span>
+                                <span className="text-gray-400">vs</span>
+                                <span className="text-gray-500">
+                                  결제계 <strong className="text-gray-800">{fmtKRW(payTotal)}</strong>
+                                </span>
+                                <span className="text-gray-400">·</span>
+                                <span className="text-gray-500">
+                                  차액{' '}
+                                  <strong
+                                    className={clsx(
+                                      settle.tone === 'ok' && 'text-green-700',
+                                      settle.tone === 'due' && 'text-yellow-700',
+                                      settle.tone === 'over' && 'text-red-600'
+                                    )}
+                                  >
+                                    {settle.diff > 0 ? '+' : ''}
+                                    {fmtKRW(settle.diff)}
+                                  </strong>
+                                </span>
+                              </div>
+                              <div
+                                className={clsx(
+                                  'text-sm font-semibold px-3 py-1 rounded-full',
+                                  settle.tone === 'ok' && 'bg-green-100 text-green-700',
+                                  settle.tone === 'due' && 'bg-yellow-100 text-yellow-700',
+                                  settle.tone === 'over' && 'bg-red-100 text-red-700',
+                                  settle.tone === 'none' && 'bg-gray-100 text-gray-500'
+                                )}
+                              >
+                                {settle.tone === 'ok'
+                                  ? '✓ 정산 완료'
+                                  : settle.tone === 'due'
+                                  ? `미수 ${fmtKRW(settle.diff)}`
+                                  : settle.tone === 'over'
+                                  ? '⚠ 초과 입금 확인 필요'
+                                  : '매출·결제 미입력'}
+                              </div>
+                            </div>
+
+                            <PaymentSection
+                              eventId={ev.id}
+                              payments={paymentsByEvent[ev.id] ?? []}
+                              canWrite={canWrite}
+                              onChanged={reloadPayments}
+                            />
+                          </div>
                         </td>
                       </tr>
                     )}

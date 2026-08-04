@@ -13,7 +13,6 @@ import {
   canSeeMenu,
   canSeeMenuCost,
   canSeeRevenue,
-  canSeePayments,
   isSales,
   isAdmin,
 } from '../auth/permissions';
@@ -81,8 +80,8 @@ export default function Layout() {
     { to: '/files', label: '첨부파일 관리', visible: !!user },
     { to: '/menus', label: '🍽️ 메뉴 마스터', visible: !!user && canSeeMenu(role) },
     { to: '/menu-cost', label: '🧮 메뉴별 원가', visible: !!user && canSeeMenuCost(role) },
-    { to: '/revenue', label: '💰 매출 관리', visible: !!user && canSeeRevenue(role) },
-    { to: '/payments', label: '💳 결제 매핑', visible: !!user && canSeePayments(role) },
+    // 결제 매핑은 매출 관리 안으로 통합됨 (행 펼치면 정산 대조 + 결제 내역)
+    { to: '/revenue', label: '💰 매출·정산', visible: !!user && canSeeRevenue(role) },
     // 관리자 전용 탭 — admin role 만 노출.
     { to: '/admin/wedding-calc', label: '⚙ 웨딩 기본값', visible: !!user && canManageUsers(role) },
     { to: '/admin/users', label: '사용자 관리', visible: !!user && canManageUsers(role) },
