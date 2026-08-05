@@ -1,5 +1,6 @@
 import { weekdayKoOf } from '../lib/dateFmt';
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { canWriteReview } from '../auth/permissions';
@@ -98,6 +99,7 @@ const REVIEW_HEADERS: ReviewHeader[] = [
 
 export default function Reviews() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const writable = canWriteReview(user?.role);
 
   const [list, setList] = useState<EligibleEvent[]>([]);
@@ -391,6 +393,9 @@ export default function Reviews() {
         otherEvents={list as Event[]}
         // 이 페이지에서 행을 클릭한 경우 항상 '행사리뷰' 탭으로 진입.
         initialTab="review"
+        onOpenFullscreen={
+          editing ? () => navigate(`/events/${editing.id}?tab=review`) : undefined
+        }
         onSaved={() => {
           // 리뷰는 별도 API라 onSaved 안에서 처리 안 함 — 모달 close 시 reload
         }}

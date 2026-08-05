@@ -9,6 +9,7 @@ import MiceCustomers from './pages/MiceCustomers';
 import WeddingCustomers from './pages/WeddingCustomers';
 import Calendar from './pages/Calendar';
 import Events from './pages/Events';
+import EventWorkspace from './pages/EventWorkspace';
 import Reviews from './pages/Reviews';
 import Files from './pages/Files';
 import Collaborations from './pages/Collaborations';
@@ -120,6 +121,9 @@ function ProtectedRoutes() {
         {/* 캘린더 요약 — 뷰어 포함 모든 활성 사용자 접근 (h_kitchen 도 가능) */}
         <Route path="/calendar/summary" element={<CalendarSummary />} />
         <Route path="/events" element={<Events />} />
+        {/* 행사 원스톱 워크스페이스 — 한 행사=한 화면. ?tab=revenue 처럼 탭까지 딥링크 가능.
+            열람 권한은 서버가 행사 구분(MICE/WEDDING)으로 다시 판단한다. */}
+        <Route path="/events/:id" element={<EventWorkspace />} />
 
         {/* 통합 고객 프로필 — 양 세일즈/관리자/뷰어 모두 접근. h_kitchen 제외. */}
         <Route

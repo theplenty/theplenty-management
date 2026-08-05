@@ -1,5 +1,6 @@
 import { weekdayKoOf } from '../lib/dateFmt';
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { canCreateEvent, isAdmin } from '../auth/permissions';
 import { useAuth } from '../auth/AuthContext';
@@ -369,6 +370,13 @@ export default function Events() {
   const [editingLinks, setEditingLinks] = useState<EventCustomerLink[]>([]);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [editingCancellation, setEditingCancellation] = useState<Cancellation | null>(null);
+  const navigate = useNavigate();
+
+  // 더블클릭 = 전용 워크스페이스 페이지로. 단일 클릭(모달)은 빠른 수정용으로 유지.
+  function openWorkspace(eventId: string) {
+    setModalOpen(false);
+    navigate(`/events/${eventId}`);
+  }
 
   async function load() {
     setLoading(true);
@@ -743,6 +751,7 @@ export default function Events() {
                     setEditingCancellation(null);
                   }
                 }}
+                onDoubleClick={() => openWorkspace(e.id)}
                 className="bg-white border rounded-lg p-3 shadow-sm active:bg-blue-50 cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-2 mb-1">
@@ -851,6 +860,8 @@ export default function Events() {
                         setEditingCancellation(null);
                       }
                     }}
+                    onDoubleClick={() => openWorkspace(e.id)}
+                    title="클릭: 빠른 수정 · 더블클릭: 전용 화면에서 열기"
                     className="border-t hover:bg-blue-50 cursor-pointer"
                   >
                     <td className="px-2 py-2 text-right text-xs text-gray-400 tabular-nums">
@@ -911,6 +922,7 @@ export default function Events() {
           });
         }}
         onDeleted={(eventId) => setEvents((prev) => prev.filter((p) => p.id !== eventId))}
+        onOpenFullscreen={editing ? () => openWorkspace(editing.id) : undefined}
       />
     </div>
   );

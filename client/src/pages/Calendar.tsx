@@ -725,6 +725,14 @@ export default function Calendar() {
         otherEvents={events as Event[]}
         onSaved={handleSaved}
         onDeleted={(eventId) => setEvents((prev) => prev.filter((p) => p.id !== eventId))}
+        onOpenFullscreen={
+          editingEvent
+            ? () => {
+                setModalOpen(false);
+                navigate(`/events/${editingEvent.id}`);
+              }
+            : undefined
+        }
       />
 
       <ShareCalendarModal open={shareOpen} onClose={() => setShareOpen(false)} />
@@ -732,7 +740,8 @@ export default function Calendar() {
       <Modal
         open={conflictListOpen}
         onClose={() => setConflictListOpen(false)}
-        title={`강한 충돌 ${hardConflictPairs.length}쌍 — DEF·TEN 같은 홀/시간 겹침`}
+        // 실제 판정(conflictCheck.detectConflict)은 DEF 끼리만 hard 로 본다. 행사 상태에 TEN 은 없음.
+        title={`강한 충돌 ${hardConflictPairs.length}쌍 — DEF 끼리 같은 홀/시간 겹침`}
         widthClass="max-w-4xl"
       >
         {hardConflictPairs.length === 0 ? (
