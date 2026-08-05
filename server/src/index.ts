@@ -40,6 +40,7 @@ import eventRevenueRouter from './routes/eventRevenue.js';
 import paymentsRouter from './routes/payments.js';
 import menuCostRouter from './routes/menuCost.js';
 import settingsRouter from './routes/settings.js';
+import notificationsRouter from './routes/notifications.js';
 import { attachUser, attachTenant } from './middleware/auth.js';
 import { runSeed } from './store/seed.js';
 import { runMigrations } from './store/migrate.js';
@@ -87,6 +88,8 @@ app.use('/api/revenue', eventRevenueRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/menu-cost', menuCostRouter);
 app.use('/api/settings', settingsRouter);
+// 알림 자동화 (A4) — 관리자 전용 점검·수동 발송
+app.use('/api/notifications', notificationsRouter);
 // 한국 공휴일 (구글 공식 캘린더 프록시) — 공개 정보, 별도 권한 체크 없음
 app.use('/api/holidays', holidaysRouter);
 
@@ -136,4 +139,31 @@ export const api = onRequest(
     invoker: 'public',
   },
   app
+);
+
+// ── 알림 자동화 스케줄러 (로드맵 A4) ────────────────────────────────────────
+// 평일 아침 8시(KST)에 운영 알림을 Slack 으로 발송한다.
+// 발송 대상 판정·중복 제거는 lib/alerts.ts 가 담당 — 수동 실행(/api/notifications/run)과 동일 경로.
+// SLACK_WEBHOOK_URL 미설정이면 조용히 skip 하므로 웹훅 발급 전에 배포해도 안전하다.
+import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { runAlerts } from './lib/alerts.js';
+
+export const dailyAlerts = onSchedule(
+  {
+    // 월~금 08:00 KST
+    schedule: '0 8 * * 1-5',
+    timeZone: 'Asia/Seoul',
+    region: 'asia-northeast3',
+    memory: '512MiB',
+    timeoutSeconds: 120,
+  },
+  async () => {
+    // Firestore 모드에서는 메모리 hydrate 가 끝나야 판정이 정확하다.
+    await ensureHydrated().catch((e: unknown) => console.error('[dailyAlerts] hydrate 실패:', e));
+    const result = await runAlerts();
+    console.log(
+      `[dailyAlerts] sent=${result.sent} new=${result.total_new}` +
+        (result.skipped_reason ? ` reason=${result.skipped_reason}` : '')
+    );
+  }
 );

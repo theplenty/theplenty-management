@@ -25,6 +25,7 @@ import type {
   EventRevenueLine,
   Payment,
   AppSetting,
+  NotificationLog,
 } from '../types.js';
 import { DEFAULT_TENANT_ID } from '../types.js';
 
@@ -63,6 +64,7 @@ interface DB {
   event_revenue_lines: EventRevenueLine[];
   payments: Payment[];
   settings: AppSetting[];
+  notification_logs: NotificationLog[];
 }
 
 const COLLECTIONS: (keyof DB)[] = [
@@ -89,6 +91,7 @@ const COLLECTIONS: (keyof DB)[] = [
   'event_revenue_lines',
   'payments',
   'settings',
+  'notification_logs',
 ];
 
 function safeReadJSON<T>(file: string): T | null {
@@ -205,6 +208,7 @@ const db: DB = {
   event_revenue_lines: loadCollection('event_revenue_lines'),
   payments: loadCollection('payments'),
   settings: loadCollection('settings'),
+  notification_logs: loadCollection('notification_logs'),
 };
 
 export function getCollection<K extends keyof DB>(name: K): DB[K] {

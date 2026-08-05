@@ -15,6 +15,7 @@ import Files from './pages/Files';
 import Collaborations from './pages/Collaborations';
 import AdminUsers from './pages/AdminUsers';
 import AdminApiKeys from './pages/AdminApiKeys';
+import AdminNotifications from './pages/AdminNotifications';
 import Trash from './pages/Trash';
 import WeddingProfile from './pages/WeddingProfile';
 import MiceProfile from './pages/MiceProfile';
@@ -212,6 +213,15 @@ function ProtectedRoutes() {
           element={
             <ProtectedRoute allow={['admin']}>
               <AdminApiKeys />
+            </ProtectedRoute>
+          }
+        />
+        {/* 알림 자동화 점검 — 발송 내용에 전사 운영 현황이 담겨 관리자 전용 */}
+        <Route
+          path="/admin/notifications"
+          element={
+            <ProtectedRoute allow={['admin']}>
+              <AdminNotifications />
             </ProtectedRoute>
           }
         />

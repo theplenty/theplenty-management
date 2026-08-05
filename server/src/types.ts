@@ -744,3 +744,15 @@ export interface WeddingCalcSettings {
   tierTeamlead?: { lunchSat: number; other: number };
   tierExecFloor?: number;
 }
+
+// ===== 알림 발송 이력 (A4 알림 자동화) =====
+// 같은 건이 매일 반복 발송되는 것을 막는 dedup 키 저장소.
+// 규칙별 재알림 주기(repeat_days)가 지나면 다시 보낸다.
+export interface NotificationLog {
+  id: string;          // = dedup_key (문서 키 호환)
+  dedup_key: string;   // '<rule>:<대상 id>' — 예: 'payment_overdue:pmt_abc'
+  rule: string;        // 규칙 id
+  target_id: string;   // 행사/결제/협업 id
+  channel: string;     // 'slack' 등
+  sent_at: string;     // ISO
+}

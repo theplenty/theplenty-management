@@ -86,6 +86,7 @@ export default function Layout() {
     { to: '/admin/wedding-calc', label: '⚙ 웨딩 기본값', visible: !!user && canManageUsers(role) },
     { to: '/admin/users', label: '사용자 관리', visible: !!user && canManageUsers(role) },
     { to: '/admin/api-keys', label: '외부 API 키', visible: !!user && canManageApiKeys(role) },
+    { to: '/admin/notifications', label: '🔔 알림 자동화', visible: !!user && canManageUsers(role) },
     { to: '/admin/activity-log', label: '📜 활동 로그', visible: !!user && canManageUsers(role) },
     { to: '/admin/trash', label: '🗑️ 휴지통', visible: !!user && canManageTrash(role) },
   ];
