@@ -38,6 +38,19 @@ function dateOnly(s: string | null | undefined): string {
   return (s || '').slice(0, 10);
 }
 
+/**
+ * 휴지통에 들어간(soft-delete) 행사의 id 집합.
+ *
+ * 행사를 기준으로 도는 규칙들은 각자 `e.deleted_at` 을 보지만,
+ * **행사에 딸린 레코드**(협업요청·결제)를 기준으로 도는 규칙은 부모 행사가 지워져도
+ * 그대로 남아 있어서 유령 알림이 된다. 실제로 삭제된 행사의 협업요청이
+ * 화면(GET /api/collaborations 는 같은 필터를 건다)에는 없는데 알림에만 뜬 사고가 있었다.
+ * 그래서 화면과 알림이 같은 기준을 쓰도록 여기 한 곳에 둔다.
+ */
+function deletedEventIds(): Set<string> {
+  return new Set(store.events.filter((e) => e.deleted_at).map((e) => e.id));
+}
+
 /** 행사별 매출 합계 — sales_total_amount 우선, 없으면 세부 매출 라인 합 */
 export function salesTotalOf(ev: Event): number {
   if (ev.sales_total_amount) return ev.sales_total_amount;
@@ -120,7 +133,10 @@ export interface OverduePaymentRow {
 export function overduePayments(): OverduePaymentRow[] {
   const now = Date.now();
   const eventById = new Map(store.events.map((e) => [e.id, e]));
+  const deleted = deletedEventIds();
   return store.payments
+    // 삭제된 행사의 결제는 추적 대상이 아니다 (협업요청과 같은 이유)
+    .filter((p) => !deleted.has(p.event_id))
     .filter((p) => p.method === 'card' && !p.bank_deposit_date && p.paid_at && p.card_company)
     .map((p) => {
       const deadline = addBusinessDays(p.paid_at, CARD_DEPOSIT_DAYS[p.card_company!] ?? 3);
@@ -157,7 +173,10 @@ export interface PendingCollabRow {
 
 export function pendingCollaborations(): PendingCollabRow[] {
   const now = Date.now();
+  const deleted = deletedEventIds();
   return store.collaboration_requests
+    // 부모 행사가 휴지통에 있으면 협업요청도 없는 것으로 본다 (목록 화면과 동일 기준)
+    .filter((c) => !deleted.has(c.event_id))
     .filter((c) => c.status === '회신대기' || (c.status === '회신완료' && !c.decision))
     .map((c) => {
       const missing_teams = c.target_teams.filter(
