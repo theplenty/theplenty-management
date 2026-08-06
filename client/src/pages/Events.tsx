@@ -2,7 +2,7 @@ import { weekdayKoOf } from '../lib/dateFmt';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
-import { canCreateEvent, isAdmin } from '../auth/permissions';
+import { canCreateEvent, canClearAllEvents, isAdmin } from '../auth/permissions';
 import { useAuth } from '../auth/AuthContext';
 import {
   EVENT_STATUS_OPTIONS,
@@ -420,7 +420,8 @@ export default function Events() {
     history.replaceState(null, '', window.location.pathname);
   }, [events]);
 
-  const admin = isAdmin(user?.role);
+  // 전체 삭제는 되돌릴 수 없어 일반 admin 도 제외 — 소유자 계정만.
+  const canClearAll = canClearAllEvents(user);
   // 새 권한 정책: 삭제는 작성 권한자(admin + sales)만. 뷰어(banquet/kitchen/h_kitchen) 제외.
   const canDelete = canCreateEvent(user?.role);
 
@@ -651,12 +652,12 @@ export default function Events() {
               + 행사 등록
             </button>
           )}
-          {admin && (
+          {canClearAll && (
             <button
               onClick={clearAllEvents}
               disabled={clearing || events.length === 0}
               className="btn-danger !py-1.5 text-xs"
-              title="관리자 전용 — 모든 행사를 일괄 삭제"
+              title="소유자 계정 전용 — 모든 행사를 일괄 삭제 (복구 불가)"
             >
               {clearing ? '삭제 중...' : `🗑 행사 전체 삭제 (${events.length}건)`}
             </button>

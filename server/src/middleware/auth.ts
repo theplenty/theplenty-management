@@ -78,9 +78,7 @@ function findOrCreateUserByEmail(
     }
     return user;
   }
-  const isSuperAdmin =
-    !!process.env.SUPER_ADMIN_EMAIL &&
-    email.toLowerCase() === process.env.SUPER_ADMIN_EMAIL.toLowerCase();
+  const isSuperAdmin = isSuperAdminEmail(email);
   const now = new Date().toISOString();
   user = {
     id: nanoid(10),
@@ -165,4 +163,20 @@ export function requireRoles(...roles: Role[]) {
 
 export function isAdmin(user: User | undefined): user is User {
   return !!user && user.role === 'admin';
+}
+
+/**
+ * 최고 관리자(소유자) 판정 — SUPER_ADMIN_EMAIL 과 이메일이 일치하는지.
+ * 관리자가 여러 명일 수 있으므로, 되돌릴 수 없는 대량 작업(행사 전체 삭제 등)은
+ * 일반 admin 이 아니라 이 계정만 수행하게 한다.
+ * 환경변수가 비어 있으면 아무도 통과하지 못한다 (fail-closed).
+ */
+export function isSuperAdminEmail(email: string | undefined): boolean {
+  const su = process.env.SUPER_ADMIN_EMAIL;
+  if (!su || !email) return false;
+  return email.toLowerCase() === su.toLowerCase();
+}
+
+export function isSuperAdmin(user: User | undefined): user is User {
+  return !!user && user.role === 'admin' && isSuperAdminEmail(user.email);
 }

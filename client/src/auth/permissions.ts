@@ -188,9 +188,22 @@ export function canSeeMenuCost(role: Role | undefined): boolean {
 
 // ===== 행사 삭제 =====
 // 휴지통 안전망이 있으므로 활성 사용자 모두 행사·고객 soft-delete 가능.
-// 전체비우기(clearAllEvents) 등 mass 작업은 admin only.
 export function canSoftDelete(role: Role | undefined): boolean {
   return isActive(role);
+}
+
+// 행사 전체 삭제(mass delete) — 최고 관리자(소유자) 1인 전용.
+// 관리자는 여러 명일 수 있는데 이 작업은 휴지통도 거치지 않고 되돌릴 수 없다.
+// 실제 차단은 서버(POST /api/events/_clear-all)가 같은 기준으로 하고,
+// 여기는 버튼 자체를 감춰 오조작 기회를 없애는 UI 게이트.
+// 환경변수가 비어 있으면 아무에게도 보이지 않는다 (fail-closed).
+export function canClearAllEvents(
+  user: { role?: Role; email?: string } | null | undefined
+): boolean {
+  if (!user || user.role !== 'admin' || !user.email) return false;
+  const su = import.meta.env.VITE_SUPER_ADMIN_EMAIL;
+  if (!su) return false;
+  return user.email.toLowerCase() === su.toLowerCase();
 }
 
 // ===== 매출 관리 =====

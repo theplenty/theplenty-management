@@ -10,7 +10,7 @@ import {
   activeRows,
   isDeleted,
 } from '../store/mockStore.js';
-import { requireActiveRole } from '../middleware/auth.js';
+import { requireActiveRole, isSuperAdmin } from '../middleware/auth.js';
 import { logChange, computeDiff, getLogsForEntity } from '../store/changeLog.js';
 import type {
   Event,
@@ -317,11 +317,15 @@ router.post('/_bulk-upsert', (req, res) => {
   });
 });
 
-// 일괄 삭제 — 관리자 전용. 행사와 자식 컬렉션(식음/업체연결/INVOICE/첨부/취소/리뷰) 모두 정리.
+// 일괄 삭제 — 최고 관리자(SUPER_ADMIN_EMAIL) 전용.
+// 행사와 자식 컬렉션(식음/업체연결/INVOICE/첨부/취소/리뷰)을 모두 정리하며 되돌릴 수 없다.
 // 고객/사용자/캘린더공유/매출목표는 건드리지 않음.
+// 관리자가 여러 명이므로 일반 admin 은 막는다 — 오조작 시 피해가 복구 불가능한 수준.
 // 주의: 라우트 순서상 '/:id' 보다 먼저 정의해야 'id=_clear-all'로 잡히지 않음.
 router.post('/_clear-all', (req, res) => {
-  if (req.user!.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'forbidden', need: 'super_admin' });
+  }
   const before = store.events.length;
   // 부모 행사 먼저 제거 (in-memory + Firestore)
   const eventIds = store.events.map((e) => e.id);
