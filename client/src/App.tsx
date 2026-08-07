@@ -25,6 +25,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import Stats from './pages/Stats';
+import Field from './pages/Field';
 import Menus from './pages/Menus';
 import MenuCost from './pages/MenuCost';
 import AdminWeddingCalc from './pages/AdminWeddingCalc';
@@ -252,6 +253,18 @@ function ProtectedRoutes() {
           }
         />
       </Route>
+
+      {/* 현장 모드(A6) — Layout(사이드바) 바깥에 둔다.
+          폰 화면에서 좁은 폭을 사이드바가 먹으면 안 되고, 홈화면에 설치했을 때
+          전체화면으로 떠야 하기 때문. PWA manifest 의 start_url 이 여기다. */}
+      <Route
+        path="/field"
+        element={
+          <ProtectedRoute>
+            <Field />
+          </ProtectedRoute>
+        }
+      />
 
       <Route path="*" element={<DefaultLanding />} />
     </Routes>

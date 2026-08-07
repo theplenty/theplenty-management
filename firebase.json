@@ -39,6 +39,13 @@
         "headers": [
           { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
         ]
+      },
+      {
+        "comment": "서비스워커가 캐시되면 새 버전을 못 받아 낡은 화면이 고착된다",
+        "source": "/sw.js",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        ]
       }
     ],
     "predeploy": [

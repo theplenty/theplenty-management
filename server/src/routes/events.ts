@@ -11,6 +11,7 @@ import {
   isDeleted,
 } from '../store/mockStore.js';
 import { requireActiveRole, isSuperAdmin } from '../middleware/auth.js';
+import { todayKst } from '../lib/kstDate.js';
 import { logChange, computeDiff, getLogsForEntity } from '../store/changeLog.js';
 import type {
   Event,
@@ -193,6 +194,60 @@ router.get('/', (req, res) => {
     return { ...e, food_items, invoice };
   });
   res.json({ events: enriched });
+});
+
+// ===== 현장 모드 (A6) — 하루치만 =====
+// 연회·주방은 현장에서 폰으로 본다. `GET /` 는 전 기간 977건 + 식음 전체를 내려주는데,
+// 그걸 모바일 데이터로 받게 할 수 없다. 그래서 날짜 하나만 잘라서 필요한 것만 보낸다.
+// 라우트 선언 순서 주의 — `/:id` 보다 앞에 있어야 '_day' 가 id 로 잡히지 않는다.
+router.get('/_day', (req, res) => {
+  const role = req.user!.role;
+  const date =
+    typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
+      ? req.query.date
+      // 함수는 UTC 로 돌기 때문에 KST 기준으로 '오늘' 을 구해야 한다.
+      // 아침 9시 이전에 현장에서 열면 어제 행사가 뜨는 사고가 난다.
+      : todayKst();
+
+  const day = activeRows(store.events)
+    .filter((e) => canReadType(role, e.event_type))
+    // 여러 날에 걸친 행사도 해당 날짜에 걸쳐 있으면 포함
+    .filter((e) => {
+      const s = (e.start_datetime || '').slice(0, 10);
+      const en = (e.end_datetime || '').slice(0, 10) || s;
+      return s <= date && date <= en;
+    })
+    .sort((a, b) => (a.start_datetime || '').localeCompare(b.start_datetime || ''));
+
+  const events = day.map((e) => {
+    const food_items = store.event_food_items
+      .filter((f) => f.event_id === e.id)
+      // 현장은 시간 순서로 본다 — 커피브레이크 서비스 시간이 있으면 그것 기준
+      .sort((a, b) => (a.service_time || a.time_label || '').localeCompare(b.service_time || b.time_label || ''));
+    const collab = store.collaboration_requests.find((c) => c.event_id === e.id) || null;
+    return {
+      id: e.id,
+      event_name: e.event_name,
+      event_type: e.event_type,
+      status: e.status,
+      usage_type: e.usage_type,
+      halls: e.halls,
+      seats: e.seats,
+      start_datetime: e.start_datetime,
+      end_datetime: e.end_datetime,
+      assigned_manager_name: e.assigned_manager_name,
+      memo: e.memo,
+      // 계약기준이 아니라 '최종 확정' 인원이 현장에서 쓰는 숫자다. 없으면 계약값으로 폴백.
+      food_gtd: e.food_gtd_final ?? e.food_gtd_contract,
+      food_exp: e.food_exp_final ?? e.food_exp_contract,
+      food_items,
+      // BEO 원문(JSON 문자열)을 그대로 넘겨 클라이언트가 파싱한다 (parseBeoDoc 재사용).
+      beo_payload: e.beo_payload || null,
+      collaboration: collab ? { id: collab.id, status: collab.status } : null,
+    };
+  });
+
+  res.json({ date, events });
 });
 
 // 일괄 upsert (엑셀 import) — 관리자 또는 sales.

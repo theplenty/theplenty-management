@@ -1,0 +1,26 @@
+{
+  "name": "플렌티컨벤션 운영관리",
+  "short_name": "플렌티 운영",
+  "description": "행사 운영·세팅·BEO 현장 확인",
+  "start_url": "/field",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F9FAFB",
+  "theme_color": "#6B4A2F",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
