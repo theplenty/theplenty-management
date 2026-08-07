@@ -14,6 +14,7 @@ import {
   unsettledEvents,
   upcomingEvents,
 } from '../lib/opsMetrics.js';
+import { todayKst, monthsFromTodayKst } from '../lib/kstDate.js';
 
 const router = Router();
 router.use(requireApiKey);
@@ -117,11 +118,8 @@ router.get('/ops/settlement-status', (req, res) => {
   const from = typeof req.query.from === 'string' && req.query.from ? req.query.from : undefined;
   const to = typeof req.query.to === 'string' && req.query.to ? req.query.to : undefined;
   const rows = unsettledEvents(from, to);
-  const today = new Date().toISOString().slice(0, 10);
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
   res.json({
-    range: { from: from || sixMonthsAgo.toISOString().slice(0, 10), to: to || today },
+    range: { from: from || monthsFromTodayKst(-6), to: to || todayKst() },
     count: rows.length,
     unsettled: rows,
   });
@@ -132,7 +130,7 @@ router.get('/ops/settlement-status', (req, res) => {
 router.get('/ops/payments-overdue', (req, res) => {
   if (!requireAllScope(req, res)) return;
   const rows = overduePayments();
-  res.json({ as_of: new Date().toISOString().slice(0, 10), count: rows.length, overdue: rows });
+  res.json({ as_of: todayKst(), count: rows.length, overdue: rows });
 });
 
 // GET /api/public/v1/ops/collaborations-pending
@@ -149,7 +147,7 @@ router.get('/ops/upcoming-events', (req, res) => {
   if (!requireAllScope(req, res)) return;
   const days = Number(req.query.days) > 0 ? Math.min(Number(req.query.days), 60) : 7;
   const rows = upcomingEvents(days);
-  res.json({ as_of: new Date().toISOString().slice(0, 10), within_days: days, count: rows.length, upcoming: rows });
+  res.json({ as_of: todayKst(), within_days: days, count: rows.length, upcoming: rows });
 });
 
 // GET /api/public/v1/ops/revenue-missing?days=90
@@ -158,7 +156,7 @@ router.get('/ops/revenue-missing', (req, res) => {
   if (!requireAllScope(req, res)) return;
   const days = Number(req.query.days) > 0 ? Math.min(Number(req.query.days), 730) : 90;
   const rows = revenueMissingEvents(days);
-  res.json({ as_of: new Date().toISOString().slice(0, 10), since_days: days, count: rows.length, missing: rows });
+  res.json({ as_of: todayKst(), since_days: days, count: rows.length, missing: rows });
 });
 
 // 클라이언트가 자기 키의 권한을 확인할 수 있는 introspection

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { exportToXlsx } from '../lib/excel';
+import { todayKst } from '../lib/dateFmt';
 
 // ── 서버 응답 타입 ─────────────────────────────────────────────────────────
 interface FieldMeta {
@@ -93,7 +94,7 @@ function heatStyle(v: number | null, max: number): React.CSSProperties {
   return { backgroundColor: `rgba(37, 99, 235, ${(t * 0.18).toFixed(3)})` };
 }
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = todayKst;
 
 export default function Stats() {
   const [meta, setMeta] = useState<DatasetMeta[]>([]);

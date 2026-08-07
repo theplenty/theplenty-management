@@ -37,10 +37,8 @@ function sanitizePriorities(v: unknown): WeddingPriorityKey[] {
   );
 }
 
-// KST 기준 오늘 날짜 (Cloud Functions는 UTC로 돌므로 +9h 보정)
-function todayKst(): string {
-  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
-}
+// KST 기준 오늘 날짜 — 같은 보정이 서버 곳곳에 필요해서 공용 모듈로 옮겼다.
+import { todayKst } from '../lib/kstDate.js';
 
 type LandingState = 'active' | 'contracted' | 'closed' | 'expired';
 

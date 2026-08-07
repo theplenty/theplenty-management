@@ -5,6 +5,7 @@
 //   - 동일 건의 status 가 INCALL→INQ→DEF 로 변경됐다면 → DEF 전환 1건으로 카운트 (중복 X)
 //   - "단순문의" 상태를 "미처리" 로 간주
 
+import { todayKst } from './dateFmt';
 import type {
   MiceCustomer,
   MiceInquiry,
@@ -259,7 +260,8 @@ export function findScheduledConsultations(
   range: DateRange | null = null,
   now = new Date()
 ): WeddingCustomer[] {
-  const today = now.toISOString().slice(0, 10);
+  // UTC 기준이면 오전 9시 이전에 '오늘'이 하루 밀린다 — KST 기준으로 구한다.
+  const today = todayKst(now);
   return customers
     .filter((c) => !c.deleted_at)
     .filter((c) => c.progress_status === '상담' || (c.desired_consultation_date && c.desired_consultation_date >= today))

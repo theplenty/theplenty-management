@@ -4,6 +4,7 @@
 //   2) 알림 자동화(A4)        — 매일 아침 Slack 으로 밀어줄 때
 // 같은 판정이 두 군데서 따로 계산되면 반드시 어긋나므로 여기 한 곳에만 둔다.
 import { store } from '../store/mockStore.js';
+import { todayKst, daysFromTodayKst, monthsFromTodayKst, dateOnly } from './kstDate.js';
 import type { CardCompany, Event } from '../types.js';
 
 // 카드사별 영업일 기준 입금 소요일 (client/src/types.ts 와 동일 기준)
@@ -30,13 +31,9 @@ export function addBusinessDays(dateStr: string, days: number): Date {
   return d;
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function dateOnly(s: string | null | undefined): string {
-  return (s || '').slice(0, 10);
-}
+// 알림 스케줄러가 08:00 KST(=23:00 UTC 전날)에 돌기 때문에 UTC 기준으로 '오늘'을 구하면
+// 하루가 밀린다. 반드시 KST 기준을 쓴다 — [[kstDate]] 참고.
+const today = todayKst;
 
 /**
  * 휴지통에 들어간(soft-delete) 행사의 id 집합.
@@ -83,9 +80,7 @@ export interface UnsettledRow {
 
 export function unsettledEvents(from?: string, to?: string): UnsettledRow[] {
   const t = today();
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-  const fromStr = from || sixMonthsAgo.toISOString().slice(0, 10);
+  const fromStr = from || monthsFromTodayKst(-6);
   const toStr = to || t;
 
   return store.events
@@ -216,9 +211,7 @@ export interface UpcomingEventRow {
 
 export function upcomingEvents(withinDays = 7): UpcomingEventRow[] {
   const t = today();
-  const limit = new Date();
-  limit.setDate(limit.getDate() + withinDays);
-  const limitStr = limit.toISOString().slice(0, 10);
+  const limitStr = daysFromTodayKst(withinDays);
   const todayMs = new Date(t).getTime();
 
   return store.events
@@ -259,9 +252,7 @@ export interface RevenueMissingRow {
 export function revenueMissingEvents(sinceDays = 90): RevenueMissingRow[] {
   const t = today();
   const todayMs = new Date(t).getTime();
-  const from = new Date();
-  from.setDate(from.getDate() - sinceDays);
-  const fromStr = from.toISOString().slice(0, 10);
+  const fromStr = daysFromTodayKst(-sinceDays);
 
   return store.events
     .filter((e) => {

@@ -3,6 +3,36 @@
 
 export const WEEKDAYS_KO = ['일', '월', '화', '수', '목', '금', '토'];
 
+// ── '오늘' 계산 ─────────────────────────────────────────────────────────────
+// `new Date().toISOString().slice(0,10)` 은 UTC 기준이라 한국 시각 오전 9시 이전에
+// 하루 전 날짜를 준다. 직원이 아침에 여는 화면(현장 모드·대시보드)에서 바로 티가 나므로
+// 반드시 아래 헬퍼를 쓴다. 서버에도 같은 기준의 lib/kstDate.ts 가 있다.
+const KST_PARTS = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Seoul',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** 한국 시각 기준 오늘 (YYYY-MM-DD) */
+export function todayKst(at: Date = new Date()): string {
+  const parts = KST_PARTS.formatToParts(at);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/**
+ * 날짜 문자열에 일수 가감. UTC 로만 계산해서 브라우저 타임존과 무관하게 동작한다.
+ * (로컬 Date 로 계산하면 자정 근처에서 하루가 밀린다 — 실제로 현장 모드에서 이틀씩 이동하는 버그가 났다)
+ */
+export function shiftDate(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return dateStr;
+  const t = new Date(Date.UTC(y, m - 1, d));
+  t.setUTCDate(t.getUTCDate() + days);
+  return t.toISOString().slice(0, 10);
+}
+
 // 'YYYY-MM-DD...' 문자열에서 요일 한 글자를 얻는다. 날짜가 아니면 ''.
 export function weekdayKo(s?: string | null): string {
   if (!s) return '';
