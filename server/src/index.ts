@@ -41,6 +41,7 @@ import paymentsRouter from './routes/payments.js';
 import menuCostRouter from './routes/menuCost.js';
 import settingsRouter from './routes/settings.js';
 import notificationsRouter from './routes/notifications.js';
+import statsRouter from './routes/stats.js';
 import { attachUser, attachTenant } from './middleware/auth.js';
 import { runSeed } from './store/seed.js';
 import { runMigrations } from './store/migrate.js';
@@ -90,6 +91,7 @@ app.use('/api/menu-cost', menuCostRouter);
 app.use('/api/settings', settingsRouter);
 // 알림 자동화 (A4) — 관리자 전용 점검·수동 발송
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/stats', statsRouter);
 // 한국 공휴일 (구글 공식 캘린더 프록시) — 공개 정보, 별도 권한 체크 없음
 app.use('/api/holidays', holidaysRouter);
 

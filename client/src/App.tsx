@@ -24,6 +24,7 @@ import ActivityLog from './pages/ActivityLog';
 import ErrorBoundary from './components/ErrorBoundary';
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
+import Stats from './pages/Stats';
 import Menus from './pages/Menus';
 import MenuCost from './pages/MenuCost';
 import AdminWeddingCalc from './pages/AdminWeddingCalc';
@@ -90,6 +91,15 @@ function ProtectedRoutes() {
           element={
             <ProtectedRoute allow={['admin', 'sales_mice', 'sales_wedding', 'banquet']}>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        {/* 통계 분석(A8) — 매출 축이 있어 대시보드와 같은 범위로 제한 */}
+        <Route
+          path="/stats"
+          element={
+            <ProtectedRoute allow={['admin', 'sales_mice', 'sales_wedding', 'banquet']}>
+              <Stats />
             </ProtectedRoute>
           }
         />

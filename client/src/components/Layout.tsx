@@ -82,6 +82,12 @@ export default function Layout() {
     { to: '/menu-cost', label: '🧮 메뉴별 원가', visible: !!user && canSeeMenuCost(role) },
     // 결제 매핑은 매출 관리 안으로 통합됨 (행 펼치면 정산 대조 + 결제 내역)
     { to: '/revenue', label: '💰 매출·정산', visible: !!user && canSeeRevenue(role) },
+    // 통계 분석(A8) — 대시보드와 같은 범위(주방/에이치키친 제외)
+    {
+      to: '/stats',
+      label: '📊 통계 분석',
+      visible: !!user && (isAdmin(role) || isSales(role) || role === 'banquet'),
+    },
     // 관리자 전용 탭 — admin role 만 노출.
     { to: '/admin/wedding-calc', label: '⚙ 웨딩 기본값', visible: !!user && canManageUsers(role) },
     { to: '/admin/users', label: '사용자 관리', visible: !!user && canManageUsers(role) },
