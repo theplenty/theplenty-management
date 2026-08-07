@@ -14,7 +14,7 @@ const SHELL = '/index.html';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll([SHELL, '/icon.svg', '/manifest.webmanifest']))
+    caches.open(CACHE).then((c) => c.addAll([SHELL, '/icon.svg', '/icon-192.png', '/manifest.webmanifest']))
   );
   // 새 워커를 대기시키지 않는다 — 배포 후 다음 방문에 바로 적용.
   self.skipWaiting();
