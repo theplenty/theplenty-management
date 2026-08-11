@@ -215,8 +215,12 @@ export function openQuotePrint(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
   const btnCss = 'flex:1;color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;cursor:pointer';
   w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>${esc(title)}</title>
     <style>body{margin:0;background:#fff;padding:16px}${QUOTE_CSS}
-    @media print{body{padding:0}.qbox{border:none;max-width:none}.no-print{display:none}}</style></head>
-    <body><div class="no-print" style="max-width:840px;margin:0 auto 10px;display:flex;gap:8px">
+    .no-print{max-width:840px;margin:0 auto 10px;display:flex;gap:8px}
+    @media print{body{padding:0}.qbox{border:none;max-width:none}
+      /* !important 필수 — 예전에 버튼 div 의 인라인 display:flex 가 이 규칙을 이겨서
+         견적서를 인쇄할 때마다 버튼이 같이 찍혔다. 인라인 스타일은 클래스 규칙보다 강하다. */
+      .no-print{display:none !important}}</style></head>
+    <body><div class="no-print">
     <button onclick="window.print()" style="${btnCss};background:#5b4a3a">🖨 인쇄 / PDF 저장</button>
     <button id="jpgbtn" onclick="saveJpg()" style="${btnCss};background:#1f6b3f">🖼 JPG로 저장</button></div>
     <div class="qbox">${buildQuoteHtml(inp, cfg, L)}</div>
@@ -224,9 +228,18 @@ export function openQuotePrint(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
     function saveJpg(){
       var btn=document.getElementById('jpgbtn'); btn.disabled=true; btn.textContent='저장 중...';
       var run=function(){
-        window.html2canvas(document.querySelector('.qbox'),{scale:2,backgroundColor:'#ffffff',useCORS:true}).then(function(c){
+        var box=document.querySelector('.qbox');
+        /* 화면 픽셀 그대로 뽑으면 카톡·인쇄에서 글씨가 뭉갠다.
+           A4 300dpi 폭(2480px)을 목표로 배율을 역산한다. 창 크기가 달라도 결과 화질이 같아진다.
+           상한 4배 — 그 이상은 브라우저 캔버스 한계·메모리에 걸린다. */
+        var scale=Math.max(2,Math.min(4,2480/(box.offsetWidth||840)));
+        /* 견적 항목이 많아 세로로 길어지면 캔버스 최대 높이(약 16,384px)에 걸려
+           저장이 통째로 실패한다. 그럴 땐 배율을 낮춰서라도 파일이 나오게 한다. */
+        var maxH=16000; if(box.offsetHeight*scale>maxH) scale=Math.max(1.5,maxH/box.offsetHeight);
+        window.html2canvas(box,{scale:scale,backgroundColor:'#ffffff',useCORS:true,logging:false}).then(function(c){
           var a=document.createElement('a');
-          a.href=c.toDataURL('image/jpeg',0.95);
+          /* 0.95 → 0.98: 흰 바탕 위 얇은 글씨에서 JPEG 특유의 번짐이 눈에 띄었다 */
+          a.href=c.toDataURL('image/jpeg',0.98);
           a.download=document.title+'.jpg';
           a.click();
           btn.disabled=false; btn.textContent='🖼 JPG로 저장';

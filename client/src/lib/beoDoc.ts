@@ -225,7 +225,9 @@ export function openBeoPrint(d: BeoDoc): void {
   const title = `BEO_${d.account_name || '행사'}`.replace(/\s+/g, '_');
   w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>${esc(title)}</title>
     <style>body{margin:0;background:#fff;padding:16px}${BEO_CSS}
-    @media print{body{padding:0}.bbox{border:none;max-width:none}.no-print{display:none}}</style></head>
+    @media print{body{padding:0}.bbox{border:none;max-width:none}
+      /* !important — 인라인 스타일이 붙어도 인쇄물에 버튼이 찍히지 않도록 */
+      .no-print{display:none !important}}</style></head>
     <body><div class="no-print" style="max-width:900px;margin:0 auto 10px"><button onclick="window.print()" style="width:100%;background:#1f3a5f;color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;cursor:pointer">🖨 인쇄 / PDF 저장</button></div>
     <div class="bbox">${buildBeoHtml(d)}</div></body></html>`);
   w.document.close();
