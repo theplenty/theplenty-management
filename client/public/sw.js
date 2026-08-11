@@ -9,12 +9,12 @@
 //                      그래서 cache-first 로 둬도 낡은 파일이 남지 않는다.
 //
 // 캐시 이름을 올리면 이전 캐시는 activate 에서 전부 지운다.
-const CACHE = 'plenty-v1';
+const CACHE = 'plenty-v2';
 const SHELL = '/index.html';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll([SHELL, '/icon.svg', '/icon-192.png', '/manifest.webmanifest']))
+    caches.open(CACHE).then((c) => c.addAll([SHELL, '/icon-192.png', '/manifest.webmanifest']))
   );
   // 새 워커를 대기시키지 않는다 — 배포 후 다음 방문에 바로 적용.
   self.skipWaiting();
