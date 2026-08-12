@@ -26,7 +26,6 @@ import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import Stats from './pages/Stats';
 import Field from './pages/Field';
-import Calls from './pages/Calls';
 import Menus from './pages/Menus';
 import MenuCost from './pages/MenuCost';
 import AdminWeddingCalc from './pages/AdminWeddingCalc';
@@ -96,15 +95,9 @@ function ProtectedRoutes() {
             </ProtectedRoute>
           }
         />
-        {/* MICE 콜 트래커 — 고객 DB 를 보는 화면이라 MICE 조회 권한과 같은 범위 */}
-        <Route
-          path="/calls"
-          element={
-            <ProtectedRoute allow={['admin', 'sales_mice', 'sales_wedding', 'banquet', 'kitchen']}>
-              <Calls />
-            </ProtectedRoute>
-          }
-        />
+        {/* 콜 트래커는 MICE 고객정보 안으로 합쳤다 — 같은 데이터를 두 화면에서 고치면 헷갈린다.
+            공유된 링크가 남아 있을 수 있어 리다이렉트만 남긴다. */}
+        <Route path="/calls" element={<Navigate to="/customers/mice" replace />} />
         {/* 통계 분석(A8) — 매출 축이 있어 대시보드와 같은 범위로 제한 */}
         <Route
           path="/stats"

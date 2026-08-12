@@ -32,6 +32,16 @@ import {
   MICE_FLAT_COLUMNS,
   type MiceFlatRow,
 } from '../lib/customerColumns';
+import {
+  CALL_TABS,
+  CALL_CHECKS,
+  trackedInquiryOf,
+  callbackDateOf,
+  daysLeft,
+  isOpenStatus,
+  overdueCount,
+} from '../lib/callTracker';
+import { CallbackCell, CheckCell } from '../components/CallTrackerCells';
 
 // 테이블 컬럼 정의 — 키, 라벨, 셀 렌더링, 정렬값.
 interface MiceCol {
@@ -220,6 +230,9 @@ export default function MiceCustomers() {
   const [form, setForm] = useState<FormState>(() => emptyForm(authorId, authorName));
   const [saving, setSaving] = useState(false);
   const [logRefresh, setLogRefresh] = useState(0);
+  // 콜 트래커 — 별도 사이트로 쓰던 문의 트래커를 이 화면 안으로 접어 넣었다.
+  const [callTab, setCallTab] = useState('all');
+  const [trackSaving, setTrackSaving] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -282,12 +295,55 @@ export default function MiceCustomers() {
   }, [items]);
 
   const filtered = useMemo(() => {
-    if (!debouncedQuery.trim()) return items;
-    return items.filter((c) => {
-      const e = searchIndex.get(c.id);
-      return e ? fuzzyMatchEntry(e, debouncedQuery) : false;
-    });
-  }, [items, debouncedQuery, searchIndex]);
+    let list = items;
+    if (debouncedQuery.trim()) {
+      list = list.filter((c) => {
+        const e = searchIndex.get(c.id);
+        return e ? fuzzyMatchEntry(e, debouncedQuery) : false;
+      });
+    }
+    // 상태 탭 — 트래커에서 쓰던 문의/보류/확정/취소 구조 그대로
+    const tabStatus = CALL_TABS.find((t) => t.key === callTab)?.status ?? null;
+    if (tabStatus) {
+      list = list.filter((c) => trackedInquiryOf(c)?.progress_status === tabStatus);
+    }
+    return list;
+  }, [items, debouncedQuery, searchIndex, callTab]);
+
+  const tabCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of CALL_TABS) {
+      m.set(t.key, t.status ? items.filter((c) => trackedInquiryOf(c)?.progress_status === t.status).length : items.length);
+    }
+    return m;
+  }, [items]);
+
+  const overdue = useMemo(() => overdueCount(items), [items]);
+
+  /**
+   * 목록에서 콜백 날짜·체크를 바로 바꾼다.
+   * 문의는 고객 문서 안의 배열이라 고객을 통째로 PATCH 한다.
+   * 서버가 자동 확정(견적서·회신·계약금 3개 → DEF)을 걸 수 있어 응답으로 상태를 되받는다.
+   */
+  async function patchTracked(c: MiceCustomer, patch: Partial<MiceInquiry>) {
+    const q = trackedInquiryOf(c);
+    if (!q || !canWriteMice(user?.role)) return;
+    setTrackSaving(c.id);
+    const nextInquiries = c.inquiries.map((x) => (x.id === q.id ? { ...x, ...patch } : x));
+    // 화면 먼저 반영 — 체크가 느리면 두 번 누르게 된다
+    setItems((prev) => prev.map((x) => (x.id === c.id ? { ...x, inquiries: nextInquiries } : x)));
+    try {
+      const res = await api.patch<{ customer: MiceCustomer }>(`/api/customers/mice/${c.id}`, {
+        inquiries: nextInquiries,
+      });
+      setItems((prev) => prev.map((x) => (x.id === c.id ? res.customer : x)));
+    } catch (e) {
+      setError((e as Error).message);
+      void load();
+    } finally {
+      setTrackSaving(null);
+    }
+  }
 
   const suggestions = useMemo(
     () => (debouncedQuery.trim() ? filtered.slice(0, 6) : []),
@@ -446,8 +502,46 @@ export default function MiceCustomers() {
       },
       sortValue: (c) => eventCounts[c.id]?.held ?? 0,
     };
-    return [...MICE_COLUMNS, eventCountCol];
-  }, [eventCounts]);
+    // 콜 트래커 컬럼 — 목록에서 바로 편집. 열 설정 메뉴에서 끌 수 있다.
+    const readOnly = !canWriteMice(user?.role);
+    const callbackCol: MiceCol = {
+      key: 'callback',
+      label: '콜백',
+      render: (c) => {
+        const q = trackedInquiryOf(c);
+        if (!q) return <span className="text-gray-300">-</span>;
+        // 보류는 '언제 다시 전화할지', 나머지는 '언제까지 회신 받을지'
+        const field = q.progress_status === 'INQ' ? 'callback_at' : 'callback_due';
+        return (
+          <CallbackCell
+            value={callbackDateOf(q)}
+            disabled={readOnly || trackSaving === c.id}
+            onChange={(v) => patchTracked(c, { [field]: v })}
+          />
+        );
+      },
+      // 기한 없는 건은 뒤로 — 급한 것부터 보이게
+      sortValue: (c) => callbackDateOf(trackedInquiryOf(c)) || '9999-12-31',
+    };
+    const checkCols: MiceCol[] = CALL_CHECKS.map((chk) => ({
+      key: `chk_${String(chk.key)}`,
+      label: chk.label,
+      render: (c) => {
+        const q = trackedInquiryOf(c);
+        if (!q) return <span className="block text-center text-gray-300">-</span>;
+        return (
+          <CheckCell
+            checked={!!q[chk.key]}
+            disabled={readOnly || trackSaving === c.id}
+            onChange={(v) => patchTracked(c, { [chk.key]: v })}
+          />
+        );
+      },
+      sortValue: (c) => (trackedInquiryOf(c)?.[chk.key] ? 1 : 0),
+    }));
+    return [...MICE_COLUMNS, callbackCol, ...checkCols, eventCountCol];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventCounts, user?.role, trackSaving, items]);
 
   const visibleColumns = useMemo(
     () => allColumns.filter((col) => !tc.isHidden(col.key)),
@@ -465,6 +559,7 @@ export default function MiceCustomers() {
     debouncedQuery,
     tc.sort.key,
     tc.sort.dir,
+    callTab,
   ]);
 
   return (
@@ -478,6 +573,15 @@ export default function MiceCustomers() {
               <> · 표시 <span className="font-semibold text-gray-900">{filtered.length.toLocaleString()}</span>건</>
             )}
           </span>
+          {overdue > 0 && (
+            <button
+              onClick={() => setCallTab('all')}
+              className="text-xs px-2 py-1 rounded-full bg-red-50 text-red-700 border border-red-200"
+              title="콜백 기한이 지난 고객"
+            >
+              콜백 기한 지남 {overdue}건
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <TableColumnMenu
@@ -517,6 +621,27 @@ export default function MiceCustomers() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* 콜 트래커 상태 탭 — 별도 사이트로 쓰던 문의 트래커 구조를 그대로 가져왔다.
+          쓰던 분들이 화면 바뀌었다고 헤매지 않도록 이름과 순서를 유지한다. */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {CALL_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setCallTab(t.key)}
+            className={`text-sm px-3 py-1.5 rounded-full border transition ${
+              callTab === t.key
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white hover:bg-gray-50 border-gray-300'
+            }`}
+          >
+            {t.label}
+            <span className={`ml-1.5 text-xs ${callTab === t.key ? 'text-blue-100' : 'text-gray-400'}`}>
+              {(tabCounts.get(t.key) ?? 0).toLocaleString()}
+            </span>
+          </button>
+        ))}
       </div>
 
       <div className="mb-4 relative">
