@@ -67,6 +67,8 @@ export default function Layout() {
     },
     // 현장 모드(A6) — 폰에서 쓰는 화면. 데스크톱에서도 열리지만 주 사용처는 현장.
     { to: '/field', label: '📱 현장 모드', visible: !!user },
+    // MICE 콜 트래커 — 별도 사이트로 쓰던 문의 트래커를 흡수한 화면
+    { to: '/calls', label: '📞 MICE 콜 트래커', visible: !!user && canSeeMice(role) },
     { to: '/calendar', label: '행사정보 캘린더', visible: !!user },
     { to: '/events', label: '행사 목록', visible: !!user },
     {

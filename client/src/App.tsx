@@ -26,6 +26,7 @@ import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import Stats from './pages/Stats';
 import Field from './pages/Field';
+import Calls from './pages/Calls';
 import Menus from './pages/Menus';
 import MenuCost from './pages/MenuCost';
 import AdminWeddingCalc from './pages/AdminWeddingCalc';
@@ -92,6 +93,15 @@ function ProtectedRoutes() {
           element={
             <ProtectedRoute allow={['admin', 'sales_mice', 'sales_wedding', 'banquet']}>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        {/* MICE 콜 트래커 — 고객 DB 를 보는 화면이라 MICE 조회 권한과 같은 범위 */}
+        <Route
+          path="/calls"
+          element={
+            <ProtectedRoute allow={['admin', 'sales_mice', 'sales_wedding', 'banquet', 'kitchen']}>
+              <Calls />
             </ProtectedRoute>
           }
         />

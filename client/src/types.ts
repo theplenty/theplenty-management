@@ -74,6 +74,19 @@ export interface MiceInquiry {
   assigned_manager_id: string;
   assigned_manager_name: string;
   created_at: string;
+
+  // ===== 콜 트래커 (문의 트래커 흡수) =====
+  // 세일즈팀이 매일 보는 건 메모보다 이 네 개 체크와 콜백 기한이다.
+  /** 콜백 기한 — 등록 +7일 자동, 수정 가능 */
+  callback_due?: string | null;
+  /** 보류 상태에서 잡아둔 재통화 예정일 */
+  callback_at?: string | null;
+  quote_sent?: boolean;
+  contract_sent?: boolean;
+  contract_replied?: boolean;
+  deposit_paid?: boolean;
+  /** 견적서·회신·계약금 3개가 모두 체크된 순간 자동 기록 */
+  confirmed_at?: string | null;
 }
 
 export interface MiceCustomer {

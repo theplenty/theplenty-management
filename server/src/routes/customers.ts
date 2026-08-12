@@ -4,6 +4,7 @@ import { store, persistDoc, softDelete, activeRows, isDeleted } from '../store/m
 import { requireActiveRole } from '../middleware/auth.js';
 import { logChange, computeDiff, getLogsForEntity } from '../store/changeLog.js';
 import { normalizeOrgName, levenshtein } from '../lib/textNormalize.js';
+import { shiftDate } from '../lib/kstDate.js';
 import type {
   MiceContact,
   MiceCustomer,
@@ -369,9 +370,53 @@ function normalizeMiceInquiries(
         assigned_manager_id: o.assigned_manager_id || createdById,
         assigned_manager_name: o.assigned_manager_name || createdByName,
         created_at: o.created_at || new Date().toISOString(),
+        ...callTrackerFields(o),
       };
     })
-    .filter((inq) => !isBlankMiceInquiry(inq));
+    .filter((inq) => !isBlankMiceInquiry(inq))
+    .map(applyAutoConfirm);
+}
+
+// ── 콜 트래커 필드 (문의 트래커 흡수) ──────────────────────────────────────
+// 콜백 기한은 등록일 +7일이 기본. 트래커에서 쓰던 규칙 그대로다.
+function defaultCallbackDue(createdAt: string): string {
+  const base = (createdAt || new Date().toISOString()).slice(0, 10);
+  return shiftDate(base, 7);
+}
+
+function callTrackerFields(o: Partial<MiceInquiry>): Partial<MiceInquiry> {
+  const createdAt = o.created_at || new Date().toISOString();
+  // 기한 자동 부여는 **새로 만들어지는 문의에만** 적용한다.
+  // 기존 문의(id 가 이미 있는 건)에까지 걸면, 오래된 고객을 한 번 수정하는 순간
+  // 몇 백 일 지난 콜백이 무더기로 생겨 트래커가 못 쓰게 된다.
+  const isNew = !o.id;
+  return {
+    callback_due:
+      o.callback_due !== undefined ? o.callback_due : isNew ? defaultCallbackDue(createdAt) : null,
+    callback_at: o.callback_at ?? null,
+    quote_sent: !!o.quote_sent,
+    contract_sent: !!o.contract_sent,
+    contract_replied: !!o.contract_replied,
+    deposit_paid: !!o.deposit_paid,
+    confirmed_at: o.confirmed_at ?? null,
+  };
+}
+
+/**
+ * 자동 확정 — 견적서 발송 · 계약서 회신 · 계약금 납부 셋이 모두 체크되면 DEF 로 올린다.
+ *
+ * 트래커에서 팀이 쓰던 규칙 그대로다. 사람이 상태를 따로 바꿔주지 않아도 되는 게 요점.
+ * 계약서 '발송'은 조건에 넣지 않는다 — 회신이 왔다면 발송은 당연히 된 것이고,
+ * 발송 체크를 깜빡한 탓에 확정이 안 되는 일이 실제로 있었다.
+ * 한 번 확정된 뒤 체크가 풀려도 상태를 되돌리지 않는다(확정 취소는 사람이 판단할 일).
+ */
+function applyAutoConfirm(inq: MiceInquiry): MiceInquiry {
+  const done = inq.quote_sent && inq.contract_replied && inq.deposit_paid;
+  if (done && inq.progress_status !== 'DEF') {
+    return { ...inq, progress_status: 'DEF', confirmed_at: inq.confirmed_at || new Date().toISOString() };
+  }
+  if (done && !inq.confirmed_at) return { ...inq, confirmed_at: new Date().toISOString() };
+  return inq;
 }
 
 router.get('/mice', (req, res) => {

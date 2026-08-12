@@ -96,6 +96,24 @@ export interface MiceInquiry {
   assigned_manager_id: string;
   assigned_manager_name: string;
   created_at: string;
+
+  // ===== 콜 트래커 (MICE 세일즈 콜백 관리) =====
+  // 별도 사이트로 운영하던 문의 트래커를 흡수하면서 들어온 필드들.
+  // 세일즈팀이 매일 보는 것은 메모보다 이 네 개 체크와 콜백 기한이다.
+
+  /** 콜백 기한 — 문의 등록 +7일 자동. 직접 수정 가능. 지나면 화면에서 경고. */
+  callback_due?: string | null;
+  /** 보류(INQ) 상태에서 "이 날 다시 전화한다" 고 잡아둔 날짜 */
+  callback_at?: string | null;
+
+  /** 진행 체크 4종 — 팀이 현재 상태를 판단하는 기준 */
+  quote_sent?: boolean;        // 견적서 발송
+  contract_sent?: boolean;     // 계약서 발송
+  contract_replied?: boolean;  // 계약서 회신됨
+  deposit_paid?: boolean;      // 계약금 납부
+
+  /** 자동 확정 시각 — 견적서·회신·계약금 3개가 모두 체크된 순간 기록 */
+  confirmed_at?: string | null;
 }
 
 export interface MiceCustomer {
