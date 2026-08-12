@@ -166,6 +166,20 @@ const MICE_COLUMNS: MiceCol[] = [
     ),
     sortValue: (c) => c.memo,
   },
+  {
+    // 건별 통화 메모 — 고객 전반 메모와 다르다. 트래커에서 팀이 가장 많이 보던 칸.
+    key: 'inquiry_note',
+    label: '통화 메모',
+    render: (c) => {
+      const note = trackedInquiryOf(c)?.note || '';
+      return (
+        <span className="block max-w-[18rem] truncate text-gray-600" title={note}>
+          {note || '-'}
+        </span>
+      );
+    },
+    sortValue: (c) => trackedInquiryOf(c)?.note || '',
+  },
 ];
 
 type FormState = Omit<MiceCustomer, 'id' | 'created_at' | 'updated_at' | 'customer_type'>;

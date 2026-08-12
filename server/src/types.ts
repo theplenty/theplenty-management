@@ -114,6 +114,13 @@ export interface MiceInquiry {
 
   /** 자동 확정 시각 — 견적서·회신·계약금 3개가 모두 체크된 순간 기록 */
   confirmed_at?: string | null;
+
+  /**
+   * 이 문의 건에 대한 통화·협상 메모.
+   * 고객 메모(MiceCustomer.memo)는 업체 전반에 대한 것이라, 건별 이력은 여기 쌓는다.
+   * 트래커에서 팀이 가장 많이 쓰던 칸이 이것이었다.
+   */
+  note?: string;
 }
 
 export interface MiceCustomer {

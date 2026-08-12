@@ -87,6 +87,8 @@ export interface MiceInquiry {
   deposit_paid?: boolean;
   /** 견적서·회신·계약금 3개가 모두 체크된 순간 자동 기록 */
   confirmed_at?: string | null;
+  /** 이 문의 건의 통화·협상 메모 (고객 전반 메모와 별개) */
+  note?: string;
 }
 
 export interface MiceCustomer {
