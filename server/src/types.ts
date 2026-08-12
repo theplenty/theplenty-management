@@ -756,3 +756,54 @@ export interface NotificationLog {
   channel: string;     // 'slack' 등
   sent_at: string;     // ISO
 }
+
+// ===== 견적 버전 (B2 — JSON blob → 1급 엔티티) =====
+//
+// 이전에는 계산기 입력을 통짜 JSON 문자열(`event_inquiry.calc_payload`)로 넣고
+// **저장할 때마다 덮어썼다.** 그래서 같은 고객에게 견적을 여러 번 내도 마지막 것만 남고,
+// "처음에 얼마를 불렀는지 / 왜 깎아줬는지" 를 되짚을 수 없었다.
+//
+// 여기서는 저장할 때마다 **새 버전을 쌓는다.** 지우지 않는다.
+// 조회·집계에 쓰는 값(보증인원·코스·할인율·금액)은 필드로 꺼내 두고,
+// 원본 입력은 `inputs_json` 에 그대로 남겨 나중에 그 조건을 다시 열어볼 수 있게 한다.
+export interface QuoteVersion {
+  id: string;
+  tenant_id?: string;
+
+  customer_id: string;   // wedding_customers.id
+  inquiry_id: string;    // wedding_customers.event_inquiries[].id
+  version: number;       // 같은 문의 안에서 1부터 증가
+
+  created_at: string;
+  created_by_id: string;
+  created_by_name: string;
+
+  // ── 꺼내 둔 조회·집계용 필드 ──
+  groom: string;
+  bride: string;
+  wedding_date: string | null;  // YYYY-MM-DD
+  wedding_time: string;         // HH:mm (표기용)
+  slot: string;                 // '토 점심' 등 계산 기준 슬롯
+  guests: number;               // 보증인원
+  customer_type: string;        // 고객유형 이름 (가톨릭동문 등)
+  course: string;               // 코스 키
+  meal_discount_rate: number;   // %
+  flower_bill: string;          // 청구 등급
+  flower_give: string;          // 제공 등급
+  flower_upgrade: boolean;
+  noodle: boolean;              // 웨딩국수 포함 여부
+
+  // ── 금액 스냅샷 (발행 시점 기준. 기준단가가 바뀌어도 이 값은 안 변한다) ──
+  total_amount: number;         // 최종 제안가
+  list_total: number;           // 정가 합계
+  total_benefit: number;        // 총 혜택(할인) 금액
+  meal_revenue: number;
+  flower_revenue: number;
+  rent_revenue: number;
+  margin_rate: number | null;   // 내부 마진율(%) — 고객 노출 금지
+
+  // ── 원본 ──
+  inputs_json: string;          // CalcInputs 원본 (재현용)
+  summary_text: string;         // 사람이 읽는 한 줄 요약
+  note: string;                 // 이 버전에 대한 메모 (왜 이 조건으로 냈는지)
+}

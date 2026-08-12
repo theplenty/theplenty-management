@@ -12,7 +12,7 @@
 //   - 휴지통(soft delete) 레코드는 전부 제외한다. 화면과 숫자가 어긋나면 신뢰를 잃는다.
 //   - 홀(halls)은 배열이라 한 행사가 여러 칸에 잡힌다 → 합계가 총 행사 수보다 커진다. 경고를 띄운다.
 import { store } from '../store/mockStore.js';
-import type { Event, MiceCustomer, WeddingCustomer } from '../types.js';
+import type { Event, MiceCustomer, WeddingCustomer, QuoteVersion } from '../types.js';
 
 // ── 공용 ───────────────────────────────────────────────────────────────────
 const NONE = '(미지정)';
@@ -269,8 +269,42 @@ const WEDDING_MEASURES: MeasureDef<WeddingRow>[] = [
   { key: 'guest_avg', label: '평균 보증인원', unit: 'number', agg: 'avg', value: (r) => r.guest_count ?? 0 },
 ];
 
+// ── 데이터셋 4: 견적 (B2) ──────────────────────────────────────────────────
+// 예전에는 계산기 입력이 통짜 JSON 이라 "할인 10% 이상 준 견적" 같은 걸 셀 수 없었다.
+// 1급 엔티티로 올리면서 축으로 바로 쓸 수 있게 됐다.
+function quoteRows() {
+  return store.quote_versions.filter((q) => !!q.inquiry_id);
+}
+
+const QUOTE_FIELDS: FieldDef<QuoteVersion>[] = [
+  { key: 'year', label: '연도 (예식일)', group: '기간', value: (q) => yearOf(q.wedding_date) },
+  { key: 'month', label: '월 (예식일)', group: '기간', value: (q) => monthOf(q.wedding_date), order: MONTH_ORDER },
+  { key: 'weekday', label: '요일 (예식일)', group: '기간', value: (q) => weekdayOf(q.wedding_date), order: WEEKDAY_ORDER },
+  { key: 'issued_year', label: '연도 (견적 발행)', group: '기간', value: (q) => yearOf(q.created_at) },
+  { key: 'slot', label: '예식 시간대', group: '조건', value: (q) => label(q.slot) },
+  { key: 'course', label: '코스', group: '조건', value: (q) => label(q.course) },
+  { key: 'customer_type', label: '고객 유형', group: '조건', value: (q) => label(q.customer_type) },
+  { key: 'discount', label: '식대 할인율', group: '조건', value: (q) => (q.meal_discount_rate ? `${q.meal_discount_rate}%` : '할인 없음'), order: (l) => (l === '할인 없음' ? -1 : parseFloat(l)) },
+  { key: 'guest_bucket', label: '보증인원 규모', group: '규모', value: (q) => bucketOf(q.guests, [150, 200, 250, 300], '명') },
+  { key: 'flower_give', label: '제공 플라워 등급', group: '조건', value: (q) => label(q.flower_give) },
+  { key: 'flower_upgrade', label: '플라워 업그레이드', group: '조건', value: (q) => (q.flower_upgrade ? '적용' : '미적용') },
+  { key: 'noodle', label: '웨딩국수', group: '조건', value: (q) => (q.noodle ? '포함' : '미포함') },
+  { key: 'author', label: '작성자', group: '사람', value: (q) => label(q.created_by_name) },
+  { key: 'version', label: '견적 회차', group: '이력', value: (q) => `${q.version}차` , order: (l) => parseInt(l) },
+];
+
+const QUOTE_MEASURES: MeasureDef<QuoteVersion>[] = [
+  { key: 'count', label: '견적 건수', unit: 'count', agg: 'count' },
+  { key: 'amount_sum', label: '견적금액 합계', unit: 'money', agg: 'sum', value: (q) => q.total_amount },
+  { key: 'amount_avg', label: '건당 평균 견적금액', unit: 'money', agg: 'avg', value: (q) => q.total_amount },
+  { key: 'per_guest', label: '1인당 견적금액', unit: 'money', agg: 'avg', value: (q) => (q.guests ? q.total_amount / q.guests : 0) },
+  { key: 'guests_avg', label: '평균 보증인원', unit: 'number', agg: 'avg', value: (q) => q.guests },
+  { key: 'discount_avg', label: '평균 식대 할인율', unit: 'number', agg: 'avg', value: (q) => q.meal_discount_rate },
+  { key: 'benefit_sum', label: '총 혜택 합계', unit: 'money', agg: 'sum', value: (q) => q.total_benefit },
+];
+
 // ── 데이터셋 레지스트리 ────────────────────────────────────────────────────
-export type DatasetId = 'events' | 'mice' | 'wedding';
+export type DatasetId = 'events' | 'mice' | 'wedding' | 'quotes';
 
 interface Dataset<T> {
   id: DatasetId;
@@ -310,6 +344,16 @@ const DATASETS: { [K in DatasetId]: Dataset<never> } = {
     dateOf: weddingDate,
     fields: WEDDING_FIELDS,
     measures: WEDDING_MEASURES,
+  } as unknown as Dataset<never>,
+  quotes: {
+    id: 'quotes',
+    label: '웨딩 견적',
+    hint: '발행한 견적 버전 기준. 같은 고객에 여러 번 냈으면 각각 한 건.',
+    rows: quoteRows,
+    // 기간 필터는 '언제 발행했는지' 기준. 예식일 기준으로 보고 싶으면 축에서 고르면 된다.
+    dateOf: (q: QuoteVersion) => q.created_at,
+    fields: QUOTE_FIELDS,
+    measures: QUOTE_MEASURES,
   } as unknown as Dataset<never>,
 };
 

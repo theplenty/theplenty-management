@@ -11,6 +11,7 @@ import {
   mealDiscountOptions, normalizeCalcSettings,
 } from '../lib/weddingCalc';
 import { buildQuoteHtml, QUOTE_CSS, openQuotePrint } from '../lib/weddingQuote';
+import { fmtDateW, fmtDateTimeW } from '../lib/dateFmt';
 import type { WeddingEventInquiry } from '../types';
 
 interface Props {
@@ -49,7 +50,25 @@ function ctypeFromSource(cfg: WeddingCalcSettings, source?: string): number | nu
   return idx >= 0 ? idx : null;
 }
 
-type Tab = 'builder' | 'quote' | 'admin';
+type Tab = 'builder' | 'quote' | 'history' | 'admin';
+
+// 견적 버전 (B2) — 서버 quote_versions.
+// 예전에는 계산기 입력을 예식후보에 덮어써서 마지막 견적만 남았다. 이제는 낼 때마다 쌓인다.
+interface QuoteVersionRow {
+  id: string;
+  version: number;
+  created_at: string;
+  created_by_name: string;
+  wedding_date: string | null;
+  guests: number;
+  course: string;
+  customer_type: string;
+  meal_discount_rate: number;
+  total_amount: number;
+  summary_text: string;
+  inputs_json: string;
+  note: string;
+}
 
 // 쉼표 숫자 입력 (Admin용)
 function NumInput({ value, onChange, w }: { value: number; onChange: (v: number) => void; w?: string }) {
@@ -72,6 +91,21 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
   const [tab, setTab] = useState<Tab>('builder');
   const [saving, setSaving] = useState(false);
   const [cfgMsg, setCfgMsg] = useState('');
+  const [history, setHistory] = useState<QuoteVersionRow[]>([]);
+
+  // 이 예식후보에 지금까지 낸 견적들
+  async function loadHistory() {
+    try {
+      const r = await api.get<{ quotes: QuoteVersionRow[] }>(`/api/quotes?inquiry_id=${encodeURIComponent(inquiry.id)}`);
+      setHistory(r.quotes || []);
+    } catch {
+      setHistory([]);
+    }
+  }
+  useEffect(() => {
+    void loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inquiry.id]);
 
   // ── settings 로드 후 입력 초기화 ──────────────────────────────────────────
   useEffect(() => {
@@ -177,6 +211,41 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
     if (!inputs || !result) return;
     setSaving(true);
     try {
+      // ① 견적 버전을 하나 쌓는다 (덮어쓰지 않는다).
+      //    금액은 지금 기준단가로 계산된 값 — 나중에 단가가 바뀌어도 이 버전은 그대로 남는다.
+      try {
+        await api.post('/api/quotes', {
+          inquiry_id: inquiry.id,
+          groom, bride,
+          wedding_date: inputs.wdate || null,
+          wedding_time: inputs.wtime || '',
+          slot: inputs.time,
+          guests: inputs.guests,
+          customer_type: cfg?.ctypes[inputs.ctype]?.name || '',
+          course: inputs.course,
+          meal_discount_rate: inputs.mealDiscount,
+          flower_bill: inputs.flowerBill,
+          flower_give: inputs.flowerGive,
+          flower_upgrade: inputs.flowerUp,
+          noodle: !!inputs.noodle,
+          total_amount: result.A,
+          list_total: result.listTotal,
+          total_benefit: result.totalBenefit,
+          meal_revenue: result.mealRev,
+          flower_revenue: result.flowerRev,
+          rent_revenue: result.rentRev,
+          // 현시점 원가 기준 실제 영업이익률(%) — 내부 지표라 고객 문서에는 절대 노출하지 않는다
+          margin_rate: Number.isFinite(result.now?.real) ? result.now.real : null,
+          inputs_json: JSON.stringify(inputs),
+          summary_text: summaryText(inputs, result),
+        });
+        void loadHistory();
+      } catch (e) {
+        // 이력 저장이 실패해도 예식후보 저장은 막지 않는다 — 직원 작업이 우선.
+        console.error('[quote] 버전 저장 실패', e);
+      }
+
+      // ② 예식후보에도 최신값을 반영 (목록·랜딩이 이 필드를 본다)
       const updated: WeddingEventInquiry = {
         ...inquiry,
         estimate_amount: won(result.A),
@@ -186,6 +255,18 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
       onSaved(updated);
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** 지난 견적의 조건을 계산기로 다시 불러온다 (읽기 — 저장은 새 버전으로만) */
+  function restoreVersion(v: QuoteVersionRow) {
+    try {
+      const saved = JSON.parse(v.inputs_json) as Partial<CalcInputs>;
+      if (!cfg) return;
+      setInputs(defaultInputs(cfg, saved));
+      setTab('builder');
+    } catch {
+      alert('이 견적의 입력값을 불러올 수 없습니다.');
     }
   }
 
@@ -221,10 +302,10 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
       <div className="flex items-center justify-between px-4 py-2.5 border-b sticky top-0 bg-white z-10">
         <div className="font-semibold text-sm">🧮 마진계산기 · 예식후보 #{idx + 1} <span className="text-gray-400 font-normal">{groom} & {bride}</span></div>
         <div className="flex items-center gap-1.5">
-          {(['builder', 'quote'] as Tab[]).map((t) => (
+          {(['builder', 'quote', 'history'] as Tab[]).map((t) => (
             <button key={t} onClick={() => setTab(t)}
               className={`text-xs px-2.5 py-1 rounded font-medium ${tab === t ? 'bg-[#5b4a3a] text-white' : 'border border-gray-300 text-gray-500'}`}>
-              {t === 'builder' ? '🧮 계산기' : '📄 견적서'}
+              {t === 'builder' ? '🧮 계산기' : t === 'quote' ? '📄 견적서' : `🕘 이력${history.length ? ` (${history.length})` : ''}`}
             </button>
           ))}
           {canEditSettings && (
@@ -477,6 +558,50 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
             <button onClick={() => setTab('builder')} className="px-4 rounded-lg border border-gray-300 text-gray-600 text-sm">← 계산기</button>
           </div>
           <div className="qbox" dangerouslySetInnerHTML={{ __html: buildQuoteHtml(inputs, cfg, result) }} />
+        </div>
+      )}
+
+      {/* ── 견적 이력 (B2) ──
+          예전에는 저장할 때마다 이전 견적을 덮어써서 "처음에 얼마를 불렀는지" 가 남지 않았다.
+          이제 낼 때마다 한 줄씩 쌓이고, 눌러서 그때 조건을 계산기로 되돌려 볼 수 있다. */}
+      {tab === 'history' && (
+        <div className="p-4">
+          {!history.length && (
+            <p className="text-center text-gray-400 py-10 text-sm">
+              아직 저장된 견적이 없습니다. 계산기에서 저장하면 여기에 한 줄씩 쌓입니다.
+            </p>
+          )}
+          <ul className="space-y-2 max-w-[840px] mx-auto">
+            {history.map((v) => (
+              <li key={v.id} className="border rounded-lg p-3 bg-white">
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="flex items-baseline gap-2 min-w-0">
+                    <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-[#5b4a3a] text-white shrink-0">{v.version}차</span>
+                    <span className="text-base font-semibold tabular-nums">{won(v.total_amount)}원</span>
+                  </div>
+                  <span className="text-xs text-gray-400 shrink-0">
+                    {fmtDateTimeW(v.created_at)} · {v.created_by_name}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-600 mt-1">
+                  {[
+                    v.wedding_date && fmtDateW(v.wedding_date),
+                    v.guests ? `${v.guests}명` : '',
+                    v.course && `코스 ${v.course}`,
+                    v.meal_discount_rate ? `식대 -${v.meal_discount_rate}%` : '할인 없음',
+                    v.customer_type,
+                  ].filter(Boolean).join(' · ')}
+                </div>
+                {v.note && <div className="text-xs text-amber-700 mt-1">※ {v.note}</div>}
+                <button
+                  onClick={() => restoreVersion(v)}
+                  className="mt-2 text-xs px-2.5 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+                >
+                  이 조건으로 계산기 열기
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

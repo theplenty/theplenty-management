@@ -76,6 +76,8 @@ const PRESETS: Preset[] = [
   { name: '인콜/아웃콜 전환율', desc: '유입채널 × 연도 · 전환율', dataset: 'mice', row: 'channel', col: 'year', measure: 'conversion' },
   { name: '웨딩 유입경로별 전환율', desc: '유입경로 × 연도 · 전환율', dataset: 'wedding', row: 'source', col: 'year', measure: 'conversion' },
   { name: '좌석 규모별 단가', desc: '좌석 규모 × 구분 · 건당 평균 매출', dataset: 'events', row: 'seats_bucket', col: 'event_type', measure: 'sales_avg' },
+  { name: '누구에게 얼마나 깎아줬나', desc: '고객유형 × 식대 할인율 · 견적 건수', dataset: 'quotes', row: 'customer_type', col: 'discount', measure: 'count' },
+  { name: '견적 1인당 단가', desc: '보증인원 규모 × 예식 시간대 · 1인당 견적금액', dataset: 'quotes', row: 'guest_bucket', col: 'slot', measure: 'per_guest' },
 ];
 
 // ── 표시 헬퍼 ──────────────────────────────────────────────────────────────
