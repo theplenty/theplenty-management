@@ -417,6 +417,31 @@ function callTrackerFields(o: Partial<MiceInquiry>): Partial<MiceInquiry> {
  * 발송 체크를 깜빡한 탓에 확정이 안 되는 일이 실제로 있었다.
  * 한 번 확정된 뒤 체크가 풀려도 상태를 되돌리지 않는다(확정 취소는 사람이 판단할 일).
  */
+// 체크를 '켠 시각' 기록 — 켜지는 순간만 찍고, 이미 켜져 있던 건 이전 시각을 보존한다.
+// 클라이언트는 이 필드를 모른 채 보내므로 **반드시 저장소의 이전 레코드에서 이어받는다**.
+// 스탬프 도입 전부터 켜져 있던 체크는 null(시각 미상) 그대로 둔다 — 지어내지 않는다.
+const CHECK_STAMP_KEYS = [
+  ['quote_sent', 'quote_sent_at'],
+  ['contract_sent', 'contract_sent_at'],
+  ['contract_replied', 'contract_replied_at'],
+  ['deposit_paid', 'deposit_paid_at'],
+] as const;
+
+function stampCheckTimes(next: MiceInquiry[], prev: MiceInquiry[]): MiceInquiry[] {
+  const prevById = new Map(prev.map((q) => [q.id, q]));
+  const now = new Date().toISOString();
+  return next.map((q) => {
+    const p = prevById.get(q.id) as (MiceInquiry & Record<string, unknown>) | undefined;
+    const out = { ...q } as MiceInquiry & Record<string, unknown>;
+    for (const [flag, at] of CHECK_STAMP_KEYS) {
+      if (!q[flag]) out[at] = null; // 껐으면 시각도 지운다
+      else if (p?.[flag]) out[at] = (p[at] as string | null) ?? null; // 원래 켜져 있던 것 — 보존
+      else out[at] = now; // 이번에 켜진 것
+    }
+    return out as MiceInquiry;
+  });
+}
+
 function applyAutoConfirm(inq: MiceInquiry): MiceInquiry {
   const done = inq.quote_sent && inq.contract_replied && inq.deposit_paid;
   if (done && inq.progress_status !== 'DEF') {
@@ -460,7 +485,10 @@ router.post('/mice', (req, res) => {
     official_phone: body.official_phone || '',
     official_email: body.official_email || '',
     official_website: body.official_website || '',
-    inquiries: normalizeMiceInquiries(body.inquiries, req.user!.id, req.user!.name),
+    inquiries: stampCheckTimes(
+      normalizeMiceInquiries(body.inquiries, req.user!.id, req.user!.name),
+      []
+    ),
     memo: body.memo || '',
     created_at: now,
     updated_at: now,
@@ -497,7 +525,10 @@ router.patch('/mice/:id', (req, res) => {
   if (body.official_website !== undefined) item.official_website = body.official_website;
   if (body.memo !== undefined) item.memo = body.memo;
   if (body.inquiries !== undefined) {
-    item.inquiries = normalizeMiceInquiries(body.inquiries, req.user!.id, req.user!.name);
+    item.inquiries = stampCheckTimes(
+      normalizeMiceInquiries(body.inquiries, req.user!.id, req.user!.name),
+      item.inquiries || []
+    );
   }
   const now = new Date().toISOString();
   item.updated_at = now;
@@ -764,10 +795,9 @@ router.post('/mice/_bulk-upsert', (req, res) => {
       if (r.memo !== undefined) existing.memo = r.memo;
       // Excel에 inquiries 정보가 있으면 교체. 빈 배열이면 기존 보존.
       if (Array.isArray(r.inquiries) && r.inquiries.length > 0) {
-        existing.inquiries = normalizeMiceInquiries(
-          r.inquiries,
-          req.user!.id,
-          req.user!.name
+        existing.inquiries = stampCheckTimes(
+          normalizeMiceInquiries(r.inquiries, req.user!.id, req.user!.name),
+          existing.inquiries || []
         );
       }
       existing.updated_at = now;
@@ -802,7 +832,10 @@ router.post('/mice/_bulk-upsert', (req, res) => {
         official_phone: r.official_phone || '',
         official_email: r.official_email || '',
         official_website: r.official_website || '',
-        inquiries: normalizeMiceInquiries(r.inquiries, req.user!.id, req.user!.name),
+        inquiries: stampCheckTimes(
+          normalizeMiceInquiries(r.inquiries, req.user!.id, req.user!.name),
+          []
+        ),
         memo: r.memo || '',
         created_at: now,
         updated_at: now,

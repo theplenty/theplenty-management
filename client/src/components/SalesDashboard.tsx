@@ -24,6 +24,7 @@ import {
   findStaleWedding,
   type InquiryWithCustomer,
   type MiceStatusGroup,
+  computeMiceMonthlyTable,
   thisMonthRange,
   thisWeekRange,
   todayRange,
@@ -302,6 +303,9 @@ export default function SalesDashboard({
         {managerStats.length > 0 && (
           <ManagerStatsCard items={managerStats} />
         )}
+
+        {/* 월별 세일즈 표 — 문의 → 견적 → 계약 (접수월 코호트) */}
+        <MiceMonthlyTableCard customers={miceCustomers} />
       </section>
 
       {/* ========== WEDDING 세일즈 대시보드 ========== */}
@@ -1007,6 +1011,94 @@ function StaleWeddingCard({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+// ===== 월별 세일즈 표 — 사장님이 손으로 만들던 표의 재현 =====
+// 행 구성은 원본 표 그대로(아웃콜만 제외), 귀속은 접수월 코호트.
+function MiceMonthlyTableCard({ customers }: { customers: MiceCustomer[] }) {
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const rows = useMemo(() => computeMiceMonthlyTable(customers, year), [customers, year]);
+  const sum = useMemo(
+    () =>
+      rows.reduce(
+        (a, r) => ({
+          received: a.received + r.received,
+          quoted: a.quoted + r.quoted,
+          contracted: a.contracted + r.contracted,
+          notContracted: a.notContracted + r.notContracted,
+          holding: a.holding + r.holding,
+        }),
+        { received: 0, quoted: 0, contracted: 0, notContracted: 0, holding: 0 }
+      ),
+    [rows]
+  );
+  const pct = (num: number, den: number) => (den > 0 ? `${Math.round((num / den) * 100)}%` : '–');
+
+  interface Line {
+    label: string;
+    get: (r: { received: number; quoted: number; contracted: number; notContracted: number; holding: number }) => string;
+    strong?: boolean;
+  }
+  const LINES: Line[] = [
+    { label: '문의 접수 (인콜)', get: (r) => String(r.received), strong: true },
+    { label: '견적 발송', get: (r) => String(r.quoted) },
+    { label: '견적 발송 후 미계약', get: (r) => String(r.notContracted) },
+    { label: '계약 (확정)', get: (r) => String(r.contracted), strong: true },
+    { label: '홀딩중 (견적·계약서 발송)', get: (r) => String(r.holding) },
+    { label: '견적 발송 후 계약률', get: (r) => pct(r.quoted - r.notContracted, r.quoted) },
+    { label: '견적 발송 후 미계약률', get: (r) => pct(r.notContracted, r.quoted) },
+  ];
+
+  return (
+    <div className="border rounded-lg p-3 mt-4">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <h3 className="text-sm font-semibold text-gray-900">
+          월별 세일즈 표 <span className="text-xs font-normal text-gray-400">(문의 → 견적 → 계약 · 접수월 기준)</span>
+        </h3>
+        <div className="flex items-center gap-1 text-sm">
+          <button onClick={() => setYear((y) => y - 1)} className="px-2 py-0.5 rounded hover:bg-gray-100 text-gray-600" aria-label="이전 연도">‹</button>
+          <span className="font-medium text-gray-800 w-14 text-center">{year}년</span>
+          <button onClick={() => setYear((y) => y + 1)} className="px-2 py-0.5 rounded hover:bg-gray-100 text-gray-600" aria-label="다음 연도">›</button>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs min-w-[52rem]">
+          <thead>
+            <tr className="text-[11px] text-gray-500 border-b">
+              <th className="text-left font-medium py-1.5 pr-2 w-44">항목</th>
+              {rows.map((r) => (
+                <th key={r.month} className={`text-right font-medium py-1.5 px-1 ${r.received === 0 ? 'text-gray-300' : ''}`}>
+                  {r.month}월
+                </th>
+              ))}
+              <th className="text-right font-semibold py-1.5 pl-2 border-l">합계</th>
+            </tr>
+          </thead>
+          <tbody>
+            {LINES.map((line) => (
+              <tr key={line.label} className="border-b last:border-b-0">
+                <td className={`py-1.5 pr-2 ${line.strong ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>{line.label}</td>
+                {rows.map((r) => {
+                  const v = line.get(r);
+                  const dim = v === '0' || v === '–';
+                  return (
+                    <td key={r.month} className={`py-1.5 px-1 text-right tabular-nums ${dim ? 'text-gray-300' : line.strong ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                      {v}
+                    </td>
+                  );
+                })}
+                <td className="py-1.5 pl-2 text-right tabular-nums font-semibold border-l">{line.get(sum)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-gray-400 mt-2">
+        각 달에 <b>접수된 문의</b>가 이후 어디까지 갔는지를 셉니다 (아웃콜 제외 · 견적/계약 체크 기준).
+        홀딩중 = 견적·계약서를 보냈지만 아직 확정/취소로 끝나지 않은 건.
+      </p>
     </div>
   );
 }

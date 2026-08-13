@@ -394,3 +394,50 @@ export function findStaleWedding(
   }
   return out.sort((a, b) => b.ageDays - a.ageDays);
 }
+
+// ===== MICE 월별 세일즈 표 (문의 → 견적 → 계약) =====
+//
+// 사장님이 손으로 만들던 월별 표의 재현. 귀속 기준은 **접수월(코호트)** —
+// "6월에 들어온 문의가 이후 어디까지 갔나" 를 센다.
+// 체크(견적서 등)에는 켠 시각이 없어서 "6월에 견적을 몇 건 보냈나(활동월)" 는
+// 과거 데이터로는 계산이 불가능하다. 이제부터는 체크 시각을 서버가 기록하므로
+// 데이터가 쌓이면 활동월 기준도 만들 수 있다.
+// 아웃콜은 행에서 제외(껍데기 정리 후 체계적 기록이 없음) — 인콜 채널만 센다.
+export interface MiceMonthlyRow {
+  month: number; // 1~12
+  received: number; // 문의 접수 (인콜)
+  quoted: number; // 그중 견적서 발송 체크
+  contracted: number; // 그중 확정(DEF)
+  notContracted: number; // 견적 발송 후 미계약 = 견적 발송 && 확정 아님 (취소·진행 중 포함)
+  holding: number; // 견적+계약서 발송했는데 아직 '문의' 상태 (결론 안 남)
+}
+
+export function computeMiceMonthlyTable(customers: MiceCustomer[], year: number): MiceMonthlyRow[] {
+  const rows: MiceMonthlyRow[] = Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1, received: 0, quoted: 0, contracted: 0, notContracted: 0, holding: 0,
+  }));
+  for (const c of customers) {
+    if (c.deleted_at) continue;
+    for (const q of c.inquiries || []) {
+      if (q.inquiry_channel === 'OUTCALL') continue;
+      // 귀속월 = 통화일 우선, 없으면 등록일
+      const base = (q.call_date || q.created_at || '').slice(0, 10);
+      if (!base.startsWith(String(year))) continue;
+      const m = parseInt(base.slice(5, 7), 10);
+      if (!m || m < 1 || m > 12) continue;
+      const row = rows[m - 1];
+      row.received += 1;
+      const isDef = normalizeMiceStatus(q.progress_status) === 'DEF';
+      if (q.quote_sent) {
+        row.quoted += 1;
+        if (isDef) row.contracted += 1;
+        else row.notContracted += 1;
+        if (q.contract_sent && normalizeMiceStatus(q.progress_status) === '문의') row.holding += 1;
+      } else if (isDef) {
+        // 견적 체크 없이 확정된 건 — 계약 수에는 넣되 견적 기반 비율에는 안 들어간다
+        row.contracted += 1;
+      }
+    }
+  }
+  return rows;
+}

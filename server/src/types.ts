@@ -135,6 +135,17 @@ export interface MiceInquiry {
   confirmed_at?: string | null;
 
   /**
+   * 체크를 '켠' 시각 — 월별 활동 집계용 ("6월에 견적을 몇 건 보냈나").
+   * 체크 자체엔 시각이 없어 과거엔 접수월 코호트로만 셀 수 있었다. 지금부터 쌓는다.
+   * 켜는 순간 기록, 끄면 지움. 스탬프 도입 전에 켜진 체크는 null(시각 미상)로 둔다 —
+   * 없는 시각을 지어내면 월별 표가 조용히 틀어진다.
+   */
+  quote_sent_at?: string | null;
+  contract_sent_at?: string | null;
+  contract_replied_at?: string | null;
+  deposit_paid_at?: string | null;
+
+  /**
    * "이 건은 더 이상 콜백하지 않는다" 고 사람이 닫은 시각.
    *
    * 확정(DEF)·취소(LOS)로 넘어간 건은 이 값이 없어도 화면에서 종료로 친다 —
