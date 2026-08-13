@@ -1196,6 +1196,39 @@ export default function MiceCustomers() {
                       />
                     </Field>
                   </div>
+                  {/* 콜백 종료 — 목록의 ✓ 와 같은 동작. 여기서는 행이 사라지지 않고
+                      되돌리기 버튼이 바로 옆에 보이므로 확인창 없이 글자 버튼으로 둔다. */}
+                  {(() => {
+                    const cv = callbackView(inq);
+                    if (cv.state === 'none') return null;
+                    return (
+                      <div className="mt-3 flex items-center gap-2">
+                        <span className="text-[11px] text-gray-500">콜백 상태</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${cv.cls}`}>
+                          {cv.label}
+                        </span>
+                        {(needsCall(cv.state) || cv.state === 'done') && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateInquiry(inq.id, {
+                                callback_done_at:
+                                  cv.state === 'done' ? null : new Date().toISOString(),
+                              })
+                            }
+                            className="text-xs px-2 py-0.5 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
+                          >
+                            {cv.state === 'done' ? '↩ 콜백 다시 열기' : '✓ 콜백 완료로 표시'}
+                          </button>
+                        )}
+                        {cv.state === 'closed' && (
+                          <span className="text-[11px] text-gray-400">
+                            확정·취소된 건이라 콜백 대상에서 자동으로 빠집니다
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="mt-3">
                     <Field label="통화 메모">
                       <textarea

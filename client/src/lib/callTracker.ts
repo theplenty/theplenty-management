@@ -21,20 +21,31 @@ export const CALL_CHECKS: { key: keyof MiceInquiry; label: string }[] = [
 ];
 
 /**
- * 이 고객에서 '지금 굴리고 있는' 문의 한 건.
- * 고객정보 표는 고객당 한 줄이라, 콜백·체크를 어느 문의 기준으로 보여줄지 정해야 한다.
- * 콜백 날짜가 잡힌 문의를 우선하고(그게 트래커로 관리 중인 건), 없으면 가장 최근 문의.
+ * 고객정보 표에 대표로 세울 문의 한 건 = **가장 최근 문의**.
+ *
+ * 표는 고객당 한 줄이고, 지난 문의들은 행을 눌러 편집 창에서 이력으로 본다.
+ * 예전엔 '콜백 날짜가 잡힌 문의' 를 우선했는데, 그러면 몇 년 전 문의가 대표로 올라와
+ * 목록의 진행상황·담당자가 최근 통화와 어긋나 보였다.
+ * 기준일은 통화일 우선, 없으면 등록일. 날짜가 같으면 나중에 추가된 것.
  */
 export function trackedInquiryOf(c: MiceCustomer): MiceInquiry | undefined {
   const list = c.inquiries || [];
   if (!list.length) return undefined;
-  const tracked = list.filter((q) => q.callback_due || q.callback_at);
-  if (tracked.length) {
-    return [...tracked].sort((a, b) =>
-      (a.callback_at || a.callback_due || '').localeCompare(b.callback_at || b.callback_due || '')
-    )[0];
+  let best = list[0];
+  let bestKey = inquiryDateOf(best);
+  for (let i = 1; i < list.length; i++) {
+    const key = inquiryDateOf(list[i]);
+    if (key >= bestKey) {
+      best = list[i];
+      bestKey = key;
+    }
   }
-  return list[list.length - 1];
+  return best;
+}
+
+/** 문의 기준일 — 통화일이 있으면 그것, 없으면 등록일 */
+export function inquiryDateOf(q: MiceInquiry): string {
+  return (q.call_date || q.created_at || '').slice(0, 10);
 }
 
 /**
