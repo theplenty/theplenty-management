@@ -376,7 +376,21 @@ function normalizeMiceInquiries(
       };
     })
     .filter((inq) => !isBlankMiceInquiry(inq))
-    .map(applyAutoConfirm);
+    .map(applyAutoConfirm)
+    .sort(byInquiryDate);
+}
+
+/**
+ * 문의 정렬 — 통화일자(없으면 등록일) 오름차순. **가장 최근 통화가 항상 마지막 칸(#N)**.
+ *
+ * 문의 순서는 그 자체가 통화 이력이고, 마지막 칸이 목록의 대표 문의가 된다.
+ * 날짜가 순서와 어긋난 채 저장되면 이력이 거짓말을 하므로 저장 시점에 항상 맞춘다.
+ * 같은 날짜끼리는 입력한 순서를 유지한다(stable sort).
+ */
+function byInquiryDate(a: MiceInquiry, b: MiceInquiry): number {
+  const ka = (a.call_date || a.created_at || '').slice(0, 10);
+  const kb = (b.call_date || b.created_at || '').slice(0, 10);
+  return ka < kb ? -1 : ka > kb ? 1 : 0;
 }
 
 // ── 콜 트래커 필드 (문의 트래커 흡수) ──────────────────────────────────────
