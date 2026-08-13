@@ -15,6 +15,7 @@ import {
   type WeddingCustomer,
 } from '../types';
 import { canSeeCollaboration, isSales } from '../auth/permissions';
+import { pendingCallbacks, type CallbackRow } from '../lib/callTracker';
 import {
   listCollaborations,
   computeAttention,
@@ -167,6 +168,20 @@ export default function Home() {
   const thisWeekCount = useMemo(() => upcoming.filter((x) => x.d <= 7).length, [upcoming]);
   const todayCount = useMemo(() => upcoming.filter((x) => x.d === 0).length, [upcoming]);
 
+  // ===== 콜백 (MICE 콜 트래커) =====
+  // 확정·취소로 끝난 건과 '완료' 표시한 건은 pendingCallbacks 에서 이미 빠진다.
+  // 여기 뜬 건 = 아직 전화가 남은 건.
+  const [callMine, setCallMine] = useState(isSales(role));
+  const callbacks = useMemo(
+    () => pendingCallbacks(mices, { managerId: callMine ? user?.id : undefined, withinDays: 7 }),
+    [mices, callMine, user?.id]
+  );
+  // 지금 당장 눌러야 하는 것 = 기한 지남 + 오늘. 예정(D-n)은 숫자에서 뺀다.
+  const callNow = useMemo(
+    () => callbacks.filter((r) => r.view.state === 'overdue' || r.view.state === 'today').length,
+    [callbacks]
+  );
+
   // 월 선택
   const [statusMonth, setStatusMonth] = useState(() => {
     const d = new Date();
@@ -212,9 +227,15 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <Stat label="오늘 행사" value={todayCount} tone="red" />
         <Stat label="이번 주(7일) 행사" value={thisWeekCount} tone="amber" />
+        <Stat
+          label="오늘까지 콜백"
+          value={callNow}
+          tone={callNow > 0 ? 'red' : 'gray'}
+          onClick={callNow > 0 ? () => navigate('/customers/mice') : undefined}
+        />
         <Stat
           label="처리할 협업요청"
           value={attn.total}
@@ -222,6 +243,43 @@ export default function Home() {
           onClick={attn.total > 0 ? () => navigate('/collaborations') : undefined}
         />
       </div>
+
+      {/* 콜백 — 전화가 남은 건만. 확정·취소로 끝났거나 '완료' 표시한 건은 나오지 않는다. */}
+      <section className="border rounded-lg bg-white mb-6">
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <h2 className="font-bold text-gray-900">
+            📞 콜백{' '}
+            <span className="text-xs font-normal text-gray-400">(기한 지남 · 오늘 · 7일 내)</span>
+          </h2>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+              <input type="checkbox" checked={callMine} onChange={(e) => setCallMine(e.target.checked)} />
+              내 담당만
+            </label>
+            <Link to="/customers/mice" className="text-xs text-blue-600 hover:underline">
+              MICE 고객정보 →
+            </Link>
+          </div>
+        </div>
+        <div className="divide-y">
+          {loading ? (
+            <div className="px-4 py-8 text-center text-gray-400 text-sm">불러오는 중...</div>
+          ) : callbacks.length === 0 ? (
+            <div className="px-4 py-8 text-center text-gray-400 text-sm">
+              {callMine ? '내 담당 ' : ''}전화할 콜백이 없습니다 👍
+            </div>
+          ) : (
+            callbacks.slice(0, 10).map((r) => <CallbackItem key={r.inquiry.id} row={r} showOwner={!callMine} />)
+          )}
+          {callbacks.length > 10 && (
+            <div className="px-4 py-2 text-center">
+              <Link to="/customers/mice" className="text-xs text-blue-600 hover:underline">
+                외 {callbacks.length - 10}건 더 보기 (MICE 고객정보) →
+              </Link>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* 세일즈 월간 현황 — 팀 전체 담당자별 퍼널 */}
       <section className="border rounded-lg bg-white mb-6">
@@ -432,6 +490,36 @@ export default function Home() {
       <hr className="border-gray-200" />
       <Dashboard />
     </div>
+  );
+}
+
+/** 콜백 한 줄 — 누르면 MICE 고객정보에서 해당 고객이 바로 열린다. */
+function CallbackItem({ row, showOwner }: { row: CallbackRow; showOwner: boolean }) {
+  const { customer, inquiry, view } = row;
+  const contact = inquiry.contacts?.[0];
+  return (
+    <Link
+      to={`/customers/mice?focus=${customer.id}`}
+      className="px-4 py-2.5 flex items-center gap-3 hover:bg-gray-50 block"
+    >
+      <span className={`shrink-0 w-16 text-center text-[11px] font-bold rounded px-1 py-1 ${view.cls}`}>
+        {view.label}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+            {inquiry.progress_status}
+          </span>
+          <span className="font-medium text-gray-900 truncate">{customer.organization_name}</span>
+          {contact?.name && <span className="text-xs text-gray-500">{contact.name}</span>}
+        </div>
+        <div className="text-xs text-gray-500 mt-0.5 truncate">
+          {view.due}
+          {showOwner && inquiry.assigned_manager_name && ` · ${inquiry.assigned_manager_name}`}
+          {inquiry.note?.trim() && ` · ${inquiry.note.trim()}`}
+        </div>
+      </div>
+    </Link>
   );
 }
 

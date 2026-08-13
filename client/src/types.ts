@@ -87,6 +87,8 @@ export interface MiceInquiry {
   deposit_paid?: boolean;
   /** 견적서·회신·계약금 3개가 모두 체크된 순간 자동 기록 */
   confirmed_at?: string | null;
+  /** "더 이상 콜백 안 함" 으로 사람이 닫은 시각. 확정/취소는 이 값 없이도 자동으로 종료 취급. */
+  callback_done_at?: string | null;
   /** 이 문의 건의 통화·협상 메모 (고객 전반 메모와 별개) */
   note?: string;
 }

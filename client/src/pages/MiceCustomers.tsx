@@ -37,8 +37,8 @@ import {
   CALL_CHECKS,
   trackedInquiryOf,
   callbackDateOf,
-  daysLeft,
-  isOpenStatus,
+  callbackView,
+  needsCall,
   overdueCount,
 } from '../lib/callTracker';
 import { CallbackCell, CheckCell } from '../components/CallTrackerCells';
@@ -246,6 +246,8 @@ export default function MiceCustomers() {
   const [logRefresh, setLogRefresh] = useState(0);
   // 콜 트래커 — 별도 사이트로 쓰던 문의 트래커를 이 화면 안으로 접어 넣었다.
   const [callTab, setCallTab] = useState('all');
+  // 기한 지남 배지를 눌렀을 때 그 건들만 추려 보는 필터
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [trackSaving, setTrackSaving] = useState<string | null>(null);
 
   async function load() {
@@ -321,8 +323,11 @@ export default function MiceCustomers() {
     if (tabStatus) {
       list = list.filter((c) => trackedInquiryOf(c)?.progress_status === tabStatus);
     }
+    if (overdueOnly) {
+      list = list.filter((c) => callbackView(trackedInquiryOf(c)).state === 'overdue');
+    }
     return list;
-  }, [items, debouncedQuery, searchIndex, callTab]);
+  }, [items, debouncedQuery, searchIndex, callTab, overdueOnly]);
 
   const tabCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -529,13 +534,20 @@ export default function MiceCustomers() {
         return (
           <CallbackCell
             value={callbackDateOf(q)}
+            view={callbackView(q)}
             disabled={readOnly || trackSaving === c.id}
             onChange={(v) => patchTracked(c, { [field]: v })}
+            onToggleDone={(done) =>
+              patchTracked(c, { callback_done_at: done ? new Date().toISOString() : null })
+            }
           />
         );
       },
-      // 기한 없는 건은 뒤로 — 급한 것부터 보이게
-      sortValue: (c) => callbackDateOf(trackedInquiryOf(c)) || '9999-12-31',
+      // 급한 것부터. 끝난 건(확정·취소·완료)과 기한 없는 건은 날짜와 무관하게 뒤로 민다.
+      sortValue: (c) => {
+        const v = callbackView(trackedInquiryOf(c));
+        return needsCall(v.state) ? v.due : `9999${v.due || ''}`;
+      },
     };
     const checkCols: MiceCol[] = CALL_CHECKS.map((chk) => ({
       key: `chk_${String(chk.key)}`,
@@ -574,6 +586,7 @@ export default function MiceCustomers() {
     tc.sort.key,
     tc.sort.dir,
     callTab,
+    overdueOnly,
   ]);
 
   return (
@@ -587,13 +600,20 @@ export default function MiceCustomers() {
               <> · 표시 <span className="font-semibold text-gray-900">{filtered.length.toLocaleString()}</span>건</>
             )}
           </span>
-          {overdue > 0 && (
+          {(overdue > 0 || overdueOnly) && (
             <button
-              onClick={() => setCallTab('all')}
-              className="text-xs px-2 py-1 rounded-full bg-red-50 text-red-700 border border-red-200"
-              title="콜백 기한이 지난 고객"
+              onClick={() => {
+                setCallTab('all');
+                setOverdueOnly((v) => !v);
+              }}
+              className={`text-xs px-2 py-1 rounded-full border ${
+                overdueOnly
+                  ? 'bg-red-600 text-white border-red-600'
+                  : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+              }`}
+              title="확정·취소로 끝난 건과 완료 표시한 건은 빠진 숫자입니다"
             >
-              콜백 기한 지남 {overdue}건
+              콜백 기한 지남 {overdue}건{overdueOnly ? ' · 해제' : ''}
             </button>
           )}
         </div>

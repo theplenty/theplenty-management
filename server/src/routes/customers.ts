@@ -399,6 +399,7 @@ function callTrackerFields(o: Partial<MiceInquiry>): Partial<MiceInquiry> {
     contract_replied: !!o.contract_replied,
     deposit_paid: !!o.deposit_paid,
     confirmed_at: o.confirmed_at ?? null,
+    callback_done_at: o.callback_done_at ?? null,
     note: o.note ?? '',
   };
 }
