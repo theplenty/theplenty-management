@@ -54,9 +54,10 @@ interface MiceCol {
   tdClassName?: string;
 }
 
-function lastInquiryOf(c: MiceCustomer): MiceInquiry | undefined {
-  return c.inquiries[c.inquiries.length - 1];
-}
+// 대표 문의는 trackedInquiryOf 한 곳에서만 정한다.
+// 예전에 이 파일의 '마지막 칸' 과 callTracker 의 '날짜 최신' 두 기준이 따로 놀아서
+// 배지는 취소인데 확정 탭에 잡히는 어긋남이 실제로 있었다 — 별칭만 남긴다.
+const lastInquiryOf = trackedInquiryOf;
 function lastContactsLabel(c: MiceCustomer): string {
   const last = lastInquiryOf(c);
   const cts = last?.contacts || [];

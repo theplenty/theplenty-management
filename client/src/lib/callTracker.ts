@@ -21,31 +21,17 @@ export const CALL_CHECKS: { key: keyof MiceInquiry; label: string }[] = [
 ];
 
 /**
- * 고객정보 표에 대표로 세울 문의 한 건 = **가장 최근 문의**.
+ * 고객정보 표에 대표로 세울 문의 한 건 = **편집 창의 마지막 문의 (#N)**.
  *
  * 표는 고객당 한 줄이고, 지난 문의들은 행을 눌러 편집 창에서 이력으로 본다.
- * 예전엔 '콜백 날짜가 잡힌 문의' 를 우선했는데, 그러면 몇 년 전 문의가 대표로 올라와
- * 목록의 진행상황·담당자가 최근 통화와 어긋나 보였다.
- * 기준일은 통화일 우선, 없으면 등록일. 날짜가 같으면 나중에 추가된 것.
+ * 기준을 '통화일이 가장 늦은 건' 으로 잰 적이 있는데, 확정 건의 통화일이 취소 건보다
+ * 늦은 고객에서 **화면의 마지막 칸(취소)과 탭 분류(확정)가 서로 어긋났다**.
+ * 사용자가 "가장 최근 문의" 라고 읽는 건 편집 창의 마지막 칸이므로 그걸 기준으로 한다 —
+ * 날짜로 추정하지 않아야 배지·탭·체크가 전부 같은 문의를 가리킨다.
  */
 export function trackedInquiryOf(c: MiceCustomer): MiceInquiry | undefined {
   const list = c.inquiries || [];
-  if (!list.length) return undefined;
-  let best = list[0];
-  let bestKey = inquiryDateOf(best);
-  for (let i = 1; i < list.length; i++) {
-    const key = inquiryDateOf(list[i]);
-    if (key >= bestKey) {
-      best = list[i];
-      bestKey = key;
-    }
-  }
-  return best;
-}
-
-/** 문의 기준일 — 통화일이 있으면 그것, 없으면 등록일 */
-export function inquiryDateOf(q: MiceInquiry): string {
-  return (q.call_date || q.created_at || '').slice(0, 10);
+  return list.length ? list[list.length - 1] : undefined;
 }
 
 /**
