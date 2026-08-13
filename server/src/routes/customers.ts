@@ -392,10 +392,13 @@ function callTrackerFields(o: Partial<MiceInquiry>): Partial<MiceInquiry> {
   // 기존 문의(id 가 이미 있는 건)에까지 걸면, 오래된 고객을 한 번 수정하는 순간
   // 몇 백 일 지난 콜백이 무더기로 생겨 트래커가 못 쓰게 된다.
   const isNew = !o.id;
+  // 콜백 날짜는 callback_due 한 칸으로 합쳤다.
+  // 옛 '재통화 예정일'(callback_at)이 채워져 있으면 그쪽이 더 구체적인 약속이었으므로 그 값을 살려 흡수한다.
+  const hasIncoming = o.callback_due !== undefined || o.callback_at !== undefined;
+  const incoming = o.callback_at || o.callback_due || null;
   return {
-    callback_due:
-      o.callback_due !== undefined ? o.callback_due : isNew ? defaultCallbackDue(createdAt) : null,
-    callback_at: o.callback_at ?? null,
+    callback_due: hasIncoming ? incoming : isNew ? defaultCallbackDue(createdAt) : null,
+    callback_at: null,
     quote_sent: !!o.quote_sent,
     contract_sent: !!o.contract_sent,
     contract_replied: !!o.contract_replied,

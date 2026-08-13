@@ -49,8 +49,9 @@ export function inquiryDateOf(q: MiceInquiry): string {
 }
 
 /**
- * 콜백 기준일. 재통화 예정일(callback_at)이 잡혀 있으면 그게 우선, 없으면 기한(callback_due).
- * 예전엔 '보류(INQ)' 인지 보고 둘 중 하나를 골랐는데, 상태가 3분류로 줄면서 그 갈래는 없앴다.
+ * 콜백 기준일 = callback_due 한 칸.
+ * 옛 '재통화 예정일'(callback_at)이 아직 남아 있는 문서가 있어 그쪽을 먼저 본다 —
+ * 저장이 한 번 일어나면 callback_due 로 흡수되고 비워진다.
  */
 export function callbackDateOf(q?: MiceInquiry): string {
   if (!q) return '';

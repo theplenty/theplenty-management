@@ -1175,23 +1175,17 @@ export default function MiceCustomers() {
                     ))}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <Field label="콜백 기한">
+                    <Field label="콜백 예정일">
                       <input
                         type="date"
                         className="input"
-                        value={inq.callback_due || ''}
+                        // 옛 '재통화 예정일'이 남아 있으면 그 값을 보여주고, 저장 시 이 칸으로 합쳐진다
+                        value={inq.callback_at || inq.callback_due || ''}
                         onChange={(e) =>
-                          updateInquiry(inq.id, { callback_due: e.target.value || null })
-                        }
-                      />
-                    </Field>
-                    <Field label="재통화 예정일">
-                      <input
-                        type="date"
-                        className="input"
-                        value={inq.callback_at || ''}
-                        onChange={(e) =>
-                          updateInquiry(inq.id, { callback_at: e.target.value || null })
+                          updateInquiry(inq.id, {
+                            callback_due: e.target.value || null,
+                            callback_at: null,
+                          })
                         }
                       />
                     </Field>
