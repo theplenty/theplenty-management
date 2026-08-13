@@ -46,11 +46,12 @@ export function CallbackCell({
             e.stopPropagation();
             onToggleDone(view.state !== 'done');
           }}
-          title={view.state === 'done' ? '콜백 다시 열기' : '더 이상 콜백하지 않음으로 표시'}
-          className={`text-xs px-1 rounded leading-5 ${
+          title={view.state === 'done' ? '콜백 다시 열기' : '더 이상 콜백하지 않음으로 표시 (확인 후 적용)'}
+          // 흐릿한 글자로 두면 날짜 옆 여백인 줄 알고 잘못 누른다 — 테두리로 버튼임을 드러낸다
+          className={`ml-0.5 text-xs px-1.5 rounded border leading-5 ${
             view.state === 'done'
-              ? 'text-gray-400 hover:text-gray-600'
-              : 'text-gray-300 hover:text-emerald-600 hover:bg-emerald-50'
+              ? 'border-gray-200 text-gray-400 hover:bg-gray-50'
+              : 'border-gray-200 text-gray-400 hover:border-emerald-300 hover:text-emerald-600 hover:bg-emerald-50'
           }`}
         >
           {view.state === 'done' ? '↩' : '✓'}

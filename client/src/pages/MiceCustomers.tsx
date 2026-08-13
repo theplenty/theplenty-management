@@ -537,9 +537,21 @@ export default function MiceCustomers() {
             view={callbackView(q)}
             disabled={readOnly || trackSaving === c.id}
             onChange={(v) => patchTracked(c, { [field]: v })}
-            onToggleDone={(done) =>
-              patchTracked(c, { callback_done_at: done ? new Date().toISOString() : null })
-            }
+            onToggleDone={(done) => {
+              // 닫을 때만 되묻는다 — 목록에서 한 번에 사라져 잘못 눌러도 알아채기 어렵다.
+              // 다시 여는 건(↩) 되돌리는 동작이라 그대로 진행.
+              if (
+                done &&
+                !confirm(
+                  `[${c.organization_name}]\n이 건은 더 이상 콜백하지 않는 것으로 표시합니다.\n` +
+                    `콜백 목록과 홈 화면에서 빠집니다. 계속할까요?\n\n` +
+                    `(되돌리려면 같은 자리의 ↩ 를 누르시면 됩니다)`
+                )
+              ) {
+                return;
+              }
+              patchTracked(c, { callback_done_at: done ? new Date().toISOString() : null });
+            }}
           />
         );
       },
