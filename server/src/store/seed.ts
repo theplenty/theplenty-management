@@ -45,7 +45,7 @@ function seedMiceCustomers() {
       inquiries: [
         {
           id: nanoid(10),
-          progress_status: 'TEN',
+          progress_status: '문의',
           inquiry_channel: 'INCALL',
           contacts: [
             { id: nanoid(10), name: '김지윤', email: 'jiyoon.kim@okfn.test', phone: '010-1111-2222' },
@@ -71,7 +71,7 @@ function seedMiceCustomers() {
       inquiries: [
         {
           id: nanoid(10),
-          progress_status: 'INQ',
+          progress_status: '문의',
           inquiry_channel: 'INCALL',
           contacts: [
             { id: nanoid(10), name: '이상훈', email: 'lee@kcvs.test', phone: '010-3344-5566' },
@@ -97,7 +97,7 @@ function seedMiceCustomers() {
       inquiries: [
         {
           id: nanoid(10),
-          progress_status: '단순문의',
+          progress_status: '문의',
           inquiry_channel: 'INCALL',
           contacts: [
             { id: nanoid(10), name: '최민호', email: 'minho@agenda.test', phone: '010-7777-8888' },

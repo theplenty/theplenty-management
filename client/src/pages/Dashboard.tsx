@@ -90,11 +90,9 @@ function fmtPct(p: number | null): string {
 
 // 상태별 색상 — 기능적 시그널(빨강/노랑/초록)은 유지하되 NVIDIA 팔레트로 정렬
 const MICE_STATUS_COLOR: Record<string, string> = {
-  INQ: NV.stone,
-  TEN: NV.warning,
+  문의: NV.ash,
   DEF: NV.primary,
   LOS: NV.error,
-  단순문의: NV.ash,
 };
 
 const WEDDING_STATUS_COLOR: Record<string, string> = {
@@ -345,7 +343,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <Card title="주간 상태별 카운트">
             <StatusCounterGrid
-              statuses={['INQ', 'TEN', 'DEF', 'LOS', '단순문의']}
+              statuses={['문의', 'DEF', 'LOS']}
               colorMap={MICE_STATUS_COLOR}
               counts={miceSummary.weekCounts as unknown as Record<string, number>}
               onClick={(s) =>
@@ -359,7 +357,7 @@ export default function Dashboard() {
           </Card>
           <Card title="월간 상태별 카운트">
             <StatusCounterGrid
-              statuses={['INQ', 'TEN', 'DEF', 'LOS', '단순문의']}
+              statuses={['문의', 'DEF', 'LOS']}
               colorMap={MICE_STATUS_COLOR}
               counts={miceSummary.monthCounts as unknown as Record<string, number>}
               onClick={(s) =>
@@ -376,7 +374,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-3 gap-6">
           <RateCard label="월간 DEF 전환율" value={miceSummary.monthDefRate} accent={NV.primary} />
           <RateCard label="월간 LOS 전환율" value={miceSummary.monthLosRate} accent={NV.error} />
-          <RateCard label="월간 단순문의 비율" value={miceSummary.monthSimpleRate} accent={NV.mute} />
+          <RateCard label="월간 문의 비율" value={miceSummary.monthSimpleRate} accent={NV.mute} />
         </div>
       </Section>
 

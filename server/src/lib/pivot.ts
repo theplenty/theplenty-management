@@ -12,6 +12,7 @@
 //   - 휴지통(soft delete) 레코드는 전부 제외한다. 화면과 숫자가 어긋나면 신뢰를 잃는다.
 //   - 홀(halls)은 배열이라 한 행사가 여러 칸에 잡힌다 → 합계가 총 행사 수보다 커진다. 경고를 띄운다.
 import { store } from '../store/mockStore.js';
+import { normalizeMiceStatus } from '../types.js';
 import type { Event, MiceCustomer, WeddingCustomer, QuoteVersion } from '../types.js';
 
 // ── 공용 ───────────────────────────────────────────────────────────────────
@@ -169,6 +170,8 @@ export interface MiceInquiryRow {
   creator: string;
   call_date: string | null;
   created_at: string;
+  /** 체크 4종 중 하나라도 찍혔는지 — 상태가 3분류로 줄면서 '어디까지 갔나'는 이쪽이 답한다 */
+  progressed: boolean;
 }
 
 function miceRows(): MiceInquiryRow[] {
@@ -180,12 +183,13 @@ function miceRows(): MiceInquiryRow[] {
         customer_id: c.id,
         organization_name: c.organization_name,
         mice_category: c.mice_category || NONE,
-        status: q.progress_status,
+        status: normalizeMiceStatus(q.progress_status),
         channel: q.inquiry_channel || NONE,
         manager: q.assigned_manager_name || q.created_by_name || NONE,
         creator: q.created_by_name || NONE,
         call_date: q.call_date,
         created_at: q.created_at,
+        progressed: !!(q.quote_sent || q.contract_sent || q.contract_replied || q.deposit_paid),
       });
     }
   }
@@ -202,6 +206,12 @@ const MICE_FIELDS: FieldDef<MiceInquiryRow>[] = [
   { key: 'ym', label: '연-월', group: '기간', value: (r) => ymOf(miceDate(r)) },
   { key: 'channel', label: '유입 채널 (인콜/아웃콜)', group: '영업', value: (r) => r.channel },
   { key: 'status', label: '진행 상태', group: '영업', value: (r) => r.status },
+  {
+    key: 'progressed',
+    label: '진행 여부 (견적 이상)',
+    group: '영업',
+    value: (r) => (r.progressed ? '진행' : '문의만'),
+  },
   { key: 'category', label: '고객 분류', group: '고객', value: (r) => r.mice_category },
   { key: 'manager', label: '담당자', group: '사람', value: (r) => label(r.manager) },
   { key: 'creator', label: '작성자', group: '사람', value: (r) => label(r.creator) },
@@ -581,10 +591,11 @@ export interface FunnelResult {
 }
 
 // 문의 상태는 '현재 상태' 스냅샷이므로, 뒤 단계에 도달한 건은 앞 단계도 통과한 것으로 센다.
-const MICE_FUNNEL: { key: string; label: string; reached: string[] }[] = [
-  { key: 'inquiry', label: '문의 접수', reached: ['단순문의', 'INQ', 'TEN', 'DEF', 'LOS'] },
-  { key: 'inq', label: '가예약 (INQ)', reached: ['INQ', 'TEN', 'DEF'] },
-  { key: 'ten', label: '가계약 (TEN)', reached: ['TEN', 'DEF'] },
+// 진행상황이 3분류(문의/DEF/LOS)로 줄어 중간 단계를 상태로 표현할 수 없다.
+// 어디까지 갔는지는 체크 4종이 들고 있으므로 가운데 단계는 runFunnel 에서 체크로 판정한다.
+const MICE_FUNNEL: { key: string; label: string; reached: string[]; needsProgress?: boolean }[] = [
+  { key: 'inquiry', label: '문의 접수', reached: ['문의', '단순문의', 'INQ', 'TEN', 'DEF', 'LOS'] },
+  { key: 'progress', label: '진행 (견적 이상)', reached: ['문의', '단순문의', 'INQ', 'TEN', 'DEF'], needsProgress: true },
   { key: 'def', label: '계약 확정 (DEF)', reached: ['DEF'] },
 ];
 
@@ -610,24 +621,28 @@ export function runFunnel(opts: {
     return true;
   };
 
-  let statuses: string[];
+  // 상태만으로는 중간 단계를 못 세므로 (status, progressed) 쌍으로 다룬다.
+  let marks: { status: string; progressed: boolean }[];
   let spec: typeof MICE_FUNNEL;
   if (opts.type === 'MICE') {
     let rows = miceRows().filter((r) => inRange(miceDate(r)));
     if (opts.channel) rows = rows.filter((r) => r.channel === opts.channel);
-    statuses = rows.map((r) => r.status);
+    marks = rows.map((r) => ({ status: r.status, progressed: r.progressed }));
     spec = MICE_FUNNEL;
   } else {
     const rows = weddingRows().filter((r) => inRange(weddingDate(r)));
-    statuses = rows.map((r) => r.status);
+    // 웨딩은 진행단계가 아직 상태값으로 표현된다 — 체크 개념이 없어 항상 true 로 둔다.
+    marks = rows.map((r) => ({ status: r.status, progressed: true }));
     spec = WEDDING_FUNNEL;
   }
 
-  const total = statuses.length;
+  const total = marks.length;
   let prev = 0;
   const stages: FunnelStage[] = spec.map((s, i) => {
     const set = new Set(s.reached);
-    const count = statuses.filter((st) => set.has(st)).length;
+    const count = marks.filter(
+      (m) => set.has(m.status) && (!s.needsProgress || m.progressed || m.status === 'DEF')
+    ).length;
     const stage: FunnelStage = {
       key: s.key,
       label: s.label,

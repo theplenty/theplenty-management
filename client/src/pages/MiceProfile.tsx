@@ -7,6 +7,7 @@ import {
   type MiceInquiry,
   type EventStatus,
   STATUS_HEX,
+  miceStatusLabel,
 } from '../types';
 
 // 통합 고객 프로필 — MICE.
@@ -293,7 +294,7 @@ function MiceInquiryCard({
       <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-gray-900">#{idx + 1}</span>
-          <span className="badge bg-gray-100 text-gray-700">{inq.progress_status}</span>
+          <span className="badge bg-gray-100 text-gray-700">{miceStatusLabel(inq.progress_status)}</span>
           {inq.inquiry_event_date_text && (
             <span className="text-xs text-gray-600">행사일정: {inq.inquiry_event_date_text}</span>
           )}

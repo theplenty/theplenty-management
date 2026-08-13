@@ -4,6 +4,7 @@
 import { weekdayKoOf, insertWeekday } from '../lib/dateFmt';
 import Modal from './Modal';
 import { StatusBadge } from './Field';
+import { miceStatusLabel } from '../types';
 import type {
   MiceInflowRow,
   WeddingInflowRow,
@@ -97,7 +98,7 @@ export default function InflowListModal({
                     <Td>{fmtDate(r.call_date)}</Td>
                     <Td>{r.inquiry_event_date_text || '-'}</Td>
                     <Td>
-                      <StatusBadge value={r.progress_status} variant={r.progress_status} />
+                      <StatusBadge value={miceStatusLabel(r.progress_status)} variant={r.progress_status} />
                     </Td>
                     <Td className="max-w-[14rem] truncate" title={r.customer_memo}>
                       {r.customer_memo || '-'}

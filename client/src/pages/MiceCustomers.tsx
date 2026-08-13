@@ -11,6 +11,8 @@ import {
   MICE_CATEGORIES,
   MICE_INQUIRY_STATUS_DESC,
   MICE_INQUIRY_STATUS_OPTIONS,
+  miceStatusLabel,
+  normalizeMiceStatus,
   type MiceCategory,
   type MiceContact,
   type MiceCustomer,
@@ -109,7 +111,7 @@ const MICE_COLUMNS: MiceCol[] = [
     render: (c) => {
       const last = lastInquiryOf(c);
       return last ? (
-        <StatusBadge value={last.progress_status} variant={last.progress_status} />
+        <StatusBadge value={miceStatusLabel(last.progress_status)} variant={last.progress_status} />
       ) : (
         '-'
       );
@@ -191,7 +193,7 @@ function emptyContact(): MiceContact {
 function emptyInquiry(authorId: string, authorName: string): MiceInquiry {
   return {
     id: nanoid(),
-    progress_status: 'INQ',
+    progress_status: '문의',
     inquiry_channel: 'INCALL', // 신규 문의 기본값 — 사용자가 OUTCALL 로 변경 가능
     contacts: [emptyContact()],
     call_date: null,
@@ -321,7 +323,7 @@ export default function MiceCustomers() {
     // 상태 탭 — 트래커에서 쓰던 문의/보류/확정/취소 구조 그대로
     const tabStatus = CALL_TABS.find((t) => t.key === callTab)?.status ?? null;
     if (tabStatus) {
-      list = list.filter((c) => trackedInquiryOf(c)?.progress_status === tabStatus);
+      list = list.filter((c) => normalizeMiceStatus(trackedInquiryOf(c)?.progress_status) === tabStatus);
     }
     if (overdueOnly) {
       list = list.filter((c) => callbackView(trackedInquiryOf(c)).state === 'overdue');
@@ -332,7 +334,12 @@ export default function MiceCustomers() {
   const tabCounts = useMemo(() => {
     const m = new Map<string, number>();
     for (const t of CALL_TABS) {
-      m.set(t.key, t.status ? items.filter((c) => trackedInquiryOf(c)?.progress_status === t.status).length : items.length);
+      m.set(
+        t.key,
+        t.status
+          ? items.filter((c) => normalizeMiceStatus(trackedInquiryOf(c)?.progress_status) === t.status).length
+          : items.length
+      );
     }
     return m;
   }, [items]);
@@ -529,8 +536,8 @@ export default function MiceCustomers() {
       render: (c) => {
         const q = trackedInquiryOf(c);
         if (!q) return <span className="text-gray-300">-</span>;
-        // 보류는 '언제 다시 전화할지', 나머지는 '언제까지 회신 받을지'
-        const field = q.progress_status === 'INQ' ? 'callback_at' : 'callback_due';
+        // 목록에서 고친 날짜는 '언제까지 회신 받을지' 기한으로 넣는다
+        const field = 'callback_due' as const;
         return (
           <CallbackCell
             value={callbackDateOf(q)}
@@ -763,7 +770,7 @@ export default function MiceCustomers() {
                   {last && (
                     <>
                       <span>·</span>
-                      <StatusBadge value={last.progress_status} variant={last.progress_status} />
+                      <StatusBadge value={miceStatusLabel(last.progress_status)} variant={last.progress_status} />
                     </>
                   )}
                 </div>
@@ -980,7 +987,25 @@ export default function MiceCustomers() {
             {form.inquiries.map((inq, idx) => (
               <div key={inq.id} className="border rounded-md p-3 bg-gray-50/40">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs font-semibold text-gray-600">문의 #{idx + 1}</div>
+                  {/* 언제 들어온 문의인지 헤더에 박아둔다 — 이 화면은 통화 이력 모음이라
+                      '몇 년도 문의였나' 가 먼저 보여야 읽힌다 */}
+                  <div className="text-xs font-semibold text-gray-600">
+                    문의 #{idx + 1}
+                    <span className="ml-2 font-normal text-gray-400">
+                      {(inq.call_date || inq.created_at || '').slice(0, 10) || '날짜 미상'}
+                    </span>
+                    <span
+                      className={`ml-2 badge ${
+                        inq.progress_status === 'DEF'
+                          ? 'bg-green-200 text-green-900'
+                          : inq.progress_status === 'LOS'
+                            ? 'bg-red-200 text-red-900'
+                            : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {miceStatusLabel(inq.progress_status)}
+                    </span>
+                  </div>
                   {form.inquiries.length > 1 && (
                     <button
                       type="button"
@@ -1123,6 +1148,65 @@ export default function MiceCustomers() {
                       }
                     />
                   </Field>
+                </div>
+
+                {/* 이 문의가 어디까지 갔는지 — 문의 건마다 따로 잡힌다.
+                    진행상황은 '어떻게 끝났나' 만 말하므로, 진행도는 이 네 개가 답한다. */}
+                <div className="mt-3 pl-3 border-l-2 border-emerald-200">
+                  <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-500 mb-2">
+                    이 문의의 진행
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2">
+                    {CALL_CHECKS.map((chk) => (
+                      <label
+                        key={String(chk.key)}
+                        className="flex items-center gap-1.5 text-sm cursor-pointer select-none"
+                      >
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4"
+                          checked={!!inq[chk.key]}
+                          onChange={(e) =>
+                            updateInquiry(inq.id, { [chk.key]: e.target.checked })
+                          }
+                        />
+                        <span>{chk.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <Field label="콜백 기한">
+                      <input
+                        type="date"
+                        className="input"
+                        value={inq.callback_due || ''}
+                        onChange={(e) =>
+                          updateInquiry(inq.id, { callback_due: e.target.value || null })
+                        }
+                      />
+                    </Field>
+                    <Field label="재통화 예정일">
+                      <input
+                        type="date"
+                        className="input"
+                        value={inq.callback_at || ''}
+                        onChange={(e) =>
+                          updateInquiry(inq.id, { callback_at: e.target.value || null })
+                        }
+                      />
+                    </Field>
+                  </div>
+                  <div className="mt-3">
+                    <Field label="통화 메모">
+                      <textarea
+                        className="input"
+                        rows={3}
+                        value={inq.note || ''}
+                        placeholder="이 문의 건의 통화·협상 내용 (업체 전반 메모는 위 '메모' 칸)"
+                        onChange={(e) => updateInquiry(inq.id, { note: e.target.value })}
+                      />
+                    </Field>
+                  </div>
                 </div>
 
                 {/* 담당자 sub-list */}

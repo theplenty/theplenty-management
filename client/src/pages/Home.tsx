@@ -76,7 +76,7 @@ function pct(num: number, den: number): string {
 // 누적(도달) 기준이라 상담≥가예약≥계약완료. LOS(잃음)는 퍼널에서 제외.
 // 기준 월: 웨딩=신규문의일(inquiry_date)/생성일, MICE=문의 생성일.
 interface WedFunnelRow { name: string; consult: number; inq: number; def: number; }
-interface MiceFunnelRow { name: string; inq: number; def: number; }
+interface MiceFunnelRow { name: string; total: number; progress: number; def: number; }
 
 function computeWeddingFunnel(customers: WeddingCustomer[], monthStart: Date, monthEnd: Date): WedFunnelRow[] {
   const m = new Map<string, WedFunnelRow>();
@@ -94,6 +94,9 @@ function computeWeddingFunnel(customers: WeddingCustomer[], monthStart: Date, mo
   return [...m.values()].filter((r) => r.consult > 0).sort((a, b) => b.consult - a.consult);
 }
 
+// MICE 퍼널 — 문의 접수 → 진행(견적 이상 나감) → 계약완료.
+// 예전엔 가운데 단계를 'INQ = 가예약' 으로 셌는데, 그 값은 실제로는 세일즈팀이 '보류' 로 써 온
+// 것이라 가예약이 아니었다. 지금은 체크 4종(견적서·계약서·회신·계약금)이 하나라도 찍혔는지로 센다.
 function computeMiceFunnel(customers: MiceCustomer[], monthStart: Date, monthEnd: Date): MiceFunnelRow[] {
   const m = new Map<string, MiceFunnelRow>();
   for (const c of customers) {
@@ -102,13 +105,17 @@ function computeMiceFunnel(customers: MiceCustomer[], monthStart: Date, monthEnd
       if (!inMonth(inq.created_at, monthStart, monthEnd)) continue;
       const name = inq.assigned_manager_name?.trim() || inq.created_by_name?.trim() || '미지정';
       const s = inq.progress_status;
-      const row = m.get(name) || { name, inq: 0, def: 0 };
-      if (s === 'INQ' || s === 'DEF') row.inq += 1; // 가예약 도달
-      if (s === 'DEF') row.def += 1;                 // 계약완료
+      const moved =
+        !!(inq.quote_sent || inq.contract_sent || inq.contract_replied || inq.deposit_paid) ||
+        s === 'DEF';
+      const row = m.get(name) || { name, total: 0, progress: 0, def: 0 };
+      row.total += 1;
+      if (moved) row.progress += 1;
+      if (s === 'DEF') row.def += 1;
       m.set(name, row);
     }
   }
-  return [...m.values()].filter((r) => r.inq > 0).sort((a, b) => b.inq - a.inq);
+  return [...m.values()].filter((r) => r.total > 0).sort((a, b) => b.total - a.total);
 }
 
 export default function Home() {
@@ -344,28 +351,35 @@ export default function Home() {
 
         {/* MICE 퍼널 */}
         <div className="px-4 py-3">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">🏢 MICE — 가예약(INQ) → 계약완료(DEF)</h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">
+            🏢 MICE — 문의 → 진행(견적 이상) → 계약완료
+          </h3>
           {loading ? (
             <div className="text-xs text-gray-400 py-3 text-center">불러오는 중...</div>
           ) : miceFunnel.length === 0 ? (
-            <div className="text-xs text-gray-400 py-3 text-center">해당 월 MICE 가예약 건이 없습니다.</div>
+            <div className="text-xs text-gray-400 py-3 text-center">해당 월 MICE 문의가 없습니다.</div>
           ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-[11px] text-gray-500">
                   <th className="text-left font-medium py-1 w-28">담당자</th>
-                  <th className="text-right font-medium py-1 w-24">가예약(INQ)</th>
-                  <th className="text-right font-medium py-1 w-28">계약완료(DEF)</th>
+                  <th className="text-right font-medium py-1 w-16">문의</th>
+                  <th className="text-right font-medium py-1 w-24">진행</th>
+                  <th className="text-right font-medium py-1 w-28">계약완료</th>
                 </tr>
               </thead>
               <tbody>
                 {miceFunnel.map((r) => (
                   <tr key={r.name} className="border-t">
                     <td className="py-1.5 text-gray-800 truncate">{r.name}</td>
-                    <td className="py-1.5 text-right font-medium text-amber-600">{r.inq}건</td>
+                    <td className="py-1.5 text-right text-gray-700">{r.total}건</td>
+                    <td className="py-1.5 text-right">
+                      <span className="font-medium text-amber-600">{r.progress}건</span>{' '}
+                      <span className="text-[11px] text-gray-400">{pct(r.progress, r.total)}</span>
+                    </td>
                     <td className="py-1.5 text-right">
                       <span className="font-medium text-emerald-600">{r.def}건</span>{' '}
-                      <span className="text-[11px] text-gray-400">{pct(r.def, r.inq)}</span>
+                      <span className="text-[11px] text-gray-400">{pct(r.def, r.progress)}</span>
                     </td>
                   </tr>
                 ))}

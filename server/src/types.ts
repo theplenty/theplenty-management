@@ -67,7 +67,20 @@ export type EventStatus =
 // "X" 라는 옛 진행상황 값은 "단순문의" 로 변경.
 
 export type MiceCategory = '기업' | '학회' | '공공기관' | '학교' | '병원' | '대행사' | '기타';
-export type MiceInquiryStatus = 'INQ' | 'TEN' | 'DEF' | 'LOS' | '단순문의';
+/**
+ * MICE 문의 진행상황 — 3분류 (문의 / 확정(DEF) / 취소(LOS)).
+ *
+ * 고객정보는 업체별 통화 이력 모음이다. 이 값은 **그 문의가 어떻게 끝났는지**만 말하고,
+ * 어디까지 갔는지는 체크 4종(견적서·계약서·회신·계약금)이 문의 건별로 들고 있다.
+ * 옛 값 단순문의·INQ·TEN 은 '문의' 로 합쳤다 — INQ 는 원래 '가예약' 뜻으로 만들었지만
+ * 실제로는 세일즈팀이 '보류' 로 써 왔고, 진짜 가예약은 행사(Event) 상태 쪽에 있다.
+ */
+export type MiceInquiryStatus = '문의' | 'DEF' | 'LOS';
+
+/** 옛 값 → 3분류. 저장 경로에 걸어두면 아직 안 옮겨진 문서도 다음 저장에 스스로 정리된다. */
+export function normalizeMiceStatus(s: string | null | undefined): MiceInquiryStatus {
+  return s === 'DEF' ? 'DEF' : s === 'LOS' ? 'LOS' : '문의';
+}
 
 // 한 문의 내 담당자 (이름/이메일/연락처 한 묶음). 다수 담당자 지원.
 export interface MiceContact {

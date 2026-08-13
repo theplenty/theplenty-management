@@ -3,6 +3,7 @@
 
 import {
   MICE_INQUIRY_STATUS_OPTIONS,
+  normalizeMiceStatus,
   WEDDING_PROGRESS_OPTIONS,
   type EventStatus,
   type EventWithFood,
@@ -76,7 +77,7 @@ function inRange(iso: string | null | undefined, b: DateBound): boolean {
 // 1. MICE 신규 유입
 // ============================================================
 // 기준: 통화일자 우선, 없으면 inquiry.created_at
-// 진행상황별 카운트: INQ, TEN, DEF, LOS, 단순문의
+// 진행상황별 카운트: 문의 / DEF(확정) / LOS(취소)
 
 export interface MiceInflowRow {
   customer_id: string;
@@ -122,16 +123,15 @@ export function flattenMiceInflows(customers: MiceCustomer[]): MiceInflowRow[] {
   return rows;
 }
 
+// 진행상황 3분류에 맞춘 카운트. 옛 키(INQ/TEN/단순문의)는 '문의' 하나로 합쳐졌다.
 export interface MiceStatusCounts {
-  INQ: number;
-  TEN: number;
+  문의: number;
   DEF: number;
   LOS: number;
-  단순문의: number;
 }
 
 function emptyMiceCounts(): MiceStatusCounts {
-  return { INQ: 0, TEN: 0, DEF: 0, LOS: 0, 단순문의: 0 };
+  return { 문의: 0, DEF: 0, LOS: 0 };
 }
 
 export function miceInflowSummary(
@@ -161,11 +161,11 @@ export function miceInflowSummary(
       if (inRange(ts, tBound)) today++;
       if (inRange(ts, wBound)) {
         thisWeek++;
-        weekCounts[inq.progress_status]++;
+        weekCounts[normalizeMiceStatus(inq.progress_status)]++;
       }
       if (inRange(ts, mBound)) {
         thisMonth++;
-        monthCounts[inq.progress_status]++;
+        monthCounts[normalizeMiceStatus(inq.progress_status)]++;
       }
     }
   }
@@ -179,7 +179,7 @@ export function miceInflowSummary(
     monthCounts,
     monthDefRate: rate(monthCounts.DEF),
     monthLosRate: rate(monthCounts.LOS),
-    monthSimpleRate: rate(monthCounts.단순문의),
+    monthSimpleRate: rate(monthCounts.문의),
   };
 }
 
@@ -192,7 +192,7 @@ export function filterMiceInflows(
   const all = flattenMiceInflows(customers);
   return all
     .filter((r) => inRange(r.inflow_at, bound))
-    .filter((r) => !status || r.progress_status === status)
+    .filter((r) => !status || normalizeMiceStatus(r.progress_status) === status)
     .sort((a, b) => (a.inflow_at < b.inflow_at ? 1 : -1));
 }
 

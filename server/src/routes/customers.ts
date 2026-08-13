@@ -5,6 +5,7 @@ import { requireActiveRole } from '../middleware/auth.js';
 import { logChange, computeDiff, getLogsForEntity } from '../store/changeLog.js';
 import { normalizeOrgName, levenshtein } from '../lib/textNormalize.js';
 import { shiftDate } from '../lib/kstDate.js';
+import { normalizeMiceStatus } from '../types.js';
 import type {
   MiceContact,
   MiceCustomer,
@@ -317,12 +318,12 @@ function normalizeContacts(input: unknown): MiceContact[] {
 // 내용 없는 빈 문의(placeholder)인지 판단.
 // MICE 고객 중 다수가 문의 0건이라, 고객정보 수정 모달이 열릴 때 빈 문의 카드가 자동 추가된다.
 // 그 placeholder 가 저장되면 created_at=now 로 잡혀 대시보드 신규유입에 잘못 집계되므로 저장 단계에서 제거한다.
-// 담당자/통화일자/문의행사일이 모두 없고 진행상황·채널이 기본값(INQ/INCALL)이면 사용자가 실제로 입력하지 않은 빈 카드로 본다.
+// 담당자/통화일자/문의행사일이 모두 없고 진행상황·채널이 기본값(문의/INCALL)이면 사용자가 실제로 입력하지 않은 빈 카드로 본다.
 function isBlankMiceInquiry(inq: MiceInquiry): boolean {
   const hasContact = inq.contacts.length > 0;
   const hasCall = !!inq.call_date;
   const hasDateText = !!(inq.inquiry_event_date_text && inq.inquiry_event_date_text.trim());
-  const nonDefaultStatus = inq.progress_status !== 'INQ';
+  const nonDefaultStatus = inq.progress_status !== '문의';
   const nonDefaultChannel = inq.inquiry_channel !== 'INCALL';
   return !hasContact && !hasCall && !hasDateText && !nonDefaultStatus && !nonDefaultChannel;
 }
@@ -360,7 +361,8 @@ function normalizeMiceInquiries(
         o.inquiry_channel === 'OUTCALL' ? 'OUTCALL' : 'INCALL';
       return {
         id: o.id || nanoid(10),
-        progress_status: (o.progress_status as MiceInquiry['progress_status']) || 'INQ',
+        // 옛 값(단순문의·INQ·TEN)이 들어와도 3분류로 접어서 저장한다
+        progress_status: normalizeMiceStatus(o.progress_status),
         inquiry_channel: channel,
         contacts,
         call_date: o.call_date ?? null,

@@ -44,7 +44,26 @@ export type EventStatus =
 
 // ===== MICE 고객 (multi-inquiry) =====
 export type MiceCategory = '기업' | '학회' | '공공기관' | '학교' | '병원' | '대행사' | '기타';
-export type MiceInquiryStatus = 'INQ' | 'TEN' | 'DEF' | 'LOS' | '단순문의';
+/**
+ * MICE 문의 진행상황 — 3분류.
+ *
+ * 고객정보는 '이 업체가 언제 무슨 문의를 했나' 를 쌓아두는 통화 이력 모음이다.
+ * 그래서 이 값이 답할 것은 **그 문의가 어떻게 끝났는지** 하나뿐이다.
+ * 어디까지 갔는지(견적서·계약서·회신·계약금)는 체크 4종이 문의 건별로 따로 들고 있다.
+ * 코드값 DEF/LOS 는 행사 상태와 맞추려 그대로 두고, 화면에는 확정/취소로 보인다.
+ */
+export type MiceInquiryStatus = '문의' | 'DEF' | 'LOS';
+
+/** 옛 값(단순문의·INQ·TEN) → 3분류. 아직 안 옮겨진 데이터도 화면에서 바로 읽히게 한다. */
+export function normalizeMiceStatus(s: string | null | undefined): MiceInquiryStatus {
+  return s === 'DEF' ? 'DEF' : s === 'LOS' ? 'LOS' : '문의';
+}
+
+/** 화면에 쓰는 한글 라벨 */
+export function miceStatusLabel(s: string | null | undefined): string {
+  const n = normalizeMiceStatus(s);
+  return n === 'DEF' ? '확정' : n === 'LOS' ? '취소' : '문의';
+}
 
 export interface MiceContact {
   id: string;
@@ -270,21 +289,13 @@ export function isCancelledWeddingProgress(s: WeddingProgressStatus): boolean {
   return CANCELLED_WEDDING_PROGRESS.includes(s);
 }
 
-// MICE 문의 진행상황 (단순문의 추가)
-export const MICE_INQUIRY_STATUS_OPTIONS: MiceInquiryStatus[] = [
-  'INQ',
-  'TEN',
-  'DEF',
-  'LOS',
-  '단순문의',
-];
+// MICE 문의 진행상황 — 이 문의가 어떻게 끝났는지 3가지로만.
+export const MICE_INQUIRY_STATUS_OPTIONS: MiceInquiryStatus[] = ['문의', 'DEF', 'LOS'];
 
 export const MICE_INQUIRY_STATUS_DESC: Record<MiceInquiryStatus, string> = {
-  INQ: 'INQ — 문의/견적',
-  TEN: 'TEN — 계약 발송',
-  DEF: 'DEF — 확정',
-  LOS: 'LOS — 취소',
-  단순문의: '단순문의 (행사화 안 됨)',
+  문의: '문의 — 문의·상담에서 그침 (진행 중 포함)',
+  DEF: '확정 — 계약까지 감',
+  LOS: '취소 — 진행하다 드랍됨',
 };
 
 // WEDDING 진행단계

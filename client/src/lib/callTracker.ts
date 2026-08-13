@@ -5,11 +5,10 @@
 import { todayKst } from './dateFmt';
 import type { MiceCustomer, MiceInquiry, MiceInquiryStatus } from '../types';
 
-/** 탭 ↔ 진행상황. 트래커의 '문의' 는 우리 INQ 가 아니라 '단순문의' 다 — 글자만 보고 옮기면 안 된다. */
+/** 탭 ↔ 진행상황 3분류. '보류' 탭은 없앴다 — 진행 중인지 아닌지는 콜백 날짜가 말해준다. */
 export const CALL_TABS: { key: string; label: string; status: MiceInquiryStatus | null }[] = [
   { key: 'all', label: '전체', status: null },
-  { key: 'inq', label: '문의', status: '단순문의' },
-  { key: 'hold', label: '보류 콜 예정', status: 'INQ' },
+  { key: 'inq', label: '문의', status: '문의' },
   { key: 'def', label: '확정', status: 'DEF' },
   { key: 'los', label: '취소', status: 'LOS' },
 ];
@@ -38,10 +37,13 @@ export function trackedInquiryOf(c: MiceCustomer): MiceInquiry | undefined {
   return list[list.length - 1];
 }
 
-/** 콜백 기준일 — 보류면 재통화 예정일, 아니면 기한 */
+/**
+ * 콜백 기준일. 재통화 예정일(callback_at)이 잡혀 있으면 그게 우선, 없으면 기한(callback_due).
+ * 예전엔 '보류(INQ)' 인지 보고 둘 중 하나를 골랐는데, 상태가 3분류로 줄면서 그 갈래는 없앴다.
+ */
 export function callbackDateOf(q?: MiceInquiry): string {
   if (!q) return '';
-  return (q.progress_status === 'INQ' ? q.callback_at || q.callback_due : q.callback_due) || '';
+  return q.callback_at || q.callback_due || '';
 }
 
 /** 남은 일수. 음수면 지났다. 날짜가 없으면 null. */
@@ -55,7 +57,7 @@ export function daysLeft(due?: string | null): number | null {
 
 /** 아직 굴러가는 건인지 — 확정·취소는 콜백 대상이 아니다 */
 export function isOpenStatus(s?: MiceInquiryStatus): boolean {
-  return s === '단순문의' || s === 'INQ';
+  return s !== 'DEF' && s !== 'LOS';
 }
 
 /**

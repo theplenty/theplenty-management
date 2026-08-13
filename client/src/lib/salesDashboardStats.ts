@@ -6,6 +6,7 @@
 //   - "단순문의" 상태를 "미처리" 로 간주
 
 import { todayKst } from './dateFmt';
+import { normalizeMiceStatus } from '../types';
 import type {
   MiceCustomer,
   MiceInquiry,
@@ -56,12 +57,19 @@ function inRange(iso: string | null | undefined, range: DateRange): boolean {
 
 // ===== MICE 세일즈 통계 =====
 
-// 미처리 인콜 기준 status — 단순문의로 남아있는 건. (INQ/TEN/DEF/LOS 는 전환된 것으로 간주)
-const MICE_UNPROCESSED_STATUSES = new Set<MiceInquiryStatus>(['단순문의']);
-// 전환된 final 상태들
-const MICE_INQ_STATUSES = new Set<MiceInquiryStatus>(['INQ', 'TEN']);
+// 진행상황이 3분류(문의/DEF/LOS)로 줄면서 '미처리' 를 상태만으로는 가릴 수 없게 됐다.
+// 예전 기준(단순문의)을 그대로 두면 문의 전체가 미처리로 잡힌다.
+// → **아무 진전이 없는 문의**로 다시 정의한다: 상태가 '문의' 이고 체크 4종이 전부 비어 있는 것.
+//    체크가 하나라도 찍혔으면 최소한 견적은 나갔다는 뜻이라 '진행' 으로 센다.
 const MICE_DEF_STATUSES = new Set<MiceInquiryStatus>(['DEF']);
 const MICE_LOS_STATUSES = new Set<MiceInquiryStatus>(['LOS']);
+
+function hasProgressChecks(inq: MiceInquiry): boolean {
+  return !!(inq.quote_sent || inq.contract_sent || inq.contract_replied || inq.deposit_paid);
+}
+function isUnprocessed(inq: MiceInquiry): boolean {
+  return normalizeMiceStatus(inq.progress_status) === '문의' && !hasProgressChecks(inq);
+}
 
 export interface InquiryWithCustomer {
   inquiry: MiceInquiry;
@@ -83,8 +91,8 @@ export function flattenMiceInquiries(customers: MiceCustomer[]): InquiryWithCust
 
 export interface MiceChannelMetrics {
   total: number;
-  unprocessed: number; // 단순문의 상태로 남아있음
-  inq: number;
+  unprocessed: number; // 문의 상태 + 체크 4종 전부 비어 있음 (아무 진전 없음)
+  inq: number; // 문의 상태 + 체크 하나 이상 (견적 이상 나감)
   def: number;
   los: number;
   conversionRate: number; // (INQ + DEF + LOS) / total — 미처리 외 비율
@@ -107,10 +115,10 @@ export function computeMiceChannelMetrics(
     if (managerId && f.inquiry.assigned_manager_id !== managerId) continue;
     total += 1;
     const s = f.inquiry.progress_status;
-    if (MICE_UNPROCESSED_STATUSES.has(s)) unprocessed += 1;
-    else if (MICE_INQ_STATUSES.has(s)) inq += 1;
-    else if (MICE_DEF_STATUSES.has(s)) def += 1;
-    else if (MICE_LOS_STATUSES.has(s)) los += 1;
+    if (MICE_DEF_STATUSES.has(normalizeMiceStatus(s))) def += 1;
+    else if (MICE_LOS_STATUSES.has(normalizeMiceStatus(s))) los += 1;
+    else if (isUnprocessed(f.inquiry)) unprocessed += 1;
+    else inq += 1; // 문의 상태 + 체크 하나 이상 = 진행 중
   }
   const converted = inq + def + los;
   const conversionRate = total > 0 ? (converted / total) * 100 : 0;
@@ -129,7 +137,7 @@ export function findStaleIncalls(
   const stale: StaleInquiry[] = [];
   for (const f of flat) {
     if (f.inquiry.inquiry_channel !== 'INCALL') continue;
-    if (!MICE_UNPROCESSED_STATUSES.has(f.inquiry.progress_status)) continue;
+    if (!isUnprocessed(f.inquiry)) continue;
     const created = new Date(f.inquiry.created_at).getTime();
     if (isNaN(created)) continue;
     const ageDays = Math.floor((now.getTime() - created) / 86400_000);
@@ -168,7 +176,7 @@ export function computeManagerConversionRates(
     const name = f.inquiry.assigned_manager_name || '미지정';
     const entry = byManager.get(id) || { id, name, total: 0, converted: 0 };
     entry.total += 1;
-    if (!MICE_UNPROCESSED_STATUSES.has(f.inquiry.progress_status)) entry.converted += 1;
+    if (!isUnprocessed(f.inquiry)) entry.converted += 1;
     byManager.set(id, entry);
   }
   return Array.from(byManager.values())
@@ -304,15 +312,12 @@ export function filterMiceForDrill(
       if (managerId && f.inquiry.assigned_manager_id !== managerId) return false;
       const s = f.inquiry.progress_status;
       if (statusGroup === 'all') return true;
-      if (statusGroup === 'unprocessed') return MICE_UNPROCESSED_STATUSES.has(s);
-      if (statusGroup === 'inq') return MICE_INQ_STATUSES.has(s);
-      if (statusGroup === 'def') return MICE_DEF_STATUSES.has(s);
-      if (statusGroup === 'los') return MICE_LOS_STATUSES.has(s);
-      if (statusGroup === 'converted') {
-        return (
-          MICE_INQ_STATUSES.has(s) || MICE_DEF_STATUSES.has(s) || MICE_LOS_STATUSES.has(s)
-        );
-      }
+      if (statusGroup === 'unprocessed') return isUnprocessed(f.inquiry);
+      // '진행' = 문의 상태이지만 체크가 하나라도 찍힌 것
+      if (statusGroup === 'inq') return normalizeMiceStatus(s) === '문의' && hasProgressChecks(f.inquiry);
+      if (statusGroup === 'def') return MICE_DEF_STATUSES.has(normalizeMiceStatus(s));
+      if (statusGroup === 'los') return MICE_LOS_STATUSES.has(normalizeMiceStatus(s));
+      if (statusGroup === 'converted') return !isUnprocessed(f.inquiry);
       return true;
     })
     .sort((a, b) => (a.inquiry.created_at < b.inquiry.created_at ? 1 : -1));

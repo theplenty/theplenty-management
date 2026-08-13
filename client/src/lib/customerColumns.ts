@@ -1,5 +1,6 @@
 import type { ColumnDef } from './excel';
 import { nanoid } from './clientId';
+import { normalizeMiceStatus } from '../types';
 import type {
   MiceContact,
   MiceCustomer,
@@ -213,7 +214,7 @@ export function groupMiceFlatRows(
     if (!inq) {
       inq = {
         id: nanoid(),
-        progress_status: ((r.progress_status as MiceInquiryStatus) || 'INQ') as MiceInquiryStatus,
+        progress_status: normalizeMiceStatus(r.progress_status as string),
         inquiry_channel: 'INCALL', // 엑셀 임포트 기본값 — admin 이 추후 재분류
         contacts: [],
         call_date: r.call_date || null,

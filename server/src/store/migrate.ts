@@ -2,7 +2,7 @@
 
 import { nanoid } from 'nanoid';
 import { store, persist, persistDoc, persistDelete } from './mockStore.js';
-import { DEFAULT_TENANT_ID } from '../types.js';
+import { DEFAULT_TENANT_ID, normalizeMiceStatus } from '../types.js';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -62,9 +62,8 @@ function migrateMiceCustomers() {
 
     // 1) 완전 옛 스키마 (inquiries 없음) → 변환
     if (!Array.isArray(raw.inquiries)) {
-      const oldStatus = (raw.progress_status as string) || 'INQ';
-      const status: MiceInquiryStatus =
-        oldStatus === 'X' ? '단순문의' : (oldStatus as MiceInquiryStatus);
+      // 옛 값(X · 단순문의 · INQ · TEN)은 전부 3분류로 접는다
+      const status: MiceInquiryStatus = normalizeMiceStatus(raw.progress_status as string);
 
       const inquiry: MiceInquiry = {
         id: nanoid(10),
