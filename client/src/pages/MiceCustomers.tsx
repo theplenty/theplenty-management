@@ -323,7 +323,12 @@ export default function MiceCustomers() {
     // 상태 탭 — 트래커에서 쓰던 문의/보류/확정/취소 구조 그대로
     const tabStatus = CALL_TABS.find((t) => t.key === callTab)?.status ?? null;
     if (tabStatus) {
-      list = list.filter((c) => normalizeMiceStatus(trackedInquiryOf(c)?.progress_status) === tabStatus);
+      // 문의가 아예 없는 고객(연락처 기록용)은 어느 상태 탭에도 속하지 않는다 —
+      // normalizeMiceStatus(undefined) 가 '문의' 로 접히면서 1,100곳이 문의 탭에 합산되던 버그.
+      list = list.filter((c) => {
+        const q = trackedInquiryOf(c);
+        return q && normalizeMiceStatus(q.progress_status) === tabStatus;
+      });
     }
     if (overdueOnly) {
       list = list.filter((c) => callbackView(trackedInquiryOf(c)).state === 'overdue');
@@ -337,7 +342,10 @@ export default function MiceCustomers() {
       m.set(
         t.key,
         t.status
-          ? items.filter((c) => normalizeMiceStatus(trackedInquiryOf(c)?.progress_status) === t.status).length
+          ? items.filter((c) => {
+              const q = trackedInquiryOf(c);
+              return q && normalizeMiceStatus(q.progress_status) === t.status;
+            }).length
           : items.length
       );
     }
@@ -400,9 +408,9 @@ export default function MiceCustomers() {
       official_phone: c.official_phone,
       official_email: c.official_email,
       official_website: c.official_website,
-      inquiries: c.inquiries.length
-        ? c.inquiries.map((i) => ({ ...i }))
-        : [emptyInquiry(authorId, authorName)],
+      // 문의가 없으면 없는 그대로 연다. 빈 카드를 만들어 보여주면
+      // 오늘 날짜의 '문의' 가 자동 입력된 것처럼 보인다 — DB 에 없는 걸 그리면 안 된다.
+      inquiries: c.inquiries.map((i) => ({ ...i })),
       memo: c.memo,
     });
     setOpen(true);
@@ -412,9 +420,10 @@ export default function MiceCustomers() {
     setForm((p) => ({ ...p, inquiries: [...p.inquiries, emptyInquiry(authorId, authorName)] }));
   }
   function removeInquiry(id: string) {
+    // 마지막 한 건도 지울 수 있다 — 홍보메일 기록용 고객은 문의 0건이 정상 상태다.
     setForm((p) => ({
       ...p,
-      inquiries: p.inquiries.length > 1 ? p.inquiries.filter((i) => i.id !== id) : p.inquiries,
+      inquiries: p.inquiries.filter((i) => i.id !== id),
     }));
   }
   function updateInquiry(id: string, patch: Partial<MiceInquiry>) {
@@ -984,6 +993,13 @@ export default function MiceCustomers() {
           }
         >
           <div className="space-y-3">
+            {form.inquiries.length === 0 && (
+              <div className="border border-dashed rounded-md px-4 py-6 text-center text-sm text-gray-400">
+                등록된 문의가 없습니다 — 연락처만 보관 중인 고객입니다.
+                <br />
+                실제 문의 전화가 오면 위의 <b className="text-gray-600">+ 문의 추가</b> 로 기록하세요.
+              </div>
+            )}
             {form.inquiries.map((inq, idx) => (
               <div key={inq.id} className="border rounded-md p-3 bg-gray-50/40">
                 <div className="flex items-center justify-between mb-2">
@@ -1006,15 +1022,13 @@ export default function MiceCustomers() {
                       {miceStatusLabel(inq.progress_status)}
                     </span>
                   </div>
-                  {form.inquiries.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeInquiry(inq.id)}
-                      className="text-xs text-red-500 hover:underline"
-                    >
-                      이 문의 삭제
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeInquiry(inq.id)}
+                    className="text-xs text-red-500 hover:underline"
+                  >
+                    이 문의 삭제
+                  </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Field label="유입 채널" required>
