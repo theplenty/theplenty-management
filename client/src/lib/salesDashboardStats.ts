@@ -441,3 +441,39 @@ export function computeMiceMonthlyTable(customers: MiceCustomer[], year: number)
   }
   return rows;
 }
+
+// ===== WEDDING 월별 세일즈 표 (인콜 → 상담 → 계약) =====
+// MICE 표와 같은 코호트 방식. 귀속월 = 신규문의일(inquiry_date), 없으면 등록일.
+// 웨딩은 진행단계가 상태값에 다 있어서(상담·INQ·TEN·DEF·LOS) 체크 없이 상태로 센다.
+// '상담 도달' 에 LOS 포함 — 상담까지 갔다가 잃은 건도 상담은 한 것이다(통계 퍼널과 동일 규칙).
+// 상담 전에 이탈한 건은 신규문의·상담취소 상태로 남으므로 상담 수에 안 잡힌다.
+export interface WeddingMonthlyRow {
+  month: number; // 1~12
+  received: number; // 신규 인콜 (전 상태)
+  consulted: number; // 상담 도달 (상담·INQ·TEN·DEF·LOS)
+  contracted: number; // 계약 = DEF
+  notContracted: number; // 상담 후 미계약 = 상담 도달 − 계약 (진행 중·잃음 포함)
+}
+
+const WEDDING_CONSULT_REACHED = new Set<WeddingProgressStatus>(['상담', 'INQ', 'TEN', 'DEF', 'LOS']);
+
+export function computeWeddingMonthlyTable(customers: WeddingCustomer[], year: number): WeddingMonthlyRow[] {
+  const rows: WeddingMonthlyRow[] = Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1, received: 0, consulted: 0, contracted: 0, notContracted: 0,
+  }));
+  for (const c of customers) {
+    if (c.deleted_at) continue;
+    const base = (c.inquiry_date || c.created_at || '').slice(0, 10);
+    if (!base.startsWith(String(year))) continue;
+    const m = parseInt(base.slice(5, 7), 10);
+    if (!m || m < 1 || m > 12) continue;
+    const row = rows[m - 1];
+    row.received += 1;
+    if (WEDDING_CONSULT_REACHED.has(c.progress_status)) {
+      row.consulted += 1;
+      if (c.progress_status === 'DEF') row.contracted += 1;
+      else row.notContracted += 1;
+    }
+  }
+  return rows;
+}
