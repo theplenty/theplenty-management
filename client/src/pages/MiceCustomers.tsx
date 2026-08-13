@@ -321,15 +321,11 @@ export default function MiceCustomers() {
         return e ? fuzzyMatchEntry(e, debouncedQuery) : false;
       });
     }
-    // 상태 탭 — 트래커에서 쓰던 문의/보류/확정/취소 구조 그대로
-    const tabStatus = CALL_TABS.find((t) => t.key === callTab)?.status ?? null;
-    if (tabStatus) {
-      // 문의가 아예 없는 고객(연락처 기록용)은 어느 상태 탭에도 속하지 않는다 —
-      // normalizeMiceStatus(undefined) 가 '문의' 로 접히면서 1,100곳이 문의 탭에 합산되던 버그.
-      list = list.filter((c) => {
-        const q = trackedInquiryOf(c);
-        return q && normalizeMiceStatus(q.progress_status) === tabStatus;
-      });
+    // 상태 탭 — 판정은 CALL_TABS 의 match 한 곳에서.
+    // '문의' 탭은 상태가 아니라 팔로업 여부(콜백이 살아 있는가)로 거른다.
+    const tab = CALL_TABS.find((t) => t.key === callTab);
+    if (tab && tab.key !== 'all') {
+      list = list.filter((c) => tab.match(trackedInquiryOf(c)));
     }
     if (overdueOnly) {
       list = list.filter((c) => callbackView(trackedInquiryOf(c)).state === 'overdue');
@@ -342,12 +338,7 @@ export default function MiceCustomers() {
     for (const t of CALL_TABS) {
       m.set(
         t.key,
-        t.status
-          ? items.filter((c) => {
-              const q = trackedInquiryOf(c);
-              return q && normalizeMiceStatus(q.progress_status) === t.status;
-            }).length
-          : items.length
+        t.key === 'all' ? items.length : items.filter((c) => t.match(trackedInquiryOf(c))).length
       );
     }
     return m;
@@ -693,6 +684,7 @@ export default function MiceCustomers() {
           <button
             key={t.key}
             onClick={() => setCallTab(t.key)}
+            title={t.tip}
             className={`text-sm px-3 py-1.5 rounded-full border transition ${
               callTab === t.key
                 ? 'bg-blue-600 text-white border-blue-600'

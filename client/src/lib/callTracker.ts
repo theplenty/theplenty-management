@@ -3,14 +3,25 @@
 // 별도 사이트로 굴리던 문의 트래커를 흡수하면서 들어왔다.
 // 화면을 따로 만들지 않고 고객정보 안에 접어 넣었기 때문에, 판정은 여기 한 곳에 둔다.
 import { todayKst } from './dateFmt';
+import { normalizeMiceStatus } from '../types';
 import type { MiceCustomer, MiceInquiry, MiceInquiryStatus } from '../types';
 
-/** 탭 ↔ 진행상황 3분류. '보류' 탭은 없앴다 — 진행 중인지 아닌지는 콜백 날짜가 말해준다. */
-export const CALL_TABS: { key: string; label: string; status: MiceInquiryStatus | null }[] = [
-  { key: 'all', label: '전체', status: null },
-  { key: 'inq', label: '문의', status: '문의' },
-  { key: 'def', label: '확정', status: 'DEF' },
-  { key: 'los', label: '취소', status: 'LOS' },
+/**
+ * 상태 탭. '문의' 탭은 상태가 아니라 **팔로업 여부**로 거른다 —
+ * 콜백 예정일이 살아 있는 건만. 문의로 그친 건(콜백 완료 ✓ 또는 날짜 없음)은
+ * 전체 탭에서만 보인다. "문의 탭 = 지금 굴리고 있는 일감 목록" 이 되게 하려는 것.
+ */
+export const CALL_TABS: { key: string; label: string; tip: string; match: (q?: MiceInquiry) => boolean }[] = [
+  { key: 'all', label: '전체', tip: '모든 고객', match: () => true },
+  {
+    key: 'inq',
+    label: '문의',
+    tip: '팔로업 중인 건만 — 콜백 예정일이 살아 있는 문의. 끝난 건은 콜백 ✓ 로 닫으면 여기서 빠집니다.',
+    match: (q) =>
+      !!q && normalizeMiceStatus(q.progress_status) === '문의' && needsCall(callbackView(q).state),
+  },
+  { key: 'def', label: '확정', tip: '확정(DEF)', match: (q) => !!q && normalizeMiceStatus(q.progress_status) === 'DEF' },
+  { key: 'los', label: '취소', tip: '취소(LOS)', match: (q) => !!q && normalizeMiceStatus(q.progress_status) === 'LOS' },
 ];
 
 export const CALL_CHECKS: { key: keyof MiceInquiry; label: string }[] = [
