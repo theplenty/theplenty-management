@@ -20,6 +20,7 @@ import {
   type MiceInquiryStatus,
 } from '../types';
 import Modal from '../components/Modal';
+import AutoExpandTextarea from '../components/AutoExpandTextarea';
 import SimilarOrgWarning from '../components/SimilarOrgWarning';
 import LinkedEventsSection from '../components/LinkedEventsSection';
 import { Field, StatusBadge } from '../components/Field';
@@ -1232,9 +1233,9 @@ export default function MiceCustomers() {
                   })()}
                   <div className="mt-3">
                     <Field label="통화 메모">
-                      <textarea
+                      <AutoExpandTextarea
                         className="input"
-                        rows={3}
+                        minRows={2}
                         value={inq.note || ''}
                         placeholder="이 문의 건의 통화·협상 내용 (업체 전반 메모는 위 '메모' 칸)"
                         onChange={(e) => updateInquiry(inq.id, { note: e.target.value })}
@@ -1326,8 +1327,9 @@ export default function MiceCustomers() {
 
         {/* (3) 메모 */}
         <Section title="(3) 메모">
-          <textarea
-            className="input min-h-[110px]"
+          <AutoExpandTextarea
+            className="input"
+            minRows={3}
             value={form.memo}
             onChange={(e) => setForm({ ...form, memo: e.target.value })}
           />

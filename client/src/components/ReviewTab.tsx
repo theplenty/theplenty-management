@@ -2,6 +2,7 @@ import { weekdayKoOf, insertWeekday } from '../lib/dateFmt';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { Field } from './Field';
+import AutoExpandTextarea from './AutoExpandTextarea';
 import { formatKoreanCommas } from '../lib/numberFormat';
 import { useActiveUsers } from '../lib/useActiveUsers';
 import { type EventFile } from '../types';
@@ -315,44 +316,50 @@ export default function ReviewTab({ eventId, canWrite, eventStartDatetime, event
           />
         </Field>
         <Field label="추가 판매 항목 / 매출" className="md:col-span-2">
-          <textarea
-            className="input min-h-[80px]"
+          <AutoExpandTextarea
+            className="input"
+            minRows={2}
             value={draft.additional_sales}
             placeholder="여러 항목은 줄바꿈으로 구분"
             onChange={(e) => set('additional_sales', e.target.value)}
           />
         </Field>
         <Field label="시스템 이슈" className="md:col-span-2">
-          <textarea
-            className="input min-h-[80px]"
+          <AutoExpandTextarea
+            className="input"
+            minRows={2}
             value={draft.system_issues}
             onChange={(e) => set('system_issues', e.target.value)}
           />
         </Field>
         <Field label="행사 중 특이사항" className="md:col-span-2">
-          <textarea
-            className="input min-h-[80px]"
+          <AutoExpandTextarea
+            className="input"
+            minRows={2}
             value={draft.event_special_notes}
             onChange={(e) => set('event_special_notes', e.target.value)}
           />
         </Field>
         <Field label="플라워 이슈" className="md:col-span-2">
-          <textarea
-            className="input min-h-[80px]"
+          <AutoExpandTextarea
+            className="input"
+            minRows={2}
             value={draft.flower_issues}
             onChange={(e) => set('flower_issues', e.target.value)}
           />
         </Field>
         <Field label="다음 행사 준비 시 피드백" className="md:col-span-2">
-          <textarea
-            className="input min-h-[80px]"
+          <AutoExpandTextarea
+            className="input"
+            minRows={2}
             value={draft.next_event_feedback}
             onChange={(e) => set('next_event_feedback', e.target.value)}
           />
         </Field>
         <Field label="종합 코멘트" className="md:col-span-2">
-          <textarea
-            className="input min-h-[100px]"
+          <AutoExpandTextarea
+            className="input"
+            minRows={2}
             value={draft.general_comment}
             onChange={(e) => set('general_comment', e.target.value)}
           />

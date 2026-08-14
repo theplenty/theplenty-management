@@ -1,4 +1,5 @@
 import { Field } from './Field';
+import AutoExpandTextarea from './AutoExpandTextarea';
 import { formatKoreanCommas } from '../lib/numberFormat';
 import {
   CATHOLIC_REFUND_STATUS_OPTIONS,
@@ -73,8 +74,9 @@ export default function CancellationTab({ draft, onChange }: Props) {
         </Field>
 
         <Field label="취소 사유" className="md:col-span-2">
-          <textarea
-            className="input min-h-[80px]"
+          <AutoExpandTextarea
+            className="input"
+            minRows={2}
             value={draft.cancel_reason}
             placeholder="고객 사정 / 일정 변경 / 예산 미달 등"
             onChange={(e) => set('cancel_reason', e.target.value)}

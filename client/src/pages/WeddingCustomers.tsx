@@ -19,6 +19,7 @@ import {
   type WeddingSourceDetail,
 } from '../types';
 import Modal from '../components/Modal';
+import AutoExpandTextarea from '../components/AutoExpandTextarea';
 import WeddingMarginModal from '../components/WeddingMarginModal';
 import WeddingLandingTab from '../components/WeddingLandingTab';
 import SimilarPhoneWarning from '../components/SimilarPhoneWarning';
@@ -874,8 +875,9 @@ export default function WeddingCustomers() {
               />
             </Field>
             <Field label="최초 인폼 코멘트" className="md:col-span-2">
-              <textarea
-                className="input min-h-[70px]"
+              <AutoExpandTextarea
+                className="input"
+                minRows={2}
                 value={form.first_inform_comment}
                 onChange={(e) => setForm({ ...form, first_inform_comment: e.target.value })}
               />
@@ -1110,16 +1112,18 @@ export default function WeddingCustomers() {
                     />
                   </Field>
                   <Field label="견적 세부 (메모형태)" className="md:col-span-2">
-                    <textarea
-                      className="input min-h-[60px]"
+                    <AutoExpandTextarea
+                      className="input"
+                      minRows={2}
                       value={inq.estimate_detail}
                       placeholder="식사 메뉴 / 옵션 / 답례품 등"
                       onChange={(e) => updateInquiry(inq.id, { estimate_detail: e.target.value })}
                     />
                   </Field>
                   <Field label="방문 상담일 코멘트" className="md:col-span-2">
-                    <textarea
-                      className="input min-h-[60px]"
+                    <AutoExpandTextarea
+                      className="input"
+                      minRows={2}
                       value={inq.visit_consultation_comment}
                       onChange={(e) =>
                         updateInquiry(inq.id, { visit_consultation_comment: e.target.value })
@@ -1147,8 +1151,9 @@ export default function WeddingCustomers() {
 
         {/* (3) 메모 */}
         <Section title="(3) 메모">
-          <textarea
-            className="input min-h-[110px]"
+          <AutoExpandTextarea
+            className="input"
+            minRows={3}
             value={form.memo}
             onChange={(e) => setForm({ ...form, memo: e.target.value })}
           />
