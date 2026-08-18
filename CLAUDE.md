@@ -132,6 +132,15 @@ git log --stat -1
 
 ---
 
+## 자매 프로젝트 — 구매팀 시스템 (2026-08-13 결정)
+
+`C:\HK_Purchase_System\HK_Purchase_System` = 에이치키친 **구매팀**의 매입·재고·단가 앱 (Firebase `plenty-storage`, private repo).
+
+- **각자 운영, 데이터만 연결**: management 는 그쪽 **원가를 읽기만** 한다 (S1 연동). 흡수·통합 아님.
+- 한 세션에서 두 프로젝트를 같이 다룰 수 있으나 **커밋은 반드시 각자 repo 에서**. 파일 경로가 어느 repo 인지 먼저 확인.
+- 주의: 그쪽은 **private repo 라 data JSON·엑셀을 git 으로 추적**한다. 이 repo(public)의 "고객 데이터 커밋 금지" 규칙을 그대로 적용하면 틀리고, 반대로 그쪽 습관을 여기 가져오면 사고다. **각 프로젝트의 CLAUDE.md 가 그 프로젝트의 정답.**
+- Firestore 크로스 접근 금지 — 연동은 읽기 전용 키 API 로만.
+
 ## 관련 문서
 
 - [GITHUB_DEPLOY_GUIDE.md](GITHUB_DEPLOY_GUIDE.md) — 사용자용 GitHub 배포 단계별 가이드
