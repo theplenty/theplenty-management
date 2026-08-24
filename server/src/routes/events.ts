@@ -59,6 +59,17 @@ const EVENT_FIELD_LABELS: Record<string, string> = {
 };
 
 const router = Router();
+
+// 사용홀 정규화 — 쉼표로 뭉친 복합 문자열("Hall A+B,Leaf Room,Ivy Room")을 개별 홀로 분해하고 중복 제거.
+// 웨딩 이관 데이터에서 복합 문자열 + 개별 홀이 겹쳐 캘린더에 중복 표시되던 문제의 재발 방지.
+const normalizeHalls = (halls: unknown): Event['halls'] =>
+  [...new Set(
+    (Array.isArray(halls) ? halls : [])
+      .flatMap((h) => String(h).split(','))
+      .map((s) => s.trim())
+      .filter(Boolean),
+  )] as Event['halls'];
+
 router.use(requireActiveRole);
 
 // 행사 권한 — 세일즈팀(sales_mice/sales_wedding)은 한 팀으로 보고 동등하게 처리.
@@ -305,7 +316,7 @@ router.post('/_bulk-upsert', (req, res) => {
       // 스칼라 필드 갱신
       if (r.status !== undefined) existing.status = r.status as EventStatus;
       if (r.usage_type !== undefined) existing.usage_type = r.usage_type;
-      if (r.halls !== undefined) existing.halls = [...new Set(r.halls)];
+      if (r.halls !== undefined) existing.halls = normalizeHalls(r.halls);
       if (r.start_datetime !== undefined) existing.start_datetime = r.start_datetime;
       if (r.end_datetime !== undefined) existing.end_datetime = r.end_datetime;
       if (r.event_name !== undefined) existing.event_name = r.event_name;
@@ -338,7 +349,7 @@ router.post('/_bulk-upsert', (req, res) => {
           req.user!.name,
         status: (r.status as EventStatus) || 'INQ',
         usage_type: r.usage_type ?? null,
-        halls: [...new Set(r.halls || [])],
+        halls: normalizeHalls(r.halls),
         start_datetime: r.start_datetime || now,
         end_datetime: r.end_datetime || now,
         event_name: eventName,
@@ -469,7 +480,7 @@ router.post('/', (req, res) => {
     created_by_name: overrideCreatedByName || req.user!.name,
     status: (body.status as EventStatus) || 'INQ',
     usage_type: body.usage_type ?? null,
-    halls: [...new Set(body.halls || [])],
+    halls: normalizeHalls(body.halls),
     start_datetime: body.start_datetime || now,
     end_datetime: body.end_datetime || now,
     event_name: body.event_name || '',
@@ -581,6 +592,7 @@ router.patch('/:id', (req, res) => {
     created_at: ev.created_at,
     updated_at: new Date().toISOString(),
   });
+  if (body.halls !== undefined) ev.halls = normalizeHalls(body.halls);
   // assigned_manager_id 가 함께 바뀌면 _name 변경은 라벨 중복이라 무시 (서버 측 후처리)
   if (body.food_items !== undefined) replaceFoodItems(ev.id, body.food_items);
   if (body.customer_links !== undefined) replaceCustomerLinks(ev.id, body.customer_links);

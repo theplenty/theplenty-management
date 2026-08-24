@@ -261,9 +261,12 @@ function migrateEvents() {
     // 사용홀 중복 제거 — Excel import 등으로 ['Hall A+B', 'Leaf Room', 'Hall A+B'] 같은 중복 발생 가능.
     // persist('events')는 JSON만 갱신하므로, Firestore까지 반영하기 위해 persistDoc을 별도 호출한다.
     if (Array.isArray(raw.halls)) {
-      const deduped = [...new Set(raw.halls as string[])];
-      if (deduped.length !== (raw.halls as string[]).length) {
-        raw.halls = deduped;
+      // 쉼표 복합 문자열("Hall A+B,Leaf Room")도 개별 홀로 분해 후 중복 제거 — 웨딩 이관 데이터 정리
+      const normalized = [...new Set(
+        (raw.halls as string[]).flatMap((h) => String(h).split(',')).map((s) => s.trim()).filter(Boolean),
+      )];
+      if (JSON.stringify(normalized) !== JSON.stringify(raw.halls)) {
+        raw.halls = normalized;
         hallsDedupCount++;
         hallsDedupIds.push(e.id);
       }
