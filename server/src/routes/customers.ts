@@ -635,6 +635,18 @@ router.get('/mice/:id/inquiries/:inqId/event-candidates', (req, res) => {
 
   const target = guessInquiryDate(inq);
   const orgKey = (customer.organization_name || '').replace(/\s+/g, '');
+  // 검색어(q) — 후보 추천에 안 걸리는 행사를 직접 찾을 때. 행사명 조각 또는 날짜(2026-12 / 12/20 / 20261220).
+  const q = String(req.query.q || '').trim();
+  const qKey = q.replace(/\s+/g, '');
+  const qDate = (() => {
+    const iso = /^(20\d{2})[-./]?(\d{1,2})?[-./]?(\d{1,2})?$/.exec(qKey);
+    if (iso) {
+      return [iso[1], iso[2] && iso[2].padStart(2, '0'), iso[3] && iso[3].padStart(2, '0')].filter(Boolean).join('-');
+    }
+    const md = /^(\d{1,2})[-./](\d{1,2})$/.exec(qKey);
+    if (md) return `-${md[1].padStart(2, '0')}-${md[2].padStart(2, '0')}`; // 연도 무관 월일 매칭
+    return '';
+  })();
   const rows = store.events
     .filter((e) => e.event_type === 'MICE' && !isDeleted(e) && !takenByOther.has(e.id))
     .map((e) => {
@@ -655,10 +667,20 @@ router.get('/mice/:id/inquiries/:inqId/event-candidates', (req, res) => {
         reasons, score,
       };
     })
-    .filter((r) => r.score > 0 || r.already_linked)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 20);
-  res.json({ candidates: rows, guessed_date: target });
+    .filter((r) => {
+      if (r.already_linked) return true;
+      if (!q) return r.score > 0;
+      // 검색 중에는 추천 점수와 무관하게 '검색어에 맞는 행사' 를 보여준다
+      const nameHit = (r.event_name || '').replace(/\s+/g, '').includes(qKey);
+      const dayHit = !!qDate && (qDate.startsWith('-')
+        ? (r.start_datetime || '').slice(0, 10).endsWith(qDate)
+        : (r.start_datetime || '').startsWith(qDate));
+      return nameHit || dayHit;
+    })
+    .map((r) => (q && !r.reasons.length ? { ...r, reasons: ['검색 결과'] } : r))
+    .sort((a, b) => b.score - a.score || (b.start_datetime || '').localeCompare(a.start_datetime || ''))
+    .slice(0, q ? 50 : 20);
+  res.json({ candidates: rows, guessed_date: target, searched: !!q });
 });
 
 // POST 연결

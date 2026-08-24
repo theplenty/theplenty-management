@@ -3,7 +3,7 @@
 // 세일즈가 "이 문의는 이 행사가 됐다" 를 짚어주는 자리. 서버가 후보를 점수순으로 제안하고
 // (이 고객에 연결된 행사 / 행사예정일 근접 / 행사명에 업체명 포함), 확정인데 행사가 아직
 // 없으면 여기서 바로 만들어 연결한다.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { weekdayKoOf } from '../lib/dateFmt';
 import type { MiceCustomer, MiceInquiry } from '../types';
@@ -51,6 +51,8 @@ export default function InquiryEventLinkModal({
 }: Props) {
   const [cands, setCands] = useState<Candidate[] | null>(null);
   const [guessed, setGuessed] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [searched, setSearched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [newDate, setNewDate] = useState('');
@@ -58,17 +60,32 @@ export default function InquiryEventLinkModal({
 
   const base = `/api/customers/mice/${customerId}/inquiries/${inquiry.id}`;
 
-  useEffect(() => {
-    api
-      .get<{ candidates: Candidate[]; guessed_date: string | null }>(`${base}/event-candidates`)
-      .then((r) => {
-        setCands(r.candidates);
-        setGuessed(r.guessed_date);
-        setNewDate(r.guessed_date ? `${r.guessed_date}T09:00` : '');
-      })
-      .catch((e) => setErr(String(e)));
+  // 후보 조회 — q 를 주면 추천 대신 검색 결과를 받는다 (추천에 안 걸리는 행사를 직접 찾을 때)
+  const load = useCallback(
+    (q?: string) => {
+      setCands(null);
+      const url = `${base}/event-candidates` + (q ? `?q=${encodeURIComponent(q)}` : '');
+      api
+        .get<{ candidates: Candidate[]; guessed_date: string | null; searched?: boolean }>(url)
+        .then((r) => {
+          setCands(r.candidates);
+          setSearched(!!r.searched);
+          setGuessed(r.guessed_date);
+          if (!q) setNewDate(r.guessed_date ? `${r.guessed_date}T09:00` : '');
+        })
+        .catch((e) => setErr(String(e)));
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerId, inquiry.id]);
+    [base],
+  );
+  useEffect(() => { load(); }, [load]);
+
+  // 타이핑이 멎으면 검색 (비우면 추천으로 복귀)
+  useEffect(() => {
+    const t = setTimeout(() => load(search.trim() || undefined), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   const link = async (eventId: string) => {
     setBusy(true);
@@ -160,13 +177,31 @@ export default function InquiryEventLinkModal({
           )}
 
           <div>
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-              후보 행사 {cands ? `(${cands.length})` : ''}
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                {searched ? '검색 결과' : '추천 후보'} {cands ? `(${cands.length})` : ''}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input
+                  className="input text-sm py-1"
+                  style={{ width: 240 }}
+                  placeholder="행사명 또는 날짜로 검색 (예: 송년회, 2026-12, 12/20)"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {search && (
+                  <button type="button" className="btn-xs" onClick={() => setSearch('')}>
+                    추천으로
+                  </button>
+                )}
+              </div>
             </div>
             {cands === null && <div className="text-sm text-gray-400 py-4">불러오는 중...</div>}
             {cands && !cands.length && (
               <div className="text-sm text-gray-500 py-3">
-                조건에 맞는 행사가 없습니다. 아래에서 새로 만들어 연결하세요.
+                {searched
+                  ? '검색 결과가 없습니다. 다른 말로 찾아보거나, 아래에서 새로 만들어 연결하세요.'
+                  : '추천할 후보가 없습니다. 위에서 검색하거나, 아래에서 새로 만들어 연결하세요.'}
               </div>
             )}
             <div className="space-y-2">
