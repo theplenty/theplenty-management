@@ -230,6 +230,14 @@ export default function EventEditor({
   const [revenueItems, setRevenueItems] = useState<RevenueItem[]>([]);
   const [revenueLoading, setRevenueLoading] = useState(false);
   const [revenueLoaded, setRevenueLoaded] = useState(false);
+  // 대관료 출처 문의 (S2) — 계약금이 어느 MICE 문의에서 흘러왔는지 매출탭에 밝힌다
+  const [depositSource, setDepositSource] = useState<{
+    customerId: string;
+    customerName: string;
+    inquiryNo: number;
+    amount: number | null;
+    pushedAt: string | null;
+  } | null>(null);
   const [cancellation, setCancellation] = useState<CancellationDraft>(emptyCancellationDraft());
   const [saving, setSaving] = useState(false);
   const [beoBusy, setBeoBusy] = useState(false);
@@ -343,6 +351,10 @@ export default function EventEditor({
     let cancelled = false;
     setRevenueLoading(true);
     setRevenueLoaded(true);
+    api
+      .get<{ source: typeof depositSource }>(`/api/events/${initialEvent.id}/deposit-source`)
+      .then((r) => { if (!cancelled) setDepositSource(r.source); })
+      .catch(() => { /* 출처 표시는 부가 정보 — 실패해도 매출탭은 그대로 */ });
     api
       .get<{
         event: Event;
@@ -827,6 +839,7 @@ export default function EventEditor({
             canWriteRevenue={admin}
             isNewEvent={!isEdit}
             loading={revenueLoading}
+            depositSource={depositSource}
           />
         </ErrorBoundary>
       )}

@@ -575,6 +575,26 @@ router.post('/:id/duplicate', (req, res) => {
   res.status(201).json({ event: ev, food_items, customer_links });
 });
 
+// GET /api/events/:id/deposit-source — 이 행사의 대관료가 어느 MICE 문의 계약금에서 왔는지 (S2)
+router.get('/:id/deposit-source', (req, res) => {
+  const ev = store.events.find((e) => e.id === req.params.id);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  if (!ev.source_inquiry_id) return res.json({ source: null });
+  const customer = store.mice_customers.find((c) => c.id === ev.source_customer_id);
+  const idx = (customer?.inquiries || []).findIndex((q) => q.id === ev.source_inquiry_id);
+  if (!customer || idx < 0) return res.json({ source: null });
+  const inq = customer.inquiries[idx];
+  res.json({
+    source: {
+      customerId: customer.id,
+      customerName: customer.organization_name,
+      inquiryNo: idx + 1,
+      amount: inq.deposit_amount ?? null,
+      pushedAt: inq.revenue_pushed_at ?? null,
+    },
+  });
+});
+
 router.patch('/:id', (req, res) => {
   const ev = store.events.find((e) => e.id === req.params.id);
   if (!ev) return res.status(404).json({ error: 'not_found' });

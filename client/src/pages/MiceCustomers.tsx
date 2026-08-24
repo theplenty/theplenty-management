@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { weekdayKoOf } from '../lib/dateFmt';
 import { api } from '../lib/api';
 import { fuzzyMatch, buildSearchEntry, fuzzyMatchEntry, type SearchEntry } from '../lib/koreanSearch';
@@ -20,6 +21,7 @@ import {
   type MiceInquiryStatus,
 } from '../types';
 import Modal from '../components/Modal';
+import InquiryEventLinkModal from '../components/InquiryEventLinkModal';
 import AutoExpandTextarea from '../components/AutoExpandTextarea';
 import SimilarOrgWarning from '../components/SimilarOrgWarning';
 import LinkedEventsSection from '../components/LinkedEventsSection';
@@ -246,6 +248,9 @@ export default function MiceCustomers() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(() => emptyForm(authorId, authorName));
+  // 행사 연결 모달 — 어느 문의를 연결 중인지 (S2)
+  const [linkFor, setLinkFor] = useState<{ inquiry: MiceInquiry; no: number } | null>(null);
+  const [linkMsg, setLinkMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [logRefresh, setLogRefresh] = useState(0);
   // 콜 트래커 — 별도 사이트로 쓰던 문의 트래커를 이 화면 안으로 접어 넣었다.
@@ -1182,6 +1187,56 @@ export default function MiceCustomers() {
                       </label>
                     ))}
                   </div>
+
+                  {/* 계약금 = 가톨릭대 대관료. 확정 + 계약금 체크 + 금액 + 행사 연결이 모두 갖춰지면
+                      저장 시점에 행사 매출탭(가톨릭대관료·입금정보)으로 자동 반영된다. (S2) */}
+                  <div className="flex flex-wrap items-end gap-3 mb-2">
+                    <label className="text-xs text-gray-600">
+                      계약금 (= 가톨릭대관료)
+                      <input
+                        type="number"
+                        className="input mt-1 w-40"
+                        placeholder="0"
+                        value={inq.deposit_amount ?? ''}
+                        onChange={(e) =>
+                          updateInquiry(inq.id, {
+                            deposit_amount: e.target.value === '' ? null : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <div className="flex items-center gap-2 pb-1">
+                      <button
+                        type="button"
+                        className="btn-sm border"
+                        disabled={!editingId}
+                        title={editingId ? '이 문의가 성사된 행사를 연결' : '고객을 먼저 저장하면 연결할 수 있습니다'}
+                        onClick={() => setLinkFor({ inquiry: inq, no: idx + 1 })}
+                      >
+                        {inq.linked_event_id ? '🔗 연결된 행사 보기' : '🔗 행사 연결'}
+                      </button>
+                      {inq.linked_event_id ? (
+                        <Link
+                          to={`/calendar?event=${inq.linked_event_id}`}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          캘린더에서 열기
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-gray-400">행사 미연결</span>
+                      )}
+                      {inq.revenue_pushed_at ? (
+                        <span className="badge bg-emerald-100 text-emerald-800">
+                          매출 반영 {Number(inq.revenue_pushed_amount || 0).toLocaleString()}원
+                        </span>
+                      ) : inq.linked_event_id &&
+                        inq.progress_status === 'DEF' &&
+                        inq.deposit_paid &&
+                        Number(inq.deposit_amount) > 0 ? (
+                        <span className="badge bg-amber-100 text-amber-800">저장하면 매출 반영</span>
+                      ) : null}
+                    </div>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <Field label="콜백 예정일">
                       <input
@@ -1353,6 +1408,37 @@ export default function MiceCustomers() {
           refreshKey={logRefresh}
         />
       </Modal>
+
+      {linkMsg && (
+        <div className="fixed top-4 right-4 z-[60] bg-emerald-700 text-white text-sm px-4 py-2 rounded shadow-lg">
+          {linkMsg}
+        </div>
+      )}
+
+      {/* 문의 ↔ 행사 연결 (S2) — 연결 후 링크 필드만 폼에 동기화한다.
+          저장 안 된 수정을 덮지 않고, 다음 저장이 링크를 지우지도 않게. */}
+      {linkFor && editingId && (
+        <InquiryEventLinkModal
+          customerId={editingId}
+          customerName={form.organization_name}
+          inquiry={linkFor.inquiry}
+          inquiryNo={linkFor.no}
+          onClose={() => setLinkFor(null)}
+          onLinked={(msg, customer) => {
+            const fresh = (customer.inquiries || []).find((q) => q.id === linkFor.inquiry.id);
+            updateInquiry(linkFor.inquiry.id, {
+              linked_event_id: fresh?.linked_event_id ?? null,
+              linked_at: fresh?.linked_at ?? null,
+              linked_by_name: fresh?.linked_by_name ?? '',
+              revenue_pushed_at: fresh?.revenue_pushed_at ?? null,
+              revenue_pushed_amount: fresh?.revenue_pushed_amount ?? null,
+            });
+            void load();
+            setLinkMsg(msg);
+            setTimeout(() => setLinkMsg(null), 5000);
+          }}
+        />
+      )}
     </div>
   );
 }

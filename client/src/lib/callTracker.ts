@@ -28,6 +28,13 @@ export const CALL_TABS: { key: string; label: string; tip: string; match: (q?: M
   },
   { key: 'def', label: '확정', tip: '확정(DEF)', match: (q) => !!q && normalizeMiceStatus(q.progress_status) === 'DEF' },
   { key: 'los', label: '취소', tip: '취소(LOS)', match: (q) => !!q && normalizeMiceStatus(q.progress_status) === 'LOS' },
+  {
+    // 확정됐는데 캘린더 행사가 안 붙은 건 — 계약금이 매출로 흘러갈 수 없는 상태다. (S2)
+    key: 'unlinked',
+    label: '행사 미연결',
+    tip: '확정인데 캘린더 행사가 연결되지 않은 건 — 연결하면 계약금이 매출로 반영됩니다',
+    match: (q) => !!q && normalizeMiceStatus(q.progress_status) === 'DEF' && !q.linked_event_id,
+  },
 ];
 
 export const CALL_CHECKS: { key: keyof MiceInquiry; label: string }[] = [

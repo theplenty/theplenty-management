@@ -152,6 +152,21 @@ export interface MiceInquiry {
   deposit_paid_at?: string | null;
 
   /**
+   * 계약금 금액 — 플렌티는 **계약금 = 가톨릭대 대관료** 구조라, 이 값이 연결된 행사의
+   * 매출탭 '가톨릭대관료'(gateway_fee)로 흘러간다. (S2)
+   */
+  deposit_amount?: number | null;
+
+  /** 이 문의가 성사된 실제 행사. 연결·해제는 전용 API 한 곳에서만 다룬다(양쪽 필드 동기화 보장). */
+  linked_event_id?: string | null;
+  linked_at?: string | null;
+  linked_by_name?: string;
+
+  /** 계약금 → 행사 매출 자동 반영 스탬프. 반영 금액을 남겨 행사에서 나중에 바뀌었는지 비교한다. */
+  revenue_pushed_at?: string | null;
+  revenue_pushed_amount?: number | null;
+
+  /**
    * "이 건은 더 이상 콜백하지 않는다" 고 사람이 닫은 시각.
    *
    * 확정(DEF)·취소(LOS)로 넘어간 건은 이 값이 없어도 화면에서 종료로 친다 —
@@ -389,6 +404,9 @@ export interface Event {
   discount_reason?: string;             // 할인 사유
   contract_date?: string | null;        // 계약일
   gateway_fee?: number | null;          // 가톨릭대 대관료 (별도 지급)
+  // 출처 문의 (S2) — 이 행사가 어느 MICE 문의에서 왔는지. 역참조 캐시(연결 API 가 함께 기록).
+  source_customer_id?: string | null;
+  source_inquiry_id?: string | null;
   // ===== BEO(행사 운영 지시서) =====
   // 자동 시드 + 담당자 수동 편집한 BEO 문서를 JSON 직렬화해 보관 (변경이력 diff 제외).
   beo_payload?: string;

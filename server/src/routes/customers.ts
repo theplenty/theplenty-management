@@ -6,6 +6,11 @@ import { logChange, computeDiff, getLogsForEntity } from '../store/changeLog.js'
 import { normalizeOrgName, levenshtein } from '../lib/textNormalize.js';
 import { shiftDate } from '../lib/kstDate.js';
 import { normalizeMiceStatus } from '../types.js';
+import {
+  linkInquiryToEvent,
+  pushDepositsForCustomer,
+  unlinkInquiry,
+} from '../lib/depositLink.js';
 import type {
   MiceContact,
   MiceCustomer,
@@ -420,6 +425,13 @@ function callTrackerFields(o: Partial<MiceInquiry>): Partial<MiceInquiry> {
     confirmed_at: o.confirmed_at ?? null,
     callback_done_at: o.callback_done_at ?? null,
     note: o.note ?? '',
+    // S2 — 계약금(=가톨릭대관료)과 행사 링크. 화이트리스트 방식이라 여기서 이어받지 않으면 저장 때 사라진다.
+    deposit_amount: o.deposit_amount ?? null,
+    linked_event_id: o.linked_event_id ?? null,
+    linked_at: o.linked_at ?? null,
+    linked_by_name: o.linked_by_name ?? '',
+    revenue_pushed_at: o.revenue_pushed_at ?? null,
+    revenue_pushed_amount: o.revenue_pushed_amount ?? null,
   };
 }
 
@@ -544,6 +556,8 @@ router.patch('/mice/:id', (req, res) => {
       item.inquiries || []
     );
   }
+  // 계약금(=가톨릭대관료) 자동 반영 — 확정·계약금체크·금액·행사링크가 갖춰진 문의만
+  const pushed = pushDepositsForCustomer(item);
   const now = new Date().toISOString();
   item.updated_at = now;
   item.last_modified_by_id = req.user!.id;
@@ -560,7 +574,168 @@ router.patch('/mice/:id', (req, res) => {
     changes: diff.changes,
     user: req.user!,
   });
-  res.json({ customer: item });
+  // 자동 반영은 행사 쪽 이력에도 남긴다 — 연회팀이 "누가 이 금액을 넣었나" 를 추적할 수 있게
+  for (const r of pushed) {
+    if (!r.filled.length) continue;
+    logChange({
+      entity_type: 'event',
+      entity_id: r.eventId,
+      action: 'update',
+      summary: `문의 계약금 자동 반영: ${r.filled.join(', ')} (${r.amount.toLocaleString()}원)`
+        + (r.kept.length ? ` · 기존값 유지: ${r.kept.join(', ')}` : ''),
+      changes: [],
+      user: req.user!,
+    });
+  }
+  res.json({ customer: item, pushed });
+});
+
+// ── 문의 ↔ 행사 연결 (S2) ──────────────────────────────────────────────
+// 연결·해제·후보제안·행사생성. 링크 쓰기를 이 네 곳으로 모아 양쪽 필드 동기화를 보장한다.
+
+function findInquiry(customerId: string, inquiryId: string) {
+  const customer = store.mice_customers.find((c) => c.id === customerId);
+  if (!customer || isDeleted(customer)) return null;
+  const inq = (customer.inquiries || []).find((q) => q.id === inquiryId);
+  if (!inq) return null;
+  return { customer, inq };
+}
+
+/** 문의의 '행사 예정일' 자유 텍스트에서 날짜를 건져낸다 (YYYY-MM-DD / M월 D일 / M/D). */
+function guessInquiryDate(inq: MiceInquiry): string | null {
+  const t = inq.inquiry_event_date_text || '';
+  const iso = /(20\d{2})[-./](\d{1,2})[-./](\d{1,2})/.exec(t);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+  const ko = /(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t);
+  const year = (inq.call_date || inq.created_at || '').slice(0, 4) || String(new Date().getFullYear());
+  if (ko) return `${year}-${ko[1].padStart(2, '0')}-${ko[2].padStart(2, '0')}`;
+  const md = /\b(\d{1,2})\/(\d{1,2})\b/.exec(t);
+  if (md) return `${year}-${md[1].padStart(2, '0')}-${md[2].padStart(2, '0')}`;
+  return null;
+}
+
+// GET 후보 제안 — ① 이 고객에 연결된 행사 ② 예정일 근접 ③ 업체명이 행사명에 포함
+router.get('/mice/:id/inquiries/:inqId/event-candidates', (req, res) => {
+  const { read } = canAccessType(req.user!.role, 'MICE');
+  if (!read) return res.status(403).json({ error: 'forbidden' });
+  const found = findInquiry(req.params.id, req.params.inqId);
+  if (!found) return res.status(404).json({ error: 'not_found' });
+  const { customer, inq } = found;
+
+  const linkedIds = new Set(
+    store.event_customers.filter((l) => l.customer_id === customer.id).map((l) => l.event_id),
+  );
+  const takenByOther = new Set<string>();
+  for (const c of store.mice_customers)
+    for (const q of c.inquiries || [])
+      if (q.linked_event_id && q.id !== inq.id) takenByOther.add(q.linked_event_id);
+
+  const target = guessInquiryDate(inq);
+  const orgKey = (customer.organization_name || '').replace(/\s+/g, '');
+  const rows = store.events
+    .filter((e) => e.event_type === 'MICE' && !isDeleted(e) && !takenByOther.has(e.id))
+    .map((e) => {
+      const day = (e.start_datetime || '').slice(0, 10);
+      const gap = target && day ? Math.abs((new Date(day).getTime() - new Date(target).getTime()) / 86400000) : null;
+      const nameHit = orgKey.length >= 2 && (e.event_name || '').replace(/\s+/g, '').includes(orgKey);
+      const reasons: string[] = [];
+      if (linkedIds.has(e.id)) reasons.push('이 고객에 연결된 행사');
+      if (gap != null && gap <= 14) reasons.push(gap === 0 ? '예정일 일치' : `예정일 ±${Math.round(gap)}일`);
+      if (nameHit) reasons.push('행사명에 업체명 포함');
+      // 점수: 고객링크 > 이름일치 > 날짜근접
+      const score = (linkedIds.has(e.id) ? 100 : 0) + (nameHit ? 50 : 0) + (gap != null ? Math.max(0, 30 - gap) : 0);
+      return {
+        id: e.id, event_name: e.event_name, status: e.status,
+        start_datetime: e.start_datetime, halls: e.halls,
+        gateway_fee: e.gateway_fee ?? null,
+        already_linked: e.source_inquiry_id === inq.id,
+        reasons, score,
+      };
+    })
+    .filter((r) => r.score > 0 || r.already_linked)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 20);
+  res.json({ candidates: rows, guessed_date: target });
+});
+
+// POST 연결
+router.post('/mice/:id/inquiries/:inqId/link', (req, res) => {
+  const { write } = canAccessType(req.user!.role, 'MICE');
+  if (!write) return res.status(403).json({ error: 'forbidden' });
+  const found = findInquiry(req.params.id, req.params.inqId);
+  if (!found) return res.status(404).json({ error: 'not_found' });
+  const eventId = String((req.body as { event_id?: string }).event_id || '');
+  if (!eventId) return res.status(400).json({ error: 'event_id 필요' });
+  const r = linkInquiryToEvent(found.customer, found.inq, eventId, req.user!.name);
+  if (!r.ok) return res.status(400).json({ error: r.error });
+  const pushed = pushDepositsForCustomer(found.customer);
+  persistDoc('mice_customers', found.customer.id);
+  logChange({
+    entity_type: 'mice_customer', entity_id: found.customer.id, action: 'update',
+    summary: `문의를 행사에 연결${pushed.some((x) => x.filled.length) ? ' + 계약금 자동 반영' : ''}`,
+    changes: [], user: req.user!,
+  });
+  res.json({ customer: found.customer, pushed });
+});
+
+// DELETE 연결 해제
+router.delete('/mice/:id/inquiries/:inqId/link', (req, res) => {
+  const { write } = canAccessType(req.user!.role, 'MICE');
+  if (!write) return res.status(403).json({ error: 'forbidden' });
+  const found = findInquiry(req.params.id, req.params.inqId);
+  if (!found) return res.status(404).json({ error: 'not_found' });
+  unlinkInquiry(found.inq);
+  persistDoc('mice_customers', found.customer.id);
+  logChange({
+    entity_type: 'mice_customer', entity_id: found.customer.id, action: 'update',
+    summary: '문의–행사 연결 해제 (반영된 매출 값은 유지)', changes: [], user: req.user!,
+  });
+  res.json({ customer: found.customer });
+});
+
+// POST 문의에서 행사 생성 + 즉시 연결 — 확정인데 캘린더에 행사가 없을 때
+router.post('/mice/:id/inquiries/:inqId/create-event', (req, res) => {
+  const { write } = canAccessType(req.user!.role, 'MICE');
+  if (!write) return res.status(403).json({ error: 'forbidden' });
+  const found = findInquiry(req.params.id, req.params.inqId);
+  if (!found) return res.status(404).json({ error: 'not_found' });
+  const { customer, inq } = found;
+  const body = (req.body || {}) as { start_datetime?: string; end_datetime?: string; event_name?: string };
+  const now = new Date().toISOString();
+  const day = body.start_datetime || (guessInquiryDate(inq) ? `${guessInquiryDate(inq)}T09:00:00` : now);
+  const ev = {
+    id: nanoid(10),
+    event_type: 'MICE' as const,
+    created_by: req.user!.id,
+    created_by_name: req.user!.name,
+    status: 'DEF' as const,
+    usage_type: null,
+    halls: [],
+    start_datetime: day,
+    end_datetime: body.end_datetime || day,
+    event_name: body.event_name || customer.organization_name || '',
+    seats: null,
+    food_gtd_contract: null,
+    food_exp_contract: null,
+    food_gtd_final: null,
+    food_exp_final: null,
+    memo: `문의에서 생성 (담당 ${inq.assigned_manager_name || inq.created_by_name})`,
+    assigned_manager_id: inq.assigned_manager_id || '',
+    assigned_manager_name: inq.assigned_manager_name || '',
+    created_at: now,
+    updated_at: now,
+  };
+  store.events.push(ev);
+  persistDoc('events', ev.id);
+  const r = linkInquiryToEvent(customer, inq, ev.id, req.user!.name);
+  if (!r.ok) return res.status(400).json({ error: r.error });
+  const pushed = pushDepositsForCustomer(customer);
+  persistDoc('mice_customers', customer.id);
+  logChange({
+    entity_type: 'event', entity_id: ev.id, action: 'create',
+    summary: `MICE 문의에서 행사 생성 (${customer.organization_name})`, changes: [], user: req.user!,
+  });
+  res.json({ event: ev, customer, pushed });
 });
 
 router.delete('/mice/:id', (req, res) => {

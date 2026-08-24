@@ -74,6 +74,14 @@ interface Props {
   isNewEvent: boolean;
   /** 매출 데이터 로딩 중 */
   loading?: boolean;
+  /** 출처 문의 (S2) — 대관료가 MICE 문의의 계약금에서 자동 반영된 경우 그 정보 */
+  depositSource?: {
+    customerId: string;
+    customerName: string;
+    inquiryNo: number;
+    amount: number | null;
+    pushedAt: string | null;
+  } | null;
 }
 
 export default function RevenueTab({
@@ -85,6 +93,7 @@ export default function RevenueTab({
   canWriteRevenue,
   isNewEvent,
   loading,
+  depositSource,
 }: Props) {
   function setInv<K extends keyof InvoiceDraft>(key: K, value: InvoiceDraft[K]) {
     onInvoiceChange({ ...invoice, [key]: value });
@@ -289,6 +298,27 @@ export default function RevenueTab({
           가톨릭대학교 대관료 금액과 입금현황을 관리합니다. 견적서 / 계약서 첨부는 첨부파일 탭에서
           업로드합니다.
         </div>
+
+        {/* 계약금 = 가톨릭대관료 구조라, MICE 문의에서 자동으로 흘러온 값임을 밝힌다. (S2)
+            금액이 문의와 다르면 연회팀이 조정한 값이므로 덮지 않고 차이만 알린다. */}
+        {depositSource && (
+          <div className="mb-3 text-xs rounded border border-blue-200 bg-blue-50 px-3 py-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-semibold text-blue-900">
+              문의 #{depositSource.inquiryNo} 계약금에서 자동 반영
+            </span>
+            <a href={`/customers/mice/${depositSource.customerId}`} className="text-blue-700 underline">
+              {depositSource.customerName}
+            </a>
+            {depositSource.amount != null && (
+              <span className="text-blue-800">계약금 {won(depositSource.amount)}</span>
+            )}
+            {depositSource.amount != null && gatewayNum > 0 && gatewayNum !== depositSource.amount && (
+              <span className="badge bg-amber-100 text-amber-900">
+                ⚠ 문의 계약금과 다름 — 여기 값이 우선 적용됩니다
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="대관료 금액 (원)" hint="행사에 부과되는 가톨릭대 임대료">
