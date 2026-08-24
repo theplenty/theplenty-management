@@ -34,6 +34,7 @@ const STATUS_STYLES: Record<string, string> = {
   X: 'bg-gray-100 text-gray-500',
   단순문의: 'bg-gray-100 text-gray-500',
   문의: 'bg-gray-100 text-gray-600',
+  입금확인중: 'bg-amber-100 text-amber-800',
   신규문의: 'bg-blue-100 text-blue-800',
   상담: 'bg-indigo-100 text-indigo-800',
   상담취소: 'bg-orange-100 text-orange-800 line-through',

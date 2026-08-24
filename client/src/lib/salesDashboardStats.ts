@@ -6,7 +6,7 @@
 //   - "단순문의" 상태를 "미처리" 로 간주
 
 import { todayKst } from './dateFmt';
-import { normalizeMiceStatus } from '../types';
+import { normalizeMiceStatus, miceStatusGroup } from '../types';
 import type {
   MiceCustomer,
   MiceInquiry,
@@ -68,7 +68,7 @@ function hasProgressChecks(inq: MiceInquiry): boolean {
   return !!(inq.quote_sent || inq.contract_sent || inq.contract_replied || inq.deposit_paid);
 }
 function isUnprocessed(inq: MiceInquiry): boolean {
-  return normalizeMiceStatus(inq.progress_status) === '문의' && !hasProgressChecks(inq);
+  return miceStatusGroup(inq.progress_status) === '문의' && !hasProgressChecks(inq);
 }
 
 export interface InquiryWithCustomer {
@@ -115,8 +115,8 @@ export function computeMiceChannelMetrics(
     if (managerId && f.inquiry.assigned_manager_id !== managerId) continue;
     total += 1;
     const s = f.inquiry.progress_status;
-    if (MICE_DEF_STATUSES.has(normalizeMiceStatus(s))) def += 1;
-    else if (MICE_LOS_STATUSES.has(normalizeMiceStatus(s))) los += 1;
+    if (MICE_DEF_STATUSES.has(miceStatusGroup(s))) def += 1;
+    else if (MICE_LOS_STATUSES.has(miceStatusGroup(s))) los += 1;
     else if (isUnprocessed(f.inquiry)) unprocessed += 1;
     else inq += 1; // 문의 상태 + 체크 하나 이상 = 진행 중
   }
@@ -314,9 +314,9 @@ export function filterMiceForDrill(
       if (statusGroup === 'all') return true;
       if (statusGroup === 'unprocessed') return isUnprocessed(f.inquiry);
       // '진행' = 문의 상태이지만 체크가 하나라도 찍힌 것
-      if (statusGroup === 'inq') return normalizeMiceStatus(s) === '문의' && hasProgressChecks(f.inquiry);
-      if (statusGroup === 'def') return MICE_DEF_STATUSES.has(normalizeMiceStatus(s));
-      if (statusGroup === 'los') return MICE_LOS_STATUSES.has(normalizeMiceStatus(s));
+      if (statusGroup === 'inq') return miceStatusGroup(s) === '문의' && hasProgressChecks(f.inquiry);
+      if (statusGroup === 'def') return MICE_DEF_STATUSES.has(miceStatusGroup(s));
+      if (statusGroup === 'los') return MICE_LOS_STATUSES.has(miceStatusGroup(s));
       if (statusGroup === 'converted') return !isUnprocessed(f.inquiry);
       return true;
     })
@@ -432,7 +432,7 @@ export function computeMiceMonthlyTable(customers: MiceCustomer[], year: number)
         row.quoted += 1;
         if (isDef) row.contracted += 1;
         else row.notContracted += 1;
-        if (q.contract_sent && normalizeMiceStatus(q.progress_status) === '문의') row.holding += 1;
+        if (q.contract_sent && miceStatusGroup(q.progress_status) === '문의') row.holding += 1;
       } else if (isDef) {
         // 견적 체크 없이 확정된 건 — 계약 수에는 넣되 견적 기반 비율에는 안 들어간다
         row.contracted += 1;

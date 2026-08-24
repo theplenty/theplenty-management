@@ -3,7 +3,7 @@
 
 import {
   MICE_INQUIRY_STATUS_OPTIONS,
-  normalizeMiceStatus,
+  miceStatusGroup,
   WEDDING_PROGRESS_OPTIONS,
   type EventStatus,
   type EventWithFood,
@@ -161,11 +161,11 @@ export function miceInflowSummary(
       if (inRange(ts, tBound)) today++;
       if (inRange(ts, wBound)) {
         thisWeek++;
-        weekCounts[normalizeMiceStatus(inq.progress_status)]++;
+        weekCounts[miceStatusGroup(inq.progress_status)]++;
       }
       if (inRange(ts, mBound)) {
         thisMonth++;
-        monthCounts[normalizeMiceStatus(inq.progress_status)]++;
+        monthCounts[miceStatusGroup(inq.progress_status)]++;
       }
     }
   }
@@ -192,7 +192,7 @@ export function filterMiceInflows(
   const all = flattenMiceInflows(customers);
   return all
     .filter((r) => inRange(r.inflow_at, bound))
-    .filter((r) => !status || normalizeMiceStatus(r.progress_status) === status)
+    .filter((r) => !status || miceStatusGroup(r.progress_status) === status)
     .sort((a, b) => (a.inflow_at < b.inflow_at ? 1 : -1));
 }
 

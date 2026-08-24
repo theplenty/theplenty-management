@@ -75,11 +75,17 @@ export type MiceCategory = '기업' | '학회' | '공공기관' | '학교' | '�
  * 옛 값 단순문의·INQ·TEN 은 '문의' 로 합쳤다 — INQ 는 원래 '가예약' 뜻으로 만들었지만
  * 실제로는 세일즈팀이 '보류' 로 써 왔고, 진짜 가예약은 행사(Event) 상태 쪽에 있다.
  */
-export type MiceInquiryStatus = '문의' | 'DEF' | 'LOS';
+export type MiceInquiryStatus = '문의' | '입금확인중' | 'DEF' | 'LOS';
 
 /** 옛 값 → 3분류. 저장 경로에 걸어두면 아직 안 옮겨진 문서도 다음 저장에 스스로 정리된다. */
 export function normalizeMiceStatus(s: string | null | undefined): MiceInquiryStatus {
-  return s === 'DEF' ? 'DEF' : s === 'LOS' ? 'LOS' : '문의';
+  return s === 'DEF' ? 'DEF' : s === 'LOS' ? 'LOS' : s === '입금확인중' ? '입금확인중' : '문의';
+}
+
+/** 3분류 집계용 그룹 — 입금확인중은 아직 확정 전이라 진행 중(문의 계열)으로 묶는다. */
+export function miceStatusGroup(s: string | null | undefined): '문의' | 'DEF' | 'LOS' {
+  const n = normalizeMiceStatus(s);
+  return n === '입금확인중' ? '문의' : n;
 }
 
 // 한 문의 내 담당자 (이름/이메일/연락처 한 묶음). 다수 담당자 지원.

@@ -52,17 +52,23 @@ export type MiceCategory = '기업' | '학회' | '공공기관' | '학교' | '�
  * 어디까지 갔는지(견적서·계약서·회신·계약금)는 체크 4종이 문의 건별로 따로 들고 있다.
  * 코드값 DEF/LOS 는 행사 상태와 맞추려 그대로 두고, 화면에는 확정/취소로 보인다.
  */
-export type MiceInquiryStatus = '문의' | 'DEF' | 'LOS';
+export type MiceInquiryStatus = '문의' | '입금확인중' | 'DEF' | 'LOS';
 
 /** 옛 값(단순문의·INQ·TEN) → 3분류. 아직 안 옮겨진 데이터도 화면에서 바로 읽히게 한다. */
 export function normalizeMiceStatus(s: string | null | undefined): MiceInquiryStatus {
-  return s === 'DEF' ? 'DEF' : s === 'LOS' ? 'LOS' : '문의';
+  return s === 'DEF' ? 'DEF' : s === 'LOS' ? 'LOS' : s === '입금확인중' ? '입금확인중' : '문의';
+}
+
+/** 3분류 집계용 그룹 — 입금확인중은 아직 확정 전(입금 미확인)이라 진행 중(문의 계열)으로 묶는다. */
+export function miceStatusGroup(s: string | null | undefined): '문의' | 'DEF' | 'LOS' {
+  const n = normalizeMiceStatus(s);
+  return n === '입금확인중' ? '문의' : n;
 }
 
 /** 화면에 쓰는 한글 라벨 */
 export function miceStatusLabel(s: string | null | undefined): string {
   const n = normalizeMiceStatus(s);
-  return n === 'DEF' ? '확정' : n === 'LOS' ? '취소' : '문의';
+  return n === 'DEF' ? '확정' : n === 'LOS' ? '취소' : n === '입금확인중' ? '입금확인중' : '문의';
 }
 
 export interface MiceContact {
@@ -295,10 +301,11 @@ export function isCancelledWeddingProgress(s: WeddingProgressStatus): boolean {
 }
 
 // MICE 문의 진행상황 — 이 문의가 어떻게 끝났는지 3가지로만.
-export const MICE_INQUIRY_STATUS_OPTIONS: MiceInquiryStatus[] = ['문의', 'DEF', 'LOS'];
+export const MICE_INQUIRY_STATUS_OPTIONS: MiceInquiryStatus[] = ['문의', '입금확인중', 'DEF', 'LOS'];
 
 export const MICE_INQUIRY_STATUS_DESC: Record<MiceInquiryStatus, string> = {
   문의: '문의 — 문의·상담에서 그침 (진행 중 포함)',
+  입금확인중: '입금확인중 — 계약서 날인 완료, 계약금 입금 확인 대기',
   DEF: '확정 — 계약까지 감',
   LOS: '취소 — 진행하다 드랍됨',
 };

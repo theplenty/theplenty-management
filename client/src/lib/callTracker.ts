@@ -20,6 +20,12 @@ export const CALL_TABS: { key: string; label: string; tip: string; match: (q?: M
     match: (q) =>
       !!q && normalizeMiceStatus(q.progress_status) === '문의' && needsCall(callbackView(q).state),
   },
+  {
+    key: 'deposit',
+    label: '입금확인중',
+    tip: '계약서 날인 완료 · 계약금 입금 확인 대기',
+    match: (q) => !!q && normalizeMiceStatus(q.progress_status) === '입금확인중',
+  },
   { key: 'def', label: '확정', tip: '확정(DEF)', match: (q) => !!q && normalizeMiceStatus(q.progress_status) === 'DEF' },
   { key: 'los', label: '취소', tip: '취소(LOS)', match: (q) => !!q && normalizeMiceStatus(q.progress_status) === 'LOS' },
 ];

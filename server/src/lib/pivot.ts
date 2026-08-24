@@ -12,7 +12,7 @@
 //   - 휴지통(soft delete) 레코드는 전부 제외한다. 화면과 숫자가 어긋나면 신뢰를 잃는다.
 //   - 홀(halls)은 배열이라 한 행사가 여러 칸에 잡힌다 → 합계가 총 행사 수보다 커진다. 경고를 띄운다.
 import { store } from '../store/mockStore.js';
-import { normalizeMiceStatus } from '../types.js';
+import { miceStatusGroup } from '../types.js';
 import type { Event, MiceCustomer, WeddingCustomer, QuoteVersion } from '../types.js';
 
 // ── 공용 ───────────────────────────────────────────────────────────────────
@@ -183,7 +183,7 @@ function miceRows(): MiceInquiryRow[] {
         customer_id: c.id,
         organization_name: c.organization_name,
         mice_category: c.mice_category || NONE,
-        status: normalizeMiceStatus(q.progress_status),
+        status: miceStatusGroup(q.progress_status),
         channel: q.inquiry_channel || NONE,
         manager: q.assigned_manager_name || q.created_by_name || NONE,
         creator: q.created_by_name || NONE,
