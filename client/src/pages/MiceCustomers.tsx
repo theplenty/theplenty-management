@@ -1208,7 +1208,7 @@ export default function MiceCustomers() {
                     <div className="flex items-center gap-2 pb-1">
                       <button
                         type="button"
-                        className="btn-sm border"
+                        className="btn-xs"
                         disabled={!editingId}
                         title={editingId ? '이 문의가 성사된 행사를 연결' : '고객을 먼저 저장하면 연결할 수 있습니다'}
                         onClick={() => setLinkFor({ inquiry: inq, no: idx + 1 })}

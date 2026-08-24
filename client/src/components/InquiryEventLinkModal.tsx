@@ -153,7 +153,7 @@ export default function InquiryEventLinkModal({
                 {inquiry.linked_by_name ? ` · ${inquiry.linked_by_name}` : ''}
                 {inquiry.revenue_pushed_at ? ' · 매출 반영 완료' : ''}
               </span>
-              <button type="button" className="btn-sm border" disabled={busy} onClick={unlink}>
+              <button type="button" className="btn-xs" disabled={busy} onClick={unlink}>
                 연결 해제
               </button>
             </div>
@@ -194,7 +194,7 @@ export default function InquiryEventLinkModal({
                   ) : (
                     <button
                       type="button"
-                      className="btn-sm bg-blue-600 text-white shrink-0 ml-3"
+                      className="btn-xs border-blue-600 bg-blue-600 text-white hover:bg-blue-700 shrink-0 ml-3"
                       disabled={busy}
                       onClick={() => link(c.id)}
                     >
@@ -224,7 +224,7 @@ export default function InquiryEventLinkModal({
                   onChange={(e) => setNewDate(e.target.value)}
                 />
               </label>
-              <button type="button" className="btn-sm bg-emerald-600 text-white" disabled={busy} onClick={createEvent}>
+              <button type="button" className="btn-xs border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700" disabled={busy} onClick={createEvent}>
                 만들고 연결
               </button>
             </div>

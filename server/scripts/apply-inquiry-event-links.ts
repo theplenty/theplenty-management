@@ -14,7 +14,14 @@ const pairs = process.argv[arg + 1].split(',').map((p) => p.trim()).filter(Boole
 
 const backup: unknown[] = [];
 let ok = 0;
+// 한 행사에 두 문의가 붙으면 매출이 꼬인다 — 서버 API 와 같은 규칙을 배치에도 적용
+const usedEvents = new Set<string>();
+{
+  const all = (await firestore.collection('mice_customers').get()).docs;
+  for (const d of all) for (const q of ((d.data() as any).inquiries || [])) if (q.linked_event_id) usedEvents.add(q.linked_event_id);
+}
 for (const { custId, inqId, eventId } of pairs) {
+  if (usedEvents.has(eventId)) { console.log(`⏭ 건너뜀(이미 다른 문의가 연결): ${eventId}`); continue; }
   const cRef = firestore.collection('mice_customers').doc(custId);
   const eRef = firestore.collection('events').doc(eventId);
   const [cSnap, eSnap] = await Promise.all([cRef.get(), eRef.get()]);
@@ -45,6 +52,7 @@ for (const { custId, inqId, eventId } of pairs) {
     await eRef.update({ source_customer_id: custId, source_inquiry_id: inqId });
   }
   await cRef.update({ inquiries: cust.inquiries });
+  usedEvents.add(eventId);
   // 고객↔행사 링크 (없을 때만)
   const dup = await firestore.collection('event_customers').where('event_id', '==', eventId).where('customer_id', '==', custId).get();
   if (dup.empty) {

@@ -606,6 +606,9 @@ function guessInquiryDate(inq: MiceInquiry): string | null {
   const t = inq.inquiry_event_date_text || '';
   const iso = /(20\d{2})[-./](\d{1,2})[-./](\d{1,2})/.exec(t);
   if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+  // "2027 2월 13일" 처럼 연도가 앞에 붙는 표기가 실제로 많다 — 이걸 놓치면 1년 차이 후보를 1등으로 올린다
+  const koY = /(20\d{2})\s*년?\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t);
+  if (koY) return `${koY[1]}-${koY[2].padStart(2, '0')}-${koY[3].padStart(2, '0')}`;
   const ko = /(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t);
   const year = (inq.call_date || inq.created_at || '').slice(0, 4) || String(new Date().getFullYear());
   if (ko) return `${year}-${ko[1].padStart(2, '0')}-${ko[2].padStart(2, '0')}`;
