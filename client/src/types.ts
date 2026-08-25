@@ -196,6 +196,21 @@ export interface WeddingEventInquiry {
   assigned_manager_id: string;
   assigned_manager_name: string;
   created_at: string;
+  // ===== 계약금 (= 가톨릭대 대관료, 웨딩은 154만원 정액) — 2026-08-25 =====
+  // 이 후보가 '가예약된 그 날짜' 가 되면 계약금이 붙는다. 원본은 여기(고객정보)이고
+  // 행사 매출탭은 읽기 전용 거울이다. INQ 부터 입력하며 DEF 이후에도 계속 보인다.
+  linked_event_id?: string | null; // 미러 대상 행사 (후보 날짜로 자동 매칭, 다르면 직접 지정)
+  deposit_amount?: number | null;
+  deposit_paid?: boolean; // 입금 확인 — 켜지면 진행단계·행사가 DEF 로 전환된다
+  deposit_paid_at?: string | null;
+  deposit_depositor?: string;
+  deposit_date?: string | null;
+  invoice_type?: string; // 세금계산서 | 현금영수증
+  invoice_issue_status?: string; // 가톨릭요청 | 발행완료
+  tax_invoice_issue_date?: string | null;
+  revenue_pushed_at?: string | null;
+  revenue_pushed_amount?: number | null;
+  revenue_pushed_fp?: string; // 같은 값 재반영·로그 중복 방지 지문
   // 마진계산기 입력 전체를 JSON 직렬화 (재오픈 복원용)
   calc_payload?: string;
 }

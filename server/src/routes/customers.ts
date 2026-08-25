@@ -12,6 +12,12 @@ import {
   unlinkInquiry,
 } from '../lib/depositLink.js';
 import { weddingLandingSummary } from './weddingLanding.js';
+import {
+  backfillCandidateFromEvent,
+  pushWeddingDeposits,
+  resolveCandidateEvent,
+  WEDDING_GATEWAY_FEE,
+} from '../lib/weddingDepositLink.js';
 import type {
   MiceContact,
   MiceCustomer,
@@ -819,6 +825,19 @@ function normalizeWeddingInquiries(input: unknown, fallbackUserId: string, fallb
       assigned_manager_id: o.assigned_manager_id || fallbackUserId,
       assigned_manager_name: o.assigned_manager_name || fallbackUserName,
       created_at: o.created_at || new Date().toISOString(),
+      // 계약금(= 가톨릭대관료) 블록 — 화이트리스트에서 빠지면 저장할 때마다 조용히 지워진다
+      linked_event_id: o.linked_event_id ?? null,
+      deposit_amount: o.deposit_amount ?? null,
+      deposit_paid: !!o.deposit_paid,
+      deposit_paid_at: o.deposit_paid_at ?? null,
+      deposit_depositor: o.deposit_depositor || '',
+      deposit_date: o.deposit_date ?? null,
+      invoice_type: o.invoice_type || '',
+      invoice_issue_status: o.invoice_issue_status || '',
+      tax_invoice_issue_date: o.tax_invoice_issue_date ?? null,
+      revenue_pushed_at: o.revenue_pushed_at ?? null,
+      revenue_pushed_amount: o.revenue_pushed_amount ?? null,
+      ...(o.revenue_pushed_fp !== undefined ? { revenue_pushed_fp: o.revenue_pushed_fp } : {}),
       // 마진계산기 입력 보존 (재오픈 복원용)
       ...(o.calc_payload !== undefined ? { calc_payload: o.calc_payload } : {}),
     };
@@ -926,7 +945,18 @@ router.patch('/wedding/:id', (req, res) => {
   }
   if (body.event_inquiries !== undefined) {
     item.event_inquiries = normalizeWeddingInquiries(body.event_inquiries, req.user!.id, req.user!.name);
+    // 입금 확인 스탬프 — 체크가 켜지는 순간의 시각을 서버가 찍는다 (클라이언트 시계를 믿지 않는다)
+    const beforeInqs = new Map(
+      ((before.event_inquiries as WeddingEventInquiry[]) || []).map((q) => [q.id, q])
+    );
+    for (const q of item.event_inquiries) {
+      const prev = beforeInqs.get(q.id);
+      if (q.deposit_paid && !prev?.deposit_paid) q.deposit_paid_at = new Date().toISOString();
+      if (!q.deposit_paid) q.deposit_paid_at = null;
+    }
   }
+  // 계약금 미러 + 입금 확인 시 고객·행사 DEF 승격 (W1)
+  const pushed = pushWeddingDeposits(item);
   const now = new Date().toISOString();
   item.updated_at = now;
   item.last_modified_by_id = req.user!.id;
@@ -943,7 +973,87 @@ router.patch('/wedding/:id', (req, res) => {
     changes: diff.changes,
     user: req.user!,
   });
-  res.json({ customer: item });
+  // 자동 반영·승격은 행사 쪽 이력에도 남긴다 — 연회팀이 "누가 이걸 바꿨나" 를 추적할 수 있게
+  for (const r of pushed) {
+    const bits: string[] = [];
+    if (r.filled.length) bits.push(`계약금 자동 반영: ${r.filled.join(', ')} (${r.amount.toLocaleString()}원)`);
+    if (r.promoted.event) bits.push('입금 확인으로 상태 DEF 전환');
+    if (r.kept.length) bits.push(`기존값 유지: ${r.kept.join(', ')}`);
+    if (!bits.length) continue;
+    logChange({
+      entity_type: 'event',
+      entity_id: r.eventId,
+      action: 'update',
+      summary: `웨딩 고객정보 — ${bits.join(' · ')}`,
+      changes: [],
+      user: req.user!,
+    });
+  }
+  res.json({ customer: item, pushed });
+});
+
+// ── 예식 후보 ↔ 행사 (W1) ─────────────────────────────────────────────
+// 웨딩은 이미 event_customers 로 고객↔행사가 연결돼 있어, 후보 날짜로 자동 매칭한다.
+// 이 API 는 자동 매칭이 안 되는 소수(운영 165개 중 9개)를 화면에서 직접 고르게 하는 용도다.
+router.get('/wedding/:id/candidate-events', (req, res) => {
+  const { read } = canAccessType(req.user!.role, 'WEDDING');
+  if (!read) return res.status(403).json({ error: 'forbidden' });
+  const cust = store.wedding_customers.find((c) => c.id === req.params.id);
+  if (!cust || isDeleted(cust)) return res.status(404).json({ error: 'not_found' });
+
+  const ids = new Set(
+    store.event_customers.filter((l) => l.customer_id === cust.id).map((l) => l.event_id)
+  );
+  const events = store.events
+    .filter((e) => ids.has(e.id) && !e.deleted_at && e.event_type === 'WEDDING')
+    .map((e) => ({
+      id: e.id,
+      event_name: e.event_name,
+      status: e.status,
+      start_datetime: e.start_datetime,
+      halls: e.halls || [],
+      gateway_fee: e.gateway_fee ?? null,
+    }))
+    .sort((a, b) => (a.start_datetime < b.start_datetime ? -1 : 1));
+
+  // 후보별 자동 매칭 결과도 같이 — 화면이 "이 후보는 어느 행사에 붙는지" 를 바로 보여준다
+  const resolved: Record<string, string | null> = {};
+  for (const q of cust.event_inquiries || []) {
+    resolved[q.id] = resolveCandidateEvent(cust, q)?.id ?? null;
+  }
+  res.json({ events, resolved, default_gateway_fee: WEDDING_GATEWAY_FEE });
+});
+
+// 후보에 행사를 직접 지정 — 지정 즉시 행사의 기존 대관료·입금 기록을 후보 빈 칸으로 역채움
+router.post('/wedding/:id/inquiries/:inqId/link', (req, res) => {
+  const { write } = canAccessType(req.user!.role, 'WEDDING');
+  if (!write) return res.status(403).json({ error: 'forbidden' });
+  const cust = store.wedding_customers.find((c) => c.id === req.params.id);
+  if (!cust || isDeleted(cust)) return res.status(404).json({ error: 'not_found' });
+  const inq = (cust.event_inquiries || []).find((q) => q.id === req.params.inqId);
+  if (!inq) return res.status(404).json({ error: 'inquiry_not_found' });
+
+  const eventId = (req.body as { event_id?: string }).event_id || '';
+  if (!eventId) {
+    // 해제 — 자동 매칭으로 되돌린다 (이미 반영된 매출 값은 건드리지 않는다)
+    inq.linked_event_id = null;
+    persistDoc('wedding_customers', cust.id);
+    return res.json({ customer: cust, pulled: [] });
+  }
+  const ev = store.events.find((e) => e.id === eventId);
+  if (!ev || ev.deleted_at) return res.status(404).json({ error: 'event_not_found' });
+  if (ev.event_type !== 'WEDDING') return res.status(400).json({ error: 'wedding_only' });
+  // 한 행사에 두 후보의 계약금이 흘러들면 매출이 꼬인다
+  for (const q of cust.event_inquiries || []) {
+    if (q.id !== inq.id && q.linked_event_id === eventId) {
+      return res.status(409).json({ error: '이미 다른 예식 후보에 연결된 행사입니다.' });
+    }
+  }
+
+  inq.linked_event_id = eventId;
+  const pulled = backfillCandidateFromEvent(inq, eventId);
+  persistDoc('wedding_customers', cust.id);
+  res.json({ customer: cust, pulled });
 });
 
 router.delete('/wedding/:id', (req, res) => {

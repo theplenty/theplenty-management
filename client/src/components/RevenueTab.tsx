@@ -74,8 +74,12 @@ interface Props {
   isNewEvent: boolean;
   /** 매출 데이터 로딩 중 */
   loading?: boolean;
-  /** 출처 문의 (S2) — 대관료가 MICE 문의의 계약금에서 자동 반영된 경우 그 정보 */
+  /**
+   * 출처 (S2 · W1) — 대관료가 어느 계약금에서 자동 반영됐는지.
+   * MICE 는 고객정보의 '문의', 웨딩은 고객정보의 '예식 후보' 가 원본이다.
+   */
   depositSource?: {
+    type?: 'mice' | 'wedding';
     customerId: string;
     customerName: string;
     inquiryNo: number;
@@ -119,6 +123,8 @@ export default function RevenueTab({
   // ── 합계 계산 ──
   const linesTotal = revenueItems.reduce((s, it) => s + toNum(revenue.amounts[it.id] || ''), 0);
   const gatewayNum = toNum(revenue.gateway_fee);
+  // 출처가 웨딩이면 안내문·링크를 웨딩 쪽으로 — 웨딩 행사도 이 탭을 그대로 쓴다
+  const sourceIsWedding = depositSource?.type === 'wedding';
   const contractNum = toNum(revenue.contract_amount);
   const salesNum = toNum(revenue.sales_total_amount);
   const discountPct = revenue.discount_rate ? Number(revenue.discount_rate) : 0;
@@ -295,27 +301,32 @@ export default function RevenueTab({
           가톨릭대관료
         </div>
         <div className="text-sm text-gray-600 mb-3">
-          계약금(= 가톨릭대관료)과 입금·계산서 정보는 <b>고객정보(MICE)의 문의</b>에서 입력·수정합니다.
-          이 화면은 읽기 전용이며, 문의를 저장하면 여기로 자동 반영됩니다.
+          계약금(= 가톨릭대관료)과 입금·계산서 정보는{' '}
+          <b>{sourceIsWedding ? '고객정보(WEDDING)의 예식 후보' : '고객정보(MICE)의 문의'}</b>에서
+          입력·수정합니다. 이 화면은 읽기 전용이며, 고객정보를 저장하면 여기로 자동 반영됩니다.
         </div>
 
         {depositSource ? (
           <div className="mb-3 text-xs rounded border border-blue-200 bg-blue-50 px-3 py-2 flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-semibold text-blue-900">
-              출처: 문의 #{depositSource.inquiryNo}
+              출처: {sourceIsWedding ? '예식 후보' : '문의'} #{depositSource.inquiryNo}
             </span>
-            <a href={`/customer/mice/${depositSource.customerId}`} className="text-blue-700 underline">
+            <a
+              href={`/customer/${sourceIsWedding ? 'wedding' : 'mice'}/${depositSource.customerId}`}
+              className="text-blue-700 underline"
+            >
               {depositSource.customerName} — 고객정보에서 수정
             </a>
             {depositSource.amount != null && gatewayNum > 0 && gatewayNum !== depositSource.amount && (
               <span className="badge bg-amber-100 text-amber-900">
-                ⚠ 문의 계약금({won(depositSource.amount)})과 다름 — 문의를 다시 저장하면 맞춰집니다
+                ⚠ 고객정보 계약금({won(depositSource.amount)})과 다름 — 고객정보를 다시 저장하면 맞춰집니다
               </span>
             )}
           </div>
         ) : (
           <div className="mb-3 text-xs rounded border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600">
-            연결된 문의가 없습니다 — 고객정보(MICE)에서 문의를 이 행사에 연결하면 계약금이 여기로 채워집니다.
+            연결된 고객정보가 없습니다 — MICE 는 문의를 이 행사에 연결하고, 웨딩은 고객의 예식 후보
+            날짜를 이 행사와 맞추면 계약금이 여기로 채워집니다.
           </div>
         )}
 

@@ -230,8 +230,9 @@ export default function EventEditor({
   const [revenueItems, setRevenueItems] = useState<RevenueItem[]>([]);
   const [revenueLoading, setRevenueLoading] = useState(false);
   const [revenueLoaded, setRevenueLoaded] = useState(false);
-  // 대관료 출처 문의 (S2) — 계약금이 어느 MICE 문의에서 흘러왔는지 매출탭에 밝힌다
+  // 대관료 출처 (S2 · W1) — 계약금이 MICE 문의 / 웨딩 예식후보 중 어디서 흘러왔는지 매출탭에 밝힌다
   const [depositSource, setDepositSource] = useState<{
+    type?: 'mice' | 'wedding';
     customerId: string;
     customerName: string;
     inquiryNo: number;

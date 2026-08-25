@@ -1,5 +1,5 @@
 import { weekdayKoOf, insertWeekday } from '../lib/dateFmt';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { buildSearchEntry, fuzzyMatchEntry, type SearchEntry } from '../lib/koreanSearch';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
@@ -92,6 +92,32 @@ function landingSortValue(s?: WeddingLandingSummary): number {
   if (s.state === 'expired') return 20000;
   return 30000;
 }
+
+// 계약금 필터 — 고객의 예식 후보 중 하나라도 조건을 만족하면 걸린다
+type DepositFilterKey = 'ALL' | 'none' | 'pending' | 'paid';
+const DEPOSIT_FILTERS: {
+  key: DepositFilterKey;
+  label: string;
+  match: (c: WeddingCustomer) => boolean;
+}[] = [
+  { key: 'ALL', label: '전체', match: () => true },
+  {
+    key: 'none',
+    label: '미입력',
+    match: (c) => !(c.event_inquiries || []).some((q) => Number(q.deposit_amount) > 0),
+  },
+  {
+    key: 'pending',
+    label: '입금대기',
+    match: (c) =>
+      (c.event_inquiries || []).some((q) => Number(q.deposit_amount) > 0 && !q.deposit_paid),
+  },
+  {
+    key: 'paid',
+    label: '입금완료',
+    match: (c) => (c.event_inquiries || []).some((q) => !!q.deposit_paid),
+  },
+];
 
 type LandingFilterKey = 'ALL' | 'sent' | 'active' | 'contracted' | 'ended';
 const LANDING_FILTERS: { key: LandingFilterKey; label: string; match: (s?: WeddingLandingSummary) => boolean }[] = [
@@ -205,17 +231,21 @@ function EmptyReason({
   query,
   stageFilter,
   landingFilter,
+  depositFilter,
   onReset,
 }: {
   query: string;
   stageFilter: 'ALL' | WeddingProgressStatus;
   landingFilter: LandingFilterKey;
+  depositFilter: DepositFilterKey;
   onReset: () => void;
 }) {
   const parts: string[] = [];
   if (stageFilter !== 'ALL') parts.push(`진행단계 '${stageFilter}'`);
   if (landingFilter !== 'ALL')
     parts.push(`랜딩 '${LANDING_FILTERS.find((f) => f.key === landingFilter)?.label}'`);
+  if (depositFilter !== 'ALL')
+    parts.push(`계약금 '${DEPOSIT_FILTERS.find((f) => f.key === depositFilter)?.label}'`);
   if (!parts.length && !query.trim()) return <>등록된 고객이 없습니다.</>;
   if (!parts.length) return <>검색 결과가 없습니다.</>;
   return (
@@ -232,6 +262,213 @@ function EmptyReason({
       <button onClick={onReset} className="text-xs text-blue-600 hover:underline">
         필터 초기화
       </button>
+    </div>
+  );
+}
+
+// ===== 계약금 (= 가톨릭대관료) =====
+// 웨딩은 계약금 = 가톨릭대 대관료 = 154만원 정액 (운영 34건 전부 동일). MICE 와 같은 구조로,
+// **여기(예식 후보)가 원본**이고 행사 매출탭은 읽기 전용 거울이다.
+// 입금 확인을 켜면 진행단계와 연결 행사가 함께 DEF 로 올라간다 — 그래야 고객 랜딩이
+// '계약완료 감사' 화면으로 바뀌고 캘린더도 확정으로 보인다.
+
+export const WEDDING_GATEWAY_FEE = 1540000;
+
+interface CandidateEvent {
+  id: string;
+  event_name: string;
+  status: string;
+  start_datetime: string;
+  halls: string[];
+  gateway_fee: number | null;
+}
+
+/** 계약금 칸을 보여줄지 — INQ 부터 등장, DEF 이후에도 계속. 값이 있으면 어느 단계든 보여준다. */
+function showDepositFor(stage: WeddingProgressStatus, inq: WeddingEventInquiry): boolean {
+  if (stage === 'INQ' || stage === 'DEF') return true;
+  return (
+    !!inq.deposit_amount || !!inq.deposit_paid || !!inq.deposit_depositor || !!inq.deposit_date
+  );
+}
+
+function WeddingDepositBlock({
+  inq,
+  stage,
+  events,
+  resolvedId,
+  onChange,
+  onPickEvent,
+}: {
+  inq: WeddingEventInquiry;
+  stage: WeddingProgressStatus;
+  events: CandidateEvent[];
+  resolvedId: string | null;
+  onChange: (patch: Partial<WeddingEventInquiry>) => void;
+  onPickEvent: (eventId: string) => void;
+}) {
+  const targetId = inq.linked_event_id || resolvedId;
+  const target = events.find((e) => e.id === targetId) || null;
+  const amount = Number(inq.deposit_amount) || 0;
+  const candDay = (inq.wedding_datetime || '').slice(0, 10);
+  const dateMismatch =
+    !!target && !!candDay && (target.start_datetime || '').slice(0, 10) !== candDay;
+
+  function togglePaid(next: boolean) {
+    if (next) {
+      const willPromote = stage !== 'DEF' || (target && target.status !== 'DEF');
+      if (willPromote) {
+        const lines = ['입금 확인으로 표시합니다.', ''];
+        if (stage !== 'DEF') lines.push(`· 진행단계 ${stage} → DEF`);
+        if (target && target.status !== 'DEF')
+          lines.push(`· 행사 [${target.event_name || '이름없음'}] 상태 ${target.status} → DEF`);
+        lines.push('· 계약금·입금 정보가 행사 매출탭(가톨릭대관료)으로 반영됩니다.');
+        if (target) lines.push('· 고객 랜딩이 계약완료 화면으로 바뀝니다.');
+        lines.push('', '계속할까요? (저장을 눌러야 최종 반영됩니다)');
+        if (!window.confirm(lines.join('\n'))) return;
+      }
+    }
+    onChange({ deposit_paid: next });
+  }
+
+  return (
+    <div className="mt-3 border-l-2 border-amber-300 pl-3">
+      <div className="text-[11px] font-semibold text-amber-700 uppercase tracking-wide mb-2">
+        계약금 · 입금 (= 가톨릭대관료)
+      </div>
+
+      {/* 반영 대상 행사 — 후보 날짜로 자동 매칭되며, 안 맞을 때만 직접 고른다 */}
+      <div className="text-xs mb-2 rounded border px-2.5 py-1.5 bg-white/70">
+        {target ? (
+          <span className="text-gray-700">
+            반영 대상 행사:{' '}
+            <b className="text-gray-900">{target.event_name || '(행사명 없음)'}</b>{' '}
+            {fmtDateOrDateTime(target.start_datetime)} · {target.status}
+            {inq.linked_event_id
+              ? ' (직접 지정됨)'
+              : dateMismatch
+                ? ''
+                : ' (후보 날짜로 자동 연결)'}
+            {/* 후보 날짜와 행사 날짜가 다른데도 붙은 경우 — 연결 행사가 하나뿐이라 그렇다.
+                후보가 여러 개인 고객에서 엉뚱한 후보에 계약금을 넣는 사고를 막기 위해 경고한다. */}
+            {!inq.linked_event_id && dateMismatch && (
+              <span className="text-amber-700">
+                {' '}
+                ⚠ 후보 날짜({inq.wedding_datetime ? inq.wedding_datetime.slice(0, 10) : '미정'})와 다릅니다 —
+                연결된 행사가 1건뿐이라 이 행사로 붙었습니다. 맞는지 확인하세요.
+              </span>
+            )}
+          </span>
+        ) : (
+          <span className="text-amber-700">
+            연결된 행사를 찾지 못했습니다 — 아래에서 고르면 계약금이 그 행사 매출로 반영됩니다.
+          </span>
+        )}
+        {events.length > 0 && (
+          <select
+            className="input !py-1 !text-xs mt-1.5"
+            value={inq.linked_event_id || ''}
+            onChange={(e) => onPickEvent(e.target.value)}
+          >
+            <option value="">자동 연결{resolvedId ? '' : ' (매칭 없음)'}</option>
+            {events.map((e) => (
+              <option key={e.id} value={e.id}>
+                {fmtDateOrDateTime(e.start_datetime)} · {e.event_name || '(이름없음)'} · {e.status}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Field label="계약금 (원)" hint="웨딩 가톨릭대 대관료는 1,540,000원 정액입니다">
+          <div className="flex gap-1.5">
+            <input
+              className="input text-right tabular-nums"
+              value={amount ? amount.toLocaleString() : ''}
+              placeholder="1,540,000"
+              inputMode="numeric"
+              onChange={(e) => {
+                const n = Number(e.target.value.replace(/[^\d]/g, ''));
+                onChange({ deposit_amount: n || null });
+              }}
+            />
+            {amount !== WEDDING_GATEWAY_FEE && (
+              <button
+                type="button"
+                className="btn-xs whitespace-nowrap"
+                onClick={() => onChange({ deposit_amount: WEDDING_GATEWAY_FEE })}
+              >
+                154만
+              </button>
+            )}
+          </div>
+        </Field>
+        <Field label="입금 확인">
+          <label className="flex items-center gap-2 text-sm py-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={!!inq.deposit_paid}
+              onChange={(e) => togglePaid(e.target.checked)}
+            />
+            <span className={inq.deposit_paid ? 'text-emerald-700 font-medium' : 'text-gray-600'}>
+              계약금 입금 완료
+            </span>
+            {inq.deposit_paid && !amount && (
+              <span className="text-xs text-amber-700">← 금액을 입력해야 반영됩니다</span>
+            )}
+          </label>
+        </Field>
+        <Field label="입금자명">
+          <input
+            className="input"
+            value={inq.deposit_depositor || ''}
+            onChange={(e) => onChange({ deposit_depositor: e.target.value })}
+          />
+        </Field>
+        <Field label="입금일자">
+          <input
+            type="date"
+            className="input"
+            value={inq.deposit_date || ''}
+            onChange={(e) => onChange({ deposit_date: e.target.value || null })}
+          />
+        </Field>
+        <Field label="계산서 발행">
+          <select
+            className="input"
+            value={inq.invoice_type || ''}
+            onChange={(e) => onChange({ invoice_type: e.target.value })}
+          >
+            <option value="">선택...</option>
+            <option value="세금계산서">세금계산서</option>
+            <option value="현금영수증">현금영수증</option>
+          </select>
+        </Field>
+        <Field label="계산서 발행상태">
+          <select
+            className="input"
+            value={inq.invoice_issue_status || ''}
+            onChange={(e) => onChange({ invoice_issue_status: e.target.value })}
+          >
+            <option value="">선택...</option>
+            <option value="가톨릭요청">가톨릭요청</option>
+            <option value="발행완료">발행완료</option>
+          </select>
+        </Field>
+        <Field label="세금계산서 발행일자">
+          <input
+            type="date"
+            className="input"
+            value={inq.tax_invoice_issue_date || ''}
+            onChange={(e) => onChange({ tax_invoice_issue_date: e.target.value || null })}
+          />
+        </Field>
+      </div>
+      {inq.revenue_pushed_at && (
+        <div className="text-[11px] text-gray-400 mt-1.5">
+          행사 매출 반영됨 · {inq.revenue_pushed_amount?.toLocaleString()}원
+        </div>
+      )}
     </div>
   );
 }
@@ -315,6 +552,7 @@ export default function WeddingCustomers() {
   const [query, setQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<'ALL' | WeddingProgressStatus>('ALL');
   const [landingFilter, setLandingFilter] = useState<LandingFilterKey>('ALL');
+  const [depositFilter, setDepositFilter] = useState<DepositFilterKey>('ALL');
   const debouncedQuery = useDebouncedValue(query, 200);
   const [showSuggest, setShowSuggest] = useState(false);
   // 고객별 행사 개최 횟수 — 검색에서 실적 확인용
@@ -329,6 +567,11 @@ export default function WeddingCustomers() {
   const [logRefresh, setLogRefresh] = useState(0);
   // 마진계산기 모달 — 열린 예식후보 id (null=닫힘)
   const [calcOpenId, setCalcOpenId] = useState<string | null>(null);
+  // 계약금 반영 대상 후보군 — 이 고객에 연결된 웨딩 행사 + 후보별 자동 매칭 결과
+  const [candEvents, setCandEvents] = useState<{
+    events: CandidateEvent[];
+    resolved: Record<string, string | null>;
+  }>({ events: [], resolved: {} });
   const canEditCalcSettings = user?.role === 'admin';
 
   async function load() {
@@ -360,6 +603,26 @@ export default function WeddingCustomers() {
   useEffect(() => {
     load();
   }, []);
+
+  // 편집 모달을 열면 계약금 반영 대상 행사 목록을 가져온다 (자동 매칭 결과 포함)
+  useEffect(() => {
+    if (!open || !editingId) {
+      setCandEvents({ events: [], resolved: {} });
+      return;
+    }
+    let alive = true;
+    api
+      .get<{ events: CandidateEvent[]; resolved: Record<string, string | null> }>(
+        `/api/customers/wedding/${editingId}/candidate-events`
+      )
+      .then((r) => {
+        if (alive) setCandEvents({ events: r.events || [], resolved: r.resolved || {} });
+      })
+      .catch((e) => console.error('[wedding] 후보 행사 로드 실패', e));
+    return () => {
+      alive = false;
+    };
+  }, [open, editingId]);
 
   // 캘린더에서 상담 클릭 시 #consult-<id> 해시 + 전역 검색에서 ?focus=<id> 쿼리 둘 다 처리.
   useEffect(() => {
@@ -428,34 +691,66 @@ export default function WeddingCustomers() {
       const f = LANDING_FILTERS.find((x) => x.key === landingFilter);
       if (f) list = list.filter((c) => f.match(landings[c.id]));
     }
+    if (depositFilter !== 'ALL') {
+      const f = DEPOSIT_FILTERS.find((x) => x.key === depositFilter);
+      if (f) list = list.filter((c) => f.match(c));
+    }
     return list;
-  }, [searchBase, stageFilter, landingFilter, landings]);
+  }, [searchBase, stageFilter, landingFilter, depositFilter, landings]);
 
   // 칩별 건수 — **상대 필터를 반영한 교차 건수**로 센다.
   // (예: 랜딩 '발행됨' 이 켜져 있으면 진행단계 칩은 "발행됨 안에서 몇 건인지"를 보여준다.
   //  전체 기준으로 세면 '상담취소 63' 을 눌렀는데 목록이 비는 일이 생겨 숫자가 거짓말이 된다.)
+  // 자기 자신을 뺀 나머지 필터를 적용한 모수 — 칩 숫자가 "지금 눌렀을 때 나올 건수" 가 된다
+  const baseExcept = useCallback(
+    (skip: 'stage' | 'landing' | 'deposit') => {
+      let list = searchBase;
+      if (skip !== 'stage' && stageFilter !== 'ALL')
+        list = list.filter((c) => c.progress_status === stageFilter);
+      if (skip !== 'landing' && landingFilter !== 'ALL') {
+        const f = LANDING_FILTERS.find((x) => x.key === landingFilter);
+        if (f) list = list.filter((c) => f.match(landings[c.id]));
+      }
+      if (skip !== 'deposit' && depositFilter !== 'ALL') {
+        const f = DEPOSIT_FILTERS.find((x) => x.key === depositFilter);
+        if (f) list = list.filter((c) => f.match(c));
+      }
+      return list;
+    },
+    [searchBase, stageFilter, landingFilter, depositFilter, landings]
+  );
+
   const stageCounts = useMemo(() => {
-    const f = LANDING_FILTERS.find((x) => x.key === landingFilter);
-    const base = landingFilter === 'ALL' || !f ? searchBase : searchBase.filter((c) => f.match(landings[c.id]));
+    const base = baseExcept('stage');
     const m = new Map<string, number>();
     m.set('ALL', base.length);
     for (const c of base) m.set(c.progress_status, (m.get(c.progress_status) || 0) + 1);
     return m;
-  }, [searchBase, landingFilter, landings]);
+  }, [baseExcept]);
 
   const landingCounts = useMemo(() => {
-    const base = stageFilter === 'ALL' ? searchBase : searchBase.filter((c) => c.progress_status === stageFilter);
+    const base = baseExcept('landing');
     const m = new Map<LandingFilterKey, number>();
     for (const f of LANDING_FILTERS) {
       m.set(f.key, f.key === 'ALL' ? base.length : base.filter((c) => f.match(landings[c.id])).length);
     }
     return m;
-  }, [searchBase, stageFilter, landings]);
+  }, [baseExcept, landings]);
 
-  const filterActive = stageFilter !== 'ALL' || landingFilter !== 'ALL';
+  const depositCounts = useMemo(() => {
+    const base = baseExcept('deposit');
+    const m = new Map<DepositFilterKey, number>();
+    for (const f of DEPOSIT_FILTERS) {
+      m.set(f.key, f.key === 'ALL' ? base.length : base.filter((c) => f.match(c)).length);
+    }
+    return m;
+  }, [baseExcept]);
+
+  const filterActive = stageFilter !== 'ALL' || landingFilter !== 'ALL' || depositFilter !== 'ALL';
   function resetFilters() {
     setStageFilter('ALL');
     setLandingFilter('ALL');
+    setDepositFilter('ALL');
   }
 
   const suggestions = useMemo(
@@ -538,12 +833,31 @@ export default function WeddingCustomers() {
     setSaving(true);
     try {
       if (editingId) {
-        const res = await api.patch<{ customer: WeddingCustomer }>(
-          `/api/customers/wedding/${editingId}`,
-          form
-        );
+        const res = await api.patch<{
+          customer: WeddingCustomer;
+          pushed?: {
+            eventName: string;
+            amount: number;
+            filled: string[];
+            promoted: { customer: boolean; event: boolean };
+          }[];
+        }>(`/api/customers/wedding/${editingId}`, form);
         setItems((prev) => prev.map((x) => (x.id === editingId ? res.customer : x)));
+        setForm((f) => ({ ...f, progress_status: res.customer.progress_status }));
         setLogRefresh((n) => n + 1);
+        // 계약금이 행사로 반영됐거나 DEF 로 올라갔으면 그대로 알려준다 (조용히 바뀌면 사고)
+        const notes: string[] = [];
+        for (const r of res.pushed || []) {
+          if (r.promoted.customer) notes.push('진행단계가 DEF(확정)로 변경되었습니다.');
+          if (r.promoted.event) notes.push(`행사 [${r.eventName || '이름없음'}] 상태가 DEF로 변경되었습니다.`);
+          if (r.filled.length)
+            notes.push(`행사 매출에 반영: ${r.filled.join(', ')} (${r.amount.toLocaleString()}원)`);
+        }
+        if (notes.length) {
+          alert(['저장되었습니다.', '', ...notes].join('\n'));
+          load(); // 행사 상태가 바뀌면 랜딩 상태도 따라 바뀐다 — 목록을 다시 읽는다
+          return;
+        }
       } else {
         const res = await api.post<{ customer: WeddingCustomer }>(
           '/api/customers/wedding',
@@ -624,6 +938,7 @@ export default function WeddingCustomers() {
     debouncedQuery,
     stageFilter,
     landingFilter,
+    depositFilter,
     tc.sort.key,
     tc.sort.dir,
   ]);
@@ -738,6 +1053,33 @@ export default function WeddingCustomers() {
             );
           })}
         </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-gray-400" title="예식 후보의 계약금(= 가톨릭대관료) 입력·입금 상태">
+            💰 계약금
+          </span>
+          {DEPOSIT_FILTERS.map((f) => {
+            const n = depositCounts.get(f.key) || 0;
+            const on = depositFilter === f.key;
+            return (
+              <button
+                key={f.key}
+                onClick={() => setDepositFilter(f.key)}
+                className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                  on
+                    ? 'bg-amber-500 text-white border-amber-500'
+                    : n === 0
+                      ? 'bg-white border-gray-200 text-gray-300'
+                      : 'bg-white hover:bg-gray-50 border-gray-300'
+                }`}
+              >
+                {f.label}
+                <span className={`ml-1 ${on ? 'text-amber-100' : n === 0 ? 'text-gray-300' : 'text-gray-400'}`}>
+                  {n.toLocaleString()}
+                </span>
+              </button>
+            );
+          })}
+        </div>
         {filterActive && (
           <button onClick={resetFilters} className="text-xs text-gray-500 hover:text-gray-800 underline">
             필터 초기화
@@ -797,6 +1139,7 @@ export default function WeddingCustomers() {
               query={query}
               stageFilter={stageFilter}
               landingFilter={landingFilter}
+              depositFilter={depositFilter}
               onReset={resetFilters}
             />
           </div>
@@ -882,6 +1225,7 @@ export default function WeddingCustomers() {
               query={query}
               stageFilter={stageFilter}
               landingFilter={landingFilter}
+              depositFilter={depositFilter}
               onReset={resetFilters}
             />
                   </td>
@@ -1350,6 +1694,16 @@ export default function WeddingCustomers() {
                     />
                   </Field>
                 </div>
+                {showDepositFor(form.progress_status, inq) && (
+                  <WeddingDepositBlock
+                    inq={inq}
+                    stage={form.progress_status}
+                    events={candEvents.events}
+                    resolvedId={candEvents.resolved[inq.id] ?? null}
+                    onChange={(patch) => updateInquiry(inq.id, patch)}
+                    onPickEvent={(eventId) => updateInquiry(inq.id, { linked_event_id: eventId || null })}
+                  />
+                )}
               </div>
             ))}
           </div>

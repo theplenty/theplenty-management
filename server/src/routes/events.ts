@@ -575,10 +575,41 @@ router.post('/:id/duplicate', (req, res) => {
   res.status(201).json({ event: ev, food_items, customer_links });
 });
 
-// GET /api/events/:id/deposit-source — 이 행사의 대관료가 어느 MICE 문의 계약금에서 왔는지 (S2)
+// GET /api/events/:id/deposit-source — 이 행사의 대관료가 어디서 왔는지 (S2 · W1)
+//   MICE: 문의(source_inquiry_id) / WEDDING: 이 행사를 물고 있는 예식 후보
+// 웨딩은 별도 링크 작업 없이 event_customers + 후보 날짜로 이어지므로 역방향으로 찾는다.
 router.get('/:id/deposit-source', (req, res) => {
   const ev = store.events.find((e) => e.id === req.params.id);
   if (!ev) return res.status(404).json({ error: 'not_found' });
+
+  if (ev.event_type === 'WEDDING') {
+    const custIds = new Set(
+      store.event_customers.filter((l) => l.event_id === ev.id).map((l) => l.customer_id)
+    );
+    for (const c of store.wedding_customers) {
+      if (!custIds.has(c.id) || c.deleted_at) continue;
+      const idx = (c.event_inquiries || []).findIndex((q) => {
+        if (q.linked_event_id) return q.linked_event_id === ev.id;
+        // 아직 고정 안 된 후보는 날짜로 본다 (자동 매칭과 같은 규칙)
+        const d = (q.wedding_datetime || '').slice(0, 10);
+        return !!d && d === (ev.start_datetime || '').slice(0, 10);
+      });
+      if (idx < 0) continue;
+      const q = c.event_inquiries[idx];
+      return res.json({
+        source: {
+          type: 'wedding',
+          customerId: c.id,
+          customerName: c.wedding_event_name,
+          inquiryNo: idx + 1,
+          amount: q.deposit_amount ?? null,
+          pushedAt: q.revenue_pushed_at ?? null,
+        },
+      });
+    }
+    return res.json({ source: null });
+  }
+
   if (!ev.source_inquiry_id) return res.json({ source: null });
   const customer = store.mice_customers.find((c) => c.id === ev.source_customer_id);
   const idx = (customer?.inquiries || []).findIndex((q) => q.id === ev.source_inquiry_id);
@@ -586,6 +617,7 @@ router.get('/:id/deposit-source', (req, res) => {
   const inq = customer.inquiries[idx];
   res.json({
     source: {
+      type: 'mice',
       customerId: customer.id,
       customerName: customer.organization_name,
       inquiryNo: idx + 1,
