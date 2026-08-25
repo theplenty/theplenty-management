@@ -539,14 +539,6 @@ function WeddingDepositBlock({
             <option value="발행완료">발행완료</option>
           </select>
         </Field>
-        <Field label="세금계산서 발행일자">
-          <input
-            type="date"
-            className="input"
-            value={inq.tax_invoice_issue_date || ''}
-            onChange={(e) => onChange({ tax_invoice_issue_date: e.target.value || null })}
-          />
-        </Field>
       </div>
       {inq.revenue_pushed_at && (
         <div className="text-[11px] text-gray-400 mt-1.5">

@@ -1413,10 +1413,14 @@ function ExpandedPanel({
               <div className="text-xs text-gray-500 mb-0.5">계산서 발행상태</div>
               <div className="text-sm text-gray-800">{invoice.invoice_issue_status || '—'}</div>
             </div>
-            <div>
-              <div className="text-xs text-gray-500 mb-0.5">세금계산서 발행일자</div>
-              <div className="text-sm text-gray-800">{invoice.tax_invoice_issue_date ? fmtDateW(invoice.tax_invoice_issue_date) : '—'}</div>
-            </div>
+            {/* 세금계산서 발행일자는 2026-08-25 폐기 (가톨릭이 발행 — 우리가 확인 불가).
+                입력칸을 없앴으므로 옛 기록이 있는 건에만 표시한다. */}
+            {invoice.tax_invoice_issue_date && (
+              <div>
+                <div className="text-xs text-gray-500 mb-0.5">세금계산서 발행일자 (옛 기록)</div>
+                <div className="text-sm text-gray-500">{fmtDateW(invoice.tax_invoice_issue_date)}</div>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -46,6 +46,7 @@ import {
   callbackDateOf,
   callbackView,
   needsCall,
+  needsEventLink,
   overdueCount,
 } from '../lib/callTracker';
 import { CallbackCell, CheckCell } from '../components/CallTrackerCells';
@@ -333,7 +334,10 @@ export default function MiceCustomers() {
     // '문의' 탭은 상태가 아니라 팔로업 여부(콜백이 살아 있는가)로 거른다.
     const tab = CALL_TABS.find((t) => t.key === callTab);
     if (tab && tab.key !== 'all') {
-      list = list.filter((c) => tab.match(trackedInquiryOf(c)));
+      // matchCustomer 가 있는 탭(행사 미연결)은 지난 문의까지 훑는다
+      list = tab.matchCustomer
+        ? list.filter((c) => tab.matchCustomer!(c))
+        : list.filter((c) => tab.match(trackedInquiryOf(c)));
     }
     if (overdueOnly) {
       list = list.filter((c) => callbackView(trackedInquiryOf(c)).state === 'overdue');
@@ -346,7 +350,11 @@ export default function MiceCustomers() {
     for (const t of CALL_TABS) {
       m.set(
         t.key,
-        t.key === 'all' ? items.length : items.filter((c) => t.match(trackedInquiryOf(c))).length
+        t.key === 'all'
+          ? items.length
+          : t.matchCustomer
+            ? items.filter((c) => t.matchCustomer!(c)).length
+            : items.filter((c) => t.match(trackedInquiryOf(c))).length
       );
     }
     return m;
@@ -1055,6 +1063,16 @@ export default function MiceCustomers() {
                     >
                       {miceStatusLabel(inq.progress_status)}
                     </span>
+                    {/* 행사가 붙어야 하는 단계인데 안 붙은 건 — '행사 미연결' 탭에서 들어왔을 때
+                        어느 문의를 손봐야 하는지 바로 보이게 한다 */}
+                    {needsEventLink(inq) && (
+                      <span
+                        className="ml-1.5 badge bg-red-100 text-red-700"
+                        title="캘린더 행사가 연결되지 않았습니다 — 아래 계약금 구역의 [행사 연결] 버튼으로 연결하세요"
+                      >
+                        ⚠ 행사 미연결
+                      </span>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -1319,15 +1337,6 @@ export default function MiceCustomers() {
                           <option key={o} value={o}>{o || '선택 안 함'}</option>
                         ))}
                       </select>
-                    </label>
-                    <label className="text-xs text-gray-600">
-                      세금계산서 발행일자
-                      <input
-                        type="date"
-                        className="input mt-1"
-                        value={inq.tax_invoice_issue_date || ''}
-                        onChange={(e) => updateInquiry(inq.id, { tax_invoice_issue_date: e.target.value || null })}
-                      />
                     </label>
                   </div>
                 </div>

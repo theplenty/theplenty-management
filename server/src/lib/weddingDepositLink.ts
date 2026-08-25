@@ -79,7 +79,6 @@ function fingerprint(inq: WeddingEventInquiry): string {
     inq.deposit_date || (inq.deposit_paid_at || '').slice(0, 10) || '',
     inq.invoice_type || '',
     inq.invoice_issue_status || '',
-    inq.tax_invoice_issue_date || '',
   ]);
 }
 
@@ -172,11 +171,10 @@ export function pushWeddingDeposits(customer: WeddingCustomer): WeddingPushResul
     setIf('계산서발행', inv.invoice_type, inq.invoice_type, (v) => {
       inv.invoice_type = v as Invoice['invoice_type'];
     });
+  // 세금계산서 발행일자는 2026-08-25 폐기 — 가톨릭에서 발행해 우리가 확인할 수 없는 값이라
+  // 입력칸을 없앴고 미러도 하지 않는다. (남아있는 옛 데이터는 건드리지 않는다)
     setIf('발행상태', inv.invoice_issue_status, inq.invoice_issue_status, (v) => {
       inv.invoice_issue_status = v as Invoice['invoice_issue_status'];
-    });
-    setIf('세금계산서발행일', inv.tax_invoice_issue_date ?? null, inq.tax_invoice_issue_date, (v) => {
-      inv.tax_invoice_issue_date = v;
     });
 
     inq.revenue_pushed_at = new Date().toISOString();
@@ -235,9 +233,6 @@ export function backfillCandidateFromEvent(inq: WeddingEventInquiry, eventId: st
   });
   pull('발행상태', inq.invoice_issue_status, inv?.invoice_issue_status, (v) => {
     inq.invoice_issue_status = String(v);
-  });
-  pull('세금계산서발행일', inq.tax_invoice_issue_date, inv?.tax_invoice_issue_date, (v) => {
-    inq.tax_invoice_issue_date = String(v);
   });
   // 입금완료 기록이 있는데 후보 체크가 꺼져 있으면 켠다 (사실이 이미 발생했으므로)
   if (!inq.deposit_paid && inv?.payment_status === '입금완료') {

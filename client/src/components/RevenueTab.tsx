@@ -354,9 +354,13 @@ export default function RevenueTab({
           <Field label="계산서 발행상태">
             <div className="text-sm text-gray-800 py-2">{invoice.invoice_issue_status || '—'}</div>
           </Field>
-          <Field label="세금계산서 발행일자">
-            <div className="text-sm text-gray-800 py-2">{invoice.tax_invoice_issue_date || '—'}</div>
-          </Field>
+          {/* 세금계산서 발행일자는 2026-08-25 폐기 — 가톨릭이 발행해 우리가 확인할 수 없는 값이라
+              입력칸을 없앴다. 옛 데이터가 있는 건만 참고로 보여준다. */}
+          {invoice.tax_invoice_issue_date && (
+            <Field label="세금계산서 발행일자 (옛 기록)">
+              <div className="text-sm text-gray-500 py-2">{invoice.tax_invoice_issue_date}</div>
+            </Field>
+          )}
         </div>
       </section>
     </div>

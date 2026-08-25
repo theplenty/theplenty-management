@@ -11,7 +11,19 @@ import type { MiceCustomer, MiceInquiry, MiceInquiryStatus } from '../types';
  * 콜백 예정일이 살아 있는 건만. 문의로 그친 건(콜백 완료 ✓ 또는 날짜 없음)은
  * 전체 탭에서만 보인다. "문의 탭 = 지금 굴리고 있는 일감 목록" 이 되게 하려는 것.
  */
-export const CALL_TABS: { key: string; label: string; tip: string; match: (q?: MiceInquiry) => boolean }[] = [
+export const CALL_TABS: {
+  key: string;
+  label: string;
+  tip: string;
+  /** 대표 문의(마지막 건) 기준 판정 */
+  match: (q?: MiceInquiry) => boolean;
+  /**
+   * 고객의 **모든 문의**를 훑어야 하는 탭용 (있으면 이쪽이 우선).
+   * 상태 탭은 "이 고객이 지금 어디에 있나" 라서 대표 문의 하나로 보는 게 맞지만,
+   * '행사 미연결' 은 빠진 것을 찾아내는 정리용이라 옛 문의도 봐야 한다.
+   */
+  matchCustomer?: (c: MiceCustomer) => boolean;
+}[] = [
   { key: 'all', label: '전체', tip: '모든 고객', match: () => true },
   {
     key: 'inq',
@@ -29,13 +41,29 @@ export const CALL_TABS: { key: string; label: string; tip: string; match: (q?: M
   { key: 'def', label: '확정', tip: '확정(DEF)', match: (q) => !!q && normalizeMiceStatus(q.progress_status) === 'DEF' },
   { key: 'los', label: '취소', tip: '취소(LOS)', match: (q) => !!q && normalizeMiceStatus(q.progress_status) === 'LOS' },
   {
-    // 확정됐는데 캘린더 행사가 안 붙은 건 — 계약금이 매출로 흘러갈 수 없는 상태다. (S2)
+    /**
+     * 행사가 있어야 하는데 안 붙은 문의 — 계약금이 매출로 흘러갈 수 없는 상태다. (S2)
+     *
+     * 대상은 **확정(DEF) + 입금확인중** 두 가지. 계약서를 주고받은 뒤라 캘린더에 행사가
+     * 있어야 맞다. 반대로 '문의' 단계는 행사가 없는 게 정상이고(운영 306건), 취소(LOS)는
+     * 무산된 건이라 둘 다 제외한다 — 넣으면 목록이 정상 건으로 뒤덮여 쓸모가 없어진다.
+     *
+     * 고객의 **모든 문의**를 훑는다. 대표 문의(마지막 건)만 보면, 새 문의가 하나 더
+     * 들어온 순간 옛 미연결 건이 목록에서 사라져 영영 못 찾는다 (실제로 그래서 0건이었다).
+     */
     key: 'unlinked',
     label: '행사 미연결',
-    tip: '확정인데 캘린더 행사가 연결되지 않은 건 — 연결하면 계약금이 매출로 반영됩니다',
-    match: (q) => !!q && normalizeMiceStatus(q.progress_status) === 'DEF' && !q.linked_event_id,
+    tip: '확정·입금확인중인데 캘린더 행사가 연결되지 않은 건 — 연결하면 계약금이 매출로 반영됩니다 (지난 문의까지 모두 검사)',
+    match: (q) => !!q && needsEventLink(q),
+    matchCustomer: (c) => (c.inquiries || []).some(needsEventLink),
   },
 ];
+
+/** 행사가 붙어 있어야 하는 단계인데 안 붙은 문의인가 */
+export function needsEventLink(q: MiceInquiry): boolean {
+  const st = normalizeMiceStatus(q.progress_status);
+  return (st === 'DEF' || st === '입금확인중') && !q.linked_event_id;
+}
 
 export const CALL_CHECKS: { key: keyof MiceInquiry; label: string }[] = [
   { key: 'quote_sent', label: '견적서' },

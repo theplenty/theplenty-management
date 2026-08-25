@@ -1,6 +1,6 @@
 // S2 스모크 — 문의↔행사 연결 + 계약금 자동 반영. json 모드 격리 서버(:4100) 대상.
 // 실행: STORE_BACKEND=json PORT=4100 npx tsx src/server.ts 를 띄운 뒤 이 스크립트.
-const BASE = 'http://localhost:4100';
+const BASE = process.env.SMOKE_BASE || 'http://localhost:4100';
 const ADMIN = '0u1bMDz4xK';
 const SALES = 'x8WgqC1LD6'; // sales_mice — 매출 필드 직접 쓰기 불가한 역할
 
