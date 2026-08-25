@@ -13,6 +13,7 @@ import {
 import { requireActiveRole, isSuperAdmin } from '../middleware/auth.js';
 import { todayKst } from '../lib/kstDate.js';
 import { logChange, computeDiff, getLogsForEntity } from '../store/changeLog.js';
+import { syncStageFromEvent } from '../lib/weddingStageSync.js';
 import type {
   Event,
   CustomerType,
@@ -510,6 +511,17 @@ router.post('/', (req, res) => {
       persistDoc('events', ev.id);
     }
   }
+  // 가블록(행사)이 생기는 순간 고객도 그 단계로 (W2) — 상담 → INQ 를 따로 안 눌러도 되게
+  for (const r of syncStageFromEvent(ev)) {
+    logChange({
+      entity_type: 'wedding_customer',
+      entity_id: r.customerId,
+      action: 'update',
+      summary: `행사 생성(${ev.status})에 따라 진행단계 ${r.from} → ${r.to} 자동 반영`,
+      changes: [],
+      user: req.user!,
+    });
+  }
   const food_items = store.event_food_items.filter((f) => f.event_id === ev.id);
   const customer_links = store.event_customers.filter((l) => l.event_id === ev.id);
   const invoice = store.invoices.find((i) => i.event_id === ev.id) || null;
@@ -661,6 +673,19 @@ router.patch('/:id', (req, res) => {
     }
   }
   persistDoc('events', ev.id);
+  // 행사 상태 → 웨딩 고객 진행단계 전파 (W2) — 캘린더에서 취소·확정하면 고객 DB 가 따라온다.
+  // 이게 없으면 "캘린더는 취소했는데 고객단계는 그대로" 같은 누락이 계속 생긴다.
+  const stageSynced = syncStageFromEvent(ev);
+  for (const r of stageSynced) {
+    logChange({
+      entity_type: 'wedding_customer',
+      entity_id: r.customerId,
+      action: 'update',
+      summary: `행사 상태(${ev.status})에 따라 진행단계 ${r.from} → ${r.to} 자동 반영`,
+      changes: [],
+      user: req.user!,
+    });
+  }
   const food_items = store.event_food_items.filter((f) => f.event_id === ev.id);
   const customer_links = store.event_customers.filter((l) => l.event_id === ev.id);
   const invoice = store.invoices.find((i) => i.event_id === ev.id) || null;
@@ -683,7 +708,7 @@ router.patch('/:id', (req, res) => {
       user: req.user!,
     });
   }
-  res.json({ event: ev, food_items, customer_links, invoice, cancellation });
+  res.json({ event: ev, food_items, customer_links, invoice, cancellation, stage_synced: stageSynced });
 });
 
 // 행사 삭제 — 휴지통으로 이동 (soft delete).

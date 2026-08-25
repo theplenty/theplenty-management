@@ -15,6 +15,7 @@ import {
   type WeddingCustomer,
   type WeddingEventInquiry,
   type WeddingLandingSummary,
+  type WeddingStageInfo,
   type WeddingProgressStatus,
   type WeddingSource,
   type WeddingSourceDetail,
@@ -118,6 +119,16 @@ const DEPOSIT_FILTERS: {
     match: (c) => (c.event_inquiries || []).some((q) => !!q.deposit_paid),
   },
 ];
+
+// 홀을 잡았다는 뜻이라 캘린더 행사 없이는 성립하지 않는 단계 (W2)
+const REQUIRES_EVENT_STAGES: WeddingProgressStatus[] = ['INQ', 'DEF'];
+
+/** 행사 상태 → 대응하는 고객 진행단계 (없으면 null — 미팅·시식은 딜 단계가 아니다) */
+function stageOfEvent(status: string): WeddingProgressStatus | null {
+  if (status === 'INQ' || status === 'DEF' || status === 'LOS') return status;
+  if (status === '상담취소') return '상담취소';
+  return null;
+}
 
 type LandingFilterKey = 'ALL' | 'sent' | 'active' | 'contracted' | 'ended';
 const LANDING_FILTERS: { key: LandingFilterKey; label: string; match: (s?: WeddingLandingSummary) => boolean }[] = [
@@ -283,33 +294,61 @@ interface CandidateEvent {
   gateway_fee: number | null;
 }
 
-/** 계약금 칸을 보여줄지 — INQ 부터 등장, DEF 이후에도 계속. 값이 있으면 어느 단계든 보여준다. */
-function showDepositFor(stage: WeddingProgressStatus, inq: WeddingEventInquiry): boolean {
-  if (stage === 'INQ' || stage === 'DEF') return true;
-  return (
-    !!inq.deposit_amount || !!inq.deposit_paid || !!inq.deposit_depositor || !!inq.deposit_date
-  );
+/** 이 후보에 계약금 기록이 하나라도 있나 */
+function hasDepositData(inq: WeddingEventInquiry): boolean {
+  return !!inq.deposit_amount || !!inq.deposit_paid || !!inq.deposit_depositor || !!inq.deposit_date;
+}
+
+/** 계약금 블록을 띄울지 — INQ 부터 등장, DEF 이후에도 계속. 기록이 있으면 어느 단계든 보여준다. */
+function showDepositSection(stage: WeddingProgressStatus, inqs: WeddingEventInquiry[]): boolean {
+  return stage === 'INQ' || stage === 'DEF' || inqs.some(hasDepositData);
+}
+
+/**
+ * 계약이 성사된 예식 후보 고르기 — 웨딩 고객은 홀딩도 계약도 **1건뿐**이라
+ * 계약금은 후보 하나에만 붙는다 (후보마다 칸이 뜨면 낭비이자 오입력 위험).
+ *  ① 이미 계약금 기록이 있는 후보 ② 행사 날짜와 같은 후보 ③ 후보가 1개면 그것
+ * 셋 다 아니면 null → 화면에서 "어느 후보로 계약했는지" 한 번 고르게 한다.
+ * (실사례: 견적 4종을 뽑느라 후보가 4개인데 홀딩 행사는 1건)
+ */
+function pickContractInquiry(
+  inqs: WeddingEventInquiry[],
+  eventDate: string
+): WeddingEventInquiry | null {
+  const withData = inqs.filter(hasDepositData);
+  if (withData.length) return withData[0];
+  if (eventDate) {
+    const sameDay = inqs.filter((q) => (q.wedding_datetime || '').slice(0, 10) === eventDate);
+    if (sameDay.length === 1) return sameDay[0];
+  }
+  return inqs.length === 1 ? inqs[0] : null;
 }
 
 function WeddingDepositBlock({
+  inqs,
   inq,
   stage,
   events,
   resolvedId,
   onChange,
   onPickEvent,
+  onPickInquiry,
 }: {
-  inq: WeddingEventInquiry;
+  /** 이 고객의 예식 후보 전체 — 어느 후보로 계약했는지 고르는 드롭다운에 쓴다 */
+  inqs: WeddingEventInquiry[];
+  /** 계약이 성사된 후보 (미지정이면 null) */
+  inq: WeddingEventInquiry | null;
   stage: WeddingProgressStatus;
   events: CandidateEvent[];
   resolvedId: string | null;
   onChange: (patch: Partial<WeddingEventInquiry>) => void;
   onPickEvent: (eventId: string) => void;
+  onPickInquiry: (inquiryId: string) => void;
 }) {
-  const targetId = inq.linked_event_id || resolvedId;
+  const targetId = inq?.linked_event_id || resolvedId;
   const target = events.find((e) => e.id === targetId) || null;
-  const amount = Number(inq.deposit_amount) || 0;
-  const candDay = (inq.wedding_datetime || '').slice(0, 10);
+  const amount = Number(inq?.deposit_amount) || 0;
+  const candDay = (inq?.wedding_datetime || '').slice(0, 10);
   const dateMismatch =
     !!target && !!candDay && (target.start_datetime || '').slice(0, 10) !== candDay;
 
@@ -330,12 +369,57 @@ function WeddingDepositBlock({
     onChange({ deposit_paid: next });
   }
 
+  // 후보가 여럿이라 계약 건을 특정 못한 경우 — 고르기 전에는 계약금 칸을 열지 않는다
+  const needPick = !inq && inqs.length > 1;
+
   return (
-    <div className="mt-3 border-l-2 border-amber-300 pl-3">
-      <div className="text-[11px] font-semibold text-amber-700 uppercase tracking-wide mb-2">
-        계약금 · 입금 (= 가톨릭대관료)
+    <div className="mb-3 rounded-md border border-amber-300 bg-amber-50/40 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <div className="text-[11px] font-semibold text-amber-700 uppercase tracking-wide">
+          계약 · 계약금 (= 가톨릭대관료)
+        </div>
+        {/* 계약된 예식일 — 웨딩은 1건만 계약하므로 후보 중 하나를 지정한다 */}
+        {inqs.length > 1 && (
+          <label className="text-xs text-gray-600 flex items-center gap-1.5">
+            계약된 예식일
+            <select
+              className="input !py-1 !text-xs"
+              value={inq?.id || ''}
+              onChange={(e) => onPickInquiry(e.target.value)}
+            >
+              <option value="">선택...</option>
+              {inqs.map((q, i) => (
+                <option key={q.id} value={q.id}>
+                  후보 #{i + 1} ·{' '}
+                  {q.wedding_datetime ? q.wedding_datetime.slice(0, 10) : '일시 미정'}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
 
+      {needPick && (
+        <div className="text-xs text-amber-800 bg-amber-100/70 rounded px-2.5 py-2">
+          예식 후보가 {inqs.length}개인데 어느 날짜로 계약했는지 아직 지정되지 않았습니다.
+          {target ? (
+            <>
+              {' '}
+              홀딩된 행사는 <b>{fmtDateOrDateTime(target.start_datetime)}</b> 입니다 — 위에서 해당
+              후보를 골라 주세요.
+            </>
+          ) : (
+            ' 위에서 계약된 후보를 골라 주세요.'
+          )}
+        </div>
+      )}
+
+      {!needPick && !inq && (
+        <div className="text-xs text-gray-500">예식 후보를 먼저 등록해 주세요.</div>
+      )}
+
+      {inq && (
+        <>
       {/* 반영 대상 행사 — 후보 날짜로 자동 매칭되며, 안 맞을 때만 직접 고른다 */}
       <div className="text-xs mb-2 rounded border px-2.5 py-1.5 bg-white/70">
         {target ? (
@@ -469,6 +553,8 @@ function WeddingDepositBlock({
           행사 매출 반영됨 · {inq.revenue_pushed_amount?.toLocaleString()}원
         </div>
       )}
+        </>
+      )}
     </div>
   );
 }
@@ -547,12 +633,16 @@ export default function WeddingCustomers() {
   const [items, setItems] = useState<WeddingCustomer[]>([]);
   // 고객 id → 대표 랜딩 요약 (가블록형·상담형 통합, 서버가 목록과 함께 내려줌)
   const [landings, setLandings] = useState<Record<string, WeddingLandingSummary>>({});
+  // 고객 id → 대표 행사 + 단계 불일치 (W2)
+  const [stages, setStages] = useState<Record<string, WeddingStageInfo>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<'ALL' | WeddingProgressStatus>('ALL');
   const [landingFilter, setLandingFilter] = useState<LandingFilterKey>('ALL');
   const [depositFilter, setDepositFilter] = useState<DepositFilterKey>('ALL');
+  // 고객 단계와 행사 상태가 어긋난 건만 보기 (W2) — 정리 작업용
+  const [mismatchOnly, setMismatchOnly] = useState(false);
   const debouncedQuery = useDebouncedValue(query, 200);
   const [showSuggest, setShowSuggest] = useState(false);
   // 고객별 행사 개최 횟수 — 검색에서 실적 확인용
@@ -572,6 +662,8 @@ export default function WeddingCustomers() {
     events: CandidateEvent[];
     resolved: Record<string, string | null>;
   }>({ events: [], resolved: {} });
+  // 후보가 여러 개일 때 "어느 날짜로 계약했는지" 직원이 고른 값 (자동 인식보다 우선)
+  const [pickedContractId, setPickedContractId] = useState<string | null>(null);
   const canEditCalcSettings = user?.role === 'admin';
 
   async function load() {
@@ -581,9 +673,11 @@ export default function WeddingCustomers() {
       const res = await api.get<{
         customers: WeddingCustomer[];
         landings?: Record<string, WeddingLandingSummary>;
+        stages?: Record<string, WeddingStageInfo>;
       }>('/api/customers/wedding');
       setItems(res.customers);
       setLandings(res.landings || {});
+      setStages(res.stages || {});
     } catch (e) {
       setError('목록을 불러오지 못했습니다.');
       console.error(e);
@@ -608,6 +702,7 @@ export default function WeddingCustomers() {
   useEffect(() => {
     if (!open || !editingId) {
       setCandEvents({ events: [], resolved: {} });
+      setPickedContractId(null);
       return;
     }
     let alive = true;
@@ -695,8 +790,9 @@ export default function WeddingCustomers() {
       const f = DEPOSIT_FILTERS.find((x) => x.key === depositFilter);
       if (f) list = list.filter((c) => f.match(c));
     }
+    if (mismatchOnly) list = list.filter((c) => stages[c.id]?.mismatch);
     return list;
-  }, [searchBase, stageFilter, landingFilter, depositFilter, landings]);
+  }, [searchBase, stageFilter, landingFilter, depositFilter, mismatchOnly, landings, stages]);
 
   // 칩별 건수 — **상대 필터를 반영한 교차 건수**로 센다.
   // (예: 랜딩 '발행됨' 이 켜져 있으면 진행단계 칩은 "발행됨 안에서 몇 건인지"를 보여준다.
@@ -715,9 +811,10 @@ export default function WeddingCustomers() {
         const f = DEPOSIT_FILTERS.find((x) => x.key === depositFilter);
         if (f) list = list.filter((c) => f.match(c));
       }
+      if (mismatchOnly) list = list.filter((c) => stages[c.id]?.mismatch);
       return list;
     },
-    [searchBase, stageFilter, landingFilter, depositFilter, landings]
+    [searchBase, stageFilter, landingFilter, depositFilter, mismatchOnly, landings, stages]
   );
 
   const stageCounts = useMemo(() => {
@@ -746,12 +843,18 @@ export default function WeddingCustomers() {
     return m;
   }, [baseExcept]);
 
-  const filterActive = stageFilter !== 'ALL' || landingFilter !== 'ALL' || depositFilter !== 'ALL';
+  const filterActive =
+    stageFilter !== 'ALL' || landingFilter !== 'ALL' || depositFilter !== 'ALL' || mismatchOnly;
   function resetFilters() {
     setStageFilter('ALL');
     setLandingFilter('ALL');
     setDepositFilter('ALL');
+    setMismatchOnly(false);
   }
+  const mismatchCount = useMemo(
+    () => items.filter((c) => stages[c.id]?.mismatch).length,
+    [items, stages]
+  );
 
   const suggestions = useMemo(
     () => (debouncedQuery.trim() ? filtered.slice(0, 6) : []),
@@ -841,12 +944,18 @@ export default function WeddingCustomers() {
             filled: string[];
             promoted: { customer: boolean; event: boolean };
           }[];
+          event_synced?: { eventName: string; from: string; to: string } | null;
         }>(`/api/customers/wedding/${editingId}`, form);
         setItems((prev) => prev.map((x) => (x.id === editingId ? res.customer : x)));
         setForm((f) => ({ ...f, progress_status: res.customer.progress_status }));
         setLogRefresh((n) => n + 1);
         // 계약금이 행사로 반영됐거나 DEF 로 올라갔으면 그대로 알려준다 (조용히 바뀌면 사고)
         const notes: string[] = [];
+        if (res.event_synced) {
+          notes.push(
+            `행사 [${res.event_synced.eventName || '이름없음'}] 상태가 ${res.event_synced.from} → ${res.event_synced.to} 로 함께 바뀌었습니다.`
+          );
+        }
         for (const r of res.pushed || []) {
           if (r.promoted.customer) notes.push('진행단계가 DEF(확정)로 변경되었습니다.');
           if (r.promoted.event) notes.push(`행사 [${r.eventName || '이름없음'}] 상태가 DEF로 변경되었습니다.`);
@@ -869,7 +978,9 @@ export default function WeddingCustomers() {
       }
       alert('저장되었습니다.');
     } catch (e) {
-      alert('저장 실패');
+      // 서버가 이유를 담아 보낸 경우(행사 없는 가예약·계약 등)는 그대로 보여준다
+      const msg = (e as { payload?: { message?: string; error?: string } })?.payload?.message;
+      alert(msg || '저장 실패');
       console.error(e);
     } finally {
       setSaving(false);
@@ -892,6 +1003,51 @@ export default function WeddingCustomers() {
     }
   }
 
+  // 이 고객의 대표 행사 — 살아있는(취소 아닌) 것 우선, 진행단계 연동의 상대편이다
+  const liveEvent = useMemo(() => {
+    const live = candEvents.events.filter((e) => e.status !== 'LOS' && e.status !== '상담취소');
+    const pool = live.length ? live : candEvents.events;
+    return [...pool].sort((a, b) => (a.start_datetime < b.start_datetime ? 1 : -1))[0] || null;
+  }, [candEvents.events]);
+
+  /** 진행단계 변경 — 행사도 함께 바뀐다는 걸 미리 알린다 (조용히 바뀌면 사고) */
+  function changeStage(next: WeddingProgressStatus) {
+    if (next === form.progress_status) return;
+    if (!liveEvent && REQUIRES_EVENT_STAGES.includes(next)) {
+      alert(
+        `'${next}' 는 홀을 잡은 상태라 캘린더에 행사가 있어야 합니다.\n먼저 캘린더에서 행사를 만들어 이 고객과 연결해 주세요.`
+      );
+      return;
+    }
+    const willChangeEvent = liveEvent && stageOfEvent(liveEvent.status) && stageOfEvent(next) && stageOfEvent(next) !== liveEvent.status;
+    if (willChangeEvent) {
+      const ok = window.confirm(
+        [
+          `진행단계를 ${form.progress_status} → ${next} 로 바꿉니다.`,
+          '',
+          `· 연동된 행사 [${liveEvent!.event_name || '이름없음'}] 상태도 ${liveEvent!.status} → ${stageOfEvent(next)} 로 바뀝니다.`,
+          '· 캘린더 표시가 함께 달라집니다.',
+          '',
+          '계속할까요? (저장을 눌러야 최종 반영됩니다)',
+        ].join('\n')
+      );
+      if (!ok) return;
+    }
+    setForm((f) => ({ ...f, progress_status: next }));
+  }
+
+  // 계약이 성사된 예식 후보 하나 — 직원이 고른 값이 있으면 그것, 없으면 자동 인식
+  const contractInquiry = useMemo(() => {
+    if (pickedContractId) {
+      const found = form.event_inquiries.find((q) => q.id === pickedContractId);
+      if (found) return found;
+    }
+    // 홀딩된 행사(취소 아닌 것)의 날짜를 기준으로 후보를 맞춘다
+    const live = candEvents.events.filter((e) => e.status !== 'LOS' && e.status !== '상담취소');
+    const eventDate = ((live[0] || candEvents.events[0])?.start_datetime || '').slice(0, 10);
+    return pickContractInquiry(form.event_inquiries, eventDate);
+  }, [form.event_inquiries, pickedContractId, candEvents.events]);
+
   const flatRows = useMemo(() => buildWeddingFlatRows(items), [items]);
 
   const tc = useTableControls({ storageKey: 'wedding_customers_table' });
@@ -912,6 +1068,32 @@ export default function WeddingCustomers() {
       },
       sortValue: (c) => eventCounts[c.id]?.held ?? 0,
     };
+    // 진행단계 컬럼 — 행사와 어긋난 건에 경고 배지를 얹는다 (W2)
+    const stageCol: WedCol = {
+      key: 'progress_status',
+      label: '진행단계',
+      render: (c) => {
+        const st = stages[c.id];
+        return (
+          <span className="inline-flex items-center gap-1">
+            <StatusBadge value={c.progress_status} variant={c.progress_status} />
+            {st?.mismatch && (
+              <span
+                className={`badge ${st.manual ? 'bg-gray-200 text-gray-600' : 'bg-red-100 text-red-700'}`}
+                title={
+                  st.manual
+                    ? `행사(${st.eventStatus})와 다르게 수동 지정된 건입니다`
+                    : `캘린더 행사는 ${st.eventStatus} 입니다 (${st.eventDate}) — ${st.shouldBe} 여야 맞습니다`
+                }
+              >
+                {st.manual ? '수동' : `⚠ 행사 ${st.eventStatus}`}
+              </span>
+            )}
+          </span>
+        );
+      },
+      sortValue: (c) => (stages[c.id]?.mismatch ? `0_${c.progress_status}` : `1_${c.progress_status}`),
+    };
     // 랜딩 컬럼 — 발행 여부·상태·닫히는 날(D-day)
     const landingCol: WedCol = {
       key: 'landing',
@@ -919,8 +1101,12 @@ export default function WeddingCustomers() {
       render: (c) => <LandingBadge s={landings[c.id]} />,
       sortValue: (c) => landingSortValue(landings[c.id]),
     };
-    return [...WEDDING_COLUMNS, landingCol, eventCountCol];
-  }, [eventCounts, landings]);
+    return [
+      ...WEDDING_COLUMNS.map((col) => (col.key === 'progress_status' ? stageCol : col)),
+      landingCol,
+      eventCountCol,
+    ];
+  }, [eventCounts, landings, stages]);
 
   const visibleColumns = useMemo(
     () => allColumns.filter((col) => !tc.isHidden(col.key)),
@@ -939,6 +1125,7 @@ export default function WeddingCustomers() {
     stageFilter,
     landingFilter,
     depositFilter,
+    mismatchOnly,
     tc.sort.key,
     tc.sort.dir,
   ]);
@@ -981,9 +1168,11 @@ export default function WeddingCustomers() {
                 const refreshed = await api.get<{
                   customers: WeddingCustomer[];
                   landings?: Record<string, WeddingLandingSummary>;
+                  stages?: Record<string, WeddingStageInfo>;
                 }>('/api/customers/wedding');
                 setItems(refreshed.customers);
                 setLandings(refreshed.landings || {});
+                setStages(refreshed.stages || {});
               }
               return res;
             }}
@@ -1080,6 +1269,22 @@ export default function WeddingCustomers() {
             );
           })}
         </div>
+        {mismatchCount > 0 && (
+          <button
+            onClick={() => setMismatchOnly((v) => !v)}
+            title="고객 진행단계와 캘린더 행사 상태가 서로 다른 건 — 확인해서 맞춰주세요"
+            className={`text-xs px-2.5 py-1 rounded-full border transition ${
+              mismatchOnly
+                ? 'bg-red-600 text-white border-red-600'
+                : 'bg-white hover:bg-red-50 border-red-300 text-red-700'
+            }`}
+          >
+            ⚠ 단계 불일치
+            <span className={`ml-1 ${mismatchOnly ? 'text-red-100' : 'text-red-400'}`}>
+              {mismatchCount.toLocaleString()}
+            </span>
+          </button>
+        )}
         {filterActive && (
           <button onClick={resetFilters} className="text-xs text-gray-500 hover:text-gray-800 underline">
             필터 초기화
@@ -1298,20 +1503,52 @@ export default function WeddingCustomers() {
                 onChange={(e) => setForm({ ...form, wedding_event_name: e.target.value })}
               />
             </Field>
-            <Field label="진행단계" required>
+            <Field
+              label="진행단계"
+              required
+              hint={
+                liveEvent
+                  ? '🔗 캘린더 행사와 연동됩니다 — 여기서 바꾸면 행사 상태도 함께 바뀝니다'
+                  : '가예약(INQ)·확정(DEF)은 캘린더에 행사가 있어야 선택할 수 있습니다'
+              }
+            >
               <select
                 className="input"
                 value={form.progress_status}
-                onChange={(e) =>
-                  setForm({ ...form, progress_status: e.target.value as WeddingProgressStatus })
-                }
+                onChange={(e) => changeStage(e.target.value as WeddingProgressStatus)}
               >
                 {WEDDING_PROGRESS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
+                  <option
+                    key={s}
+                    value={s}
+                    // 행사 없이 가예약·계약은 성립하지 않는다 (W2) — 현재 값은 남겨둔다
+                    disabled={!liveEvent && REQUIRES_EVENT_STAGES.includes(s) && form.progress_status !== s}
+                  >
                     {s}
+                    {!liveEvent && REQUIRES_EVENT_STAGES.includes(s) ? ' (행사 필요)' : ''}
                   </option>
                 ))}
               </select>
+              {/* 연동된 행사 + 어긋남 안내 */}
+              {editingId && candEvents.events.length > 0 && (
+                <div className="text-[11px] mt-1">
+                  {liveEvent ? (
+                    <span className="text-gray-500">
+                      연동 행사: {fmtDateOrDateTime(liveEvent.start_datetime)} ·{' '}
+                      <b className="text-gray-700">{liveEvent.status}</b>
+                      {stageOfEvent(liveEvent.status) &&
+                        stageOfEvent(liveEvent.status) !== form.progress_status && (
+                          <span className="text-red-600">
+                            {' '}
+                            ⚠ 단계와 다름 — 저장하면 행사가 {form.progress_status} 로 바뀝니다
+                          </span>
+                        )}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">연동할 행사가 없습니다</span>
+                  )}
+                </div>
+              )}
             </Field>
             <Field label="신규문의일자" hint="시간은 선택 입력 (비워두면 날짜만 저장됨)">
               {(() => {
@@ -1544,12 +1781,35 @@ export default function WeddingCustomers() {
             </button>
           }
         >
+          {/* 계약 · 계약금 — 고객당 하나. 웨딩은 홀딩도 계약도 1건뿐이라
+              후보마다 칸을 띄우면 낭비이고, 엉뚱한 후보에 넣는 사고가 난다. */}
+          {showDepositSection(form.progress_status, form.event_inquiries) && (
+            <WeddingDepositBlock
+              inqs={form.event_inquiries}
+              inq={contractInquiry}
+              stage={form.progress_status}
+              events={candEvents.events}
+              resolvedId={contractInquiry ? candEvents.resolved[contractInquiry.id] ?? null : null}
+              onChange={(patch) => contractInquiry && updateInquiry(contractInquiry.id, patch)}
+              onPickEvent={(eventId) =>
+                contractInquiry && updateInquiry(contractInquiry.id, { linked_event_id: eventId || null })
+              }
+              onPickInquiry={(inquiryId) => {
+                // 고른 후보에 계약금 자리를 열어둔다 (금액 0 은 '미입력' 과 같아 부작용 없음)
+                if (inquiryId) updateInquiry(inquiryId, { deposit_amount: null, deposit_paid: false });
+                setPickedContractId(inquiryId || null);
+              }}
+            />
+          )}
           <div className="space-y-3">
             {form.event_inquiries.map((inq, idx) => (
               <div key={inq.id} className="border rounded-md p-3 bg-gray-50/40">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-gray-600">예식 후보 #{idx + 1}</span>
+                    {contractInquiry?.id === inq.id && (
+                      <span className="badge bg-amber-100 text-amber-800">✓ 이 날짜로 계약</span>
+                    )}
                     <button
                       type="button"
                       onClick={() => setCalcOpenId(inq.id)}
@@ -1694,16 +1954,6 @@ export default function WeddingCustomers() {
                     />
                   </Field>
                 </div>
-                {showDepositFor(form.progress_status, inq) && (
-                  <WeddingDepositBlock
-                    inq={inq}
-                    stage={form.progress_status}
-                    events={candEvents.events}
-                    resolvedId={candEvents.resolved[inq.id] ?? null}
-                    onChange={(patch) => updateInquiry(inq.id, patch)}
-                    onPickEvent={(eventId) => updateInquiry(inq.id, { linked_event_id: eventId || null })}
-                  />
-                )}
               </div>
             ))}
           </div>

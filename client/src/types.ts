@@ -235,6 +235,13 @@ export interface WeddingCustomer {
   source_detail: WeddingSourceDetail | '';
   search_keyword: string; // 마케팅 검색어 (자유 입력 + 기존 이력 자동완성)
   event_inquiries: WeddingEventInquiry[];
+  /**
+   * 진행단계를 행사 상태와 **일부러 다르게** 지정한 흔적 (W2).
+   * 예: 그 날짜는 놓쳐 행사는 LOS 지만 다른 날짜로 재상담 중이라 고객은 '상담' 으로 둔 경우.
+   * 값이 있으면 화면에 "행사와 다름 · 수동 지정" 배지가 붙는다. 조용한 불일치를 막기 위한 것.
+   */
+  stage_manual_at?: string | null;
+  stage_manual_by_name?: string;
   memo: string;
   created_at: string;
   updated_at: string;
@@ -1014,6 +1021,22 @@ export interface WeddingLanding {
 }
 
 export type WeddingLandingState = 'active' | 'contracted' | 'closed' | 'expired';
+
+/**
+ * 목록에 내려오는 고객별 대표 행사 요약 + 단계 불일치 여부 (W2).
+ * 고객 진행단계와 행사 상태는 같은 사실이라 서버가 양방향으로 맞추지만,
+ * 옛 데이터나 의도적 예외가 있어 목록에서 걸러 볼 수 있어야 한다.
+ */
+export interface WeddingStageInfo {
+  eventId: string;
+  eventName: string;
+  eventStatus: string;
+  eventDate: string;
+  mismatch: boolean;
+  shouldBe: WeddingProgressStatus | null;
+  /** 사람이 일부러 다르게 지정한 건 */
+  manual: boolean;
+}
 
 // 웨딩 고객 DB 목록에 내려오는 고객별 대표 랜딩 요약 — 가블록형(행사)·상담형(고객) 통합.
 // 여러 개면 서버가 active > contracted > expired > closed 순으로 하나를 고른다.

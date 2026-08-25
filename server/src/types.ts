@@ -288,6 +288,13 @@ export interface WeddingCustomer {
   search_keyword: string; // 마케팅 검색어 (자유 입력 + 기존 이력 자동완성)
   // (2) 문의세부정보 — 여러 건
   event_inquiries: WeddingEventInquiry[];
+  /**
+   * 진행단계를 행사 상태와 **일부러 다르게** 지정한 흔적 (W2).
+   * 예: 그 날짜는 놓쳐 행사는 LOS 지만 다른 날짜로 재상담 중이라 고객은 '상담' 으로 둔 경우.
+   * 값이 있으면 화면에 "행사와 다름 · 수동 지정" 배지가 붙는다. 조용한 불일치를 막기 위한 것.
+   */
+  stage_manual_at?: string | null;
+  stage_manual_by_name?: string;
   // (3) 메모
   memo: string;
   created_at: string;

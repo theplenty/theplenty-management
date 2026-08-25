@@ -13,6 +13,12 @@ import {
 } from '../lib/depositLink.js';
 import { weddingLandingSummary } from './weddingLanding.js';
 import {
+  representativeEvent,
+  REQUIRES_EVENT,
+  syncEventFromStage,
+  weddingStageSummary,
+} from '../lib/weddingStageSync.js';
+import {
   backfillCandidateFromEvent,
   pushWeddingDeposits,
   resolveCandidateEvent,
@@ -848,7 +854,12 @@ router.get('/wedding', (req, res) => {
   const { read } = canAccessType(req.user!.role, 'WEDDING');
   if (!read) return res.status(403).json({ error: 'forbidden' });
   // landings: 고객 id → 대표 랜딩 요약 — 목록의 랜딩 필터·D-day 표시용
-  res.json({ customers: activeRows(store.wedding_customers), landings: weddingLandingSummary() });
+  // stages: 고객 id → 대표 행사 상태 + 단계 불일치 여부 (W2) — 불일치 필터·배지용
+  res.json({
+    customers: activeRows(store.wedding_customers),
+    landings: weddingLandingSummary(),
+    stages: weddingStageSummary(),
+  });
 });
 
 router.get('/wedding/:id', (req, res) => {
@@ -955,6 +966,19 @@ router.patch('/wedding/:id', (req, res) => {
       if (!q.deposit_paid) q.deposit_paid_at = null;
     }
   }
+  // 가예약·계약은 홀을 잡았다는 뜻이라 행사 없이는 성립하지 않는다 (W2).
+  // **이번에 그 단계로 바뀐 경우만** 막는다 — 이미 그 상태인 옛 데이터(행사 없는 DEF 3건)의
+  // 메모 수정까지 막으면 고칠 방법이 없어진다.
+  const stageChanged = body.progress_status !== undefined && before.progress_status !== item.progress_status;
+  if (stageChanged && REQUIRES_EVENT.includes(item.progress_status) && !representativeEvent(item.id)) {
+    Object.assign(item, before); // 저장 자체를 되돌린다 — 반쪽 저장이 더 위험하다
+    return res.status(400).json({
+      error: 'event_required',
+      message: `'${item.progress_status}' 는 홀을 잡은 상태라 연결된 행사가 있어야 합니다. 캘린더에서 행사를 먼저 만들어 이 고객과 연결해 주세요.`,
+    });
+  }
+  // 고객 진행단계 → 대표 행사 상태 전파 (W2) — 고객 DB 에서 확정·취소해도 캘린더가 따라온다
+  const eventSynced = stageChanged ? syncEventFromStage(item, req.user!.name) : null;
   // 계약금 미러 + 입금 확인 시 고객·행사 DEF 승격 (W1)
   const pushed = pushWeddingDeposits(item);
   const now = new Date().toISOString();
@@ -989,7 +1013,17 @@ router.patch('/wedding/:id', (req, res) => {
       user: req.user!,
     });
   }
-  res.json({ customer: item, pushed });
+  if (eventSynced) {
+    logChange({
+      entity_type: 'event',
+      entity_id: eventSynced.eventId,
+      action: 'update',
+      summary: `웨딩 고객 진행단계에 따라 상태 ${eventSynced.from} → ${eventSynced.to} 자동 반영`,
+      changes: [],
+      user: req.user!,
+    });
+  }
+  res.json({ customer: item, pushed, event_synced: eventSynced });
 });
 
 // ── 예식 후보 ↔ 행사 (W1) ─────────────────────────────────────────────
