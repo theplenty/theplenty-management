@@ -1222,12 +1222,16 @@ export default function MiceCustomers() {
                       </label>
                     ))}
                   </div>
+                </div>
 
-                  {/* 계약금 = 가톨릭대 대관료. 확정 + 계약금 체크 + 금액 + 행사 연결이 모두 갖춰지면
-                      저장 시점에 행사 매출탭(가톨릭대관료·입금정보)으로 자동 반영된다. (S2) */}
+                {/* 계약금 = 가톨릭대 대관료 — 입금·계산서의 원본. 저장하면 연결된 행사 매출탭으로 미러. (S2) */}
+                <div className="mt-3 pl-3 border-l-2 border-amber-300">
+                  <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-500 mb-2">
+                    계약금 · 입금 (= 가톨릭대관료)
+                  </div>
                   <div className="flex flex-wrap items-end gap-3 mb-2">
                     <label className="text-xs text-gray-600">
-                      계약금 (= 가톨릭대관료)
+                      계약금
                       <input
                         type="number"
                         className="input mt-1 w-40"
@@ -1273,7 +1277,7 @@ export default function MiceCustomers() {
                     </div>
                   </div>
 
-                  {/* 입금 상세 — 매출탭 가톨릭대관료 블록의 원본이 여기다. 저장하면 연결된 행사로 미러링. */}
+
                   <div className="flex flex-wrap items-end gap-3 mb-2">
                     <label className="text-xs text-gray-600">
                       입금자명
@@ -1326,6 +1330,13 @@ export default function MiceCustomers() {
                       />
                     </label>
                   </div>
+                </div>
+
+                {/* 콜백 — 팔로업 일정만 모아둔 구역 */}
+                <div className="mt-3 pl-3 border-l-2 border-violet-300">
+                  <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-500 mb-2">
+                    콜백
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <Field label="콜백 예정일">
                       <input
@@ -1375,17 +1386,20 @@ export default function MiceCustomers() {
                       </div>
                     );
                   })()}
-                  <div className="mt-3">
-                    <Field label="통화 메모">
-                      <AutoExpandTextarea
-                        className="input"
-                        minRows={2}
-                        value={inq.note || ''}
-                        placeholder="이 문의 건의 통화·협상 내용 (업체 전반 메모는 위 '메모' 칸)"
-                        onChange={(e) => updateInquiry(inq.id, { note: e.target.value })}
-                      />
-                    </Field>
+                </div>
+
+                {/* 통화 메모 — 이 문의 건의 대화 기록 */}
+                <div className="mt-3 pl-3 border-l-2 border-gray-300">
+                  <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-500 mb-2">
+                    통화 메모
                   </div>
+                  <AutoExpandTextarea
+                    className="input"
+                    minRows={2}
+                    value={inq.note || ''}
+                    placeholder="이 문의 건의 통화·협상 내용 (업체 전반 메모는 아래 '메모' 칸)"
+                    onChange={(e) => updateInquiry(inq.id, { note: e.target.value })}
+                  />
                 </div>
 
                 {/* 담당자 sub-list */}
