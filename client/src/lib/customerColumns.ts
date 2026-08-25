@@ -394,7 +394,9 @@ export function groupWeddingFlatRows(
       cust = {
         id: customerId || undefined,
         wedding_event_name: name,
-        progress_status: ((r.progress_status as WeddingProgressStatus) || '신규문의') as WeddingProgressStatus,
+        // TEN 은 폐기된 옛 값 — 옛 엑셀이 들어와도 INQ(가예약)로 접는다
+        progress_status: ((r.progress_status === 'TEN' ? 'INQ' : r.progress_status) ||
+          '신규문의') as WeddingProgressStatus,
         inquiry_date: r.inquiry_date || null,
         desired_consultation_date: r.desired_consultation_date || null,
         first_inform_comment: r.first_inform_comment || '',

@@ -11,6 +11,7 @@ import {
   pushDepositsForCustomer,
   unlinkInquiry,
 } from '../lib/depositLink.js';
+import { weddingLandingSummary } from './weddingLanding.js';
 import type {
   MiceContact,
   MiceCustomer,
@@ -827,7 +828,8 @@ function normalizeWeddingInquiries(input: unknown, fallbackUserId: string, fallb
 router.get('/wedding', (req, res) => {
   const { read } = canAccessType(req.user!.role, 'WEDDING');
   if (!read) return res.status(403).json({ error: 'forbidden' });
-  res.json({ customers: activeRows(store.wedding_customers) });
+  // landings: 고객 id → 대표 랜딩 요약 — 목록의 랜딩 필터·D-day 표시용
+  res.json({ customers: activeRows(store.wedding_customers), landings: weddingLandingSummary() });
 });
 
 router.get('/wedding/:id', (req, res) => {

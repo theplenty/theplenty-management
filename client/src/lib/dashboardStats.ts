@@ -200,7 +200,7 @@ export function filterMiceInflows(
 // 2. WEDDING 신규 유입
 // ============================================================
 // 기준: 신규문의일자 (inquiry_date)
-// 진행단계별: INQ, TEN, DEF, LOS (전체 7단계 중 INQ/TEN/DEF/LOS만 집계)
+// 진행단계별: INQ, DEF, LOS (전체 6단계 중 INQ/DEF/LOS만 집계 — TEN 은 2026-08-25 폐기)
 
 export interface WeddingInflowRow {
   customer_id: string;
@@ -241,17 +241,16 @@ function flattenWeddingInflow(c: WeddingCustomer): WeddingInflowRow {
 
 export interface WeddingStatusCounts {
   INQ: number;
-  TEN: number;
   DEF: number;
   LOS: number;
 }
 
 function emptyWeddingCounts(): WeddingStatusCounts {
-  return { INQ: 0, TEN: 0, DEF: 0, LOS: 0 };
+  return { INQ: 0, DEF: 0, LOS: 0 };
 }
 
 function isCoreStatus(s: WeddingProgressStatus): s is keyof WeddingStatusCounts {
-  return s === 'INQ' || s === 'TEN' || s === 'DEF' || s === 'LOS';
+  return s === 'INQ' || s === 'DEF' || s === 'LOS';
 }
 
 export function weddingInflowSummary(customers: WeddingCustomer[]): {

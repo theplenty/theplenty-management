@@ -410,7 +410,7 @@ export default function SalesDashboard({
               label: 'INQ',
               value: wedFiltered.inq,
               color: 'bg-blue-500',
-              onClick: () => openWeddingDrill('inq', `${periodLabel} WEDDING — INQ/TEN`),
+              onClick: () => openWeddingDrill('inq', `${periodLabel} WEDDING — INQ (가예약)`),
             },
             {
               label: 'DEF',

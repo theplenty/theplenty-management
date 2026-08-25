@@ -190,7 +190,7 @@ export function computeManagerConversionRates(
 const WEDDING_INFLOW_STATUSES = new Set<WeddingProgressStatus>(['신규문의']); // 인콜 직후
 const WEDDING_CONSULT_STATUSES = new Set<WeddingProgressStatus>(['상담']);
 const WEDDING_CONSULT_CANCELLED = new Set<WeddingProgressStatus>(['상담취소']);
-const WEDDING_INQ_STATUSES = new Set<WeddingProgressStatus>(['INQ', 'TEN']);
+const WEDDING_INQ_STATUSES = new Set<WeddingProgressStatus>(['INQ']);
 const WEDDING_DEF_STATUSES = new Set<WeddingProgressStatus>(['DEF']);
 const WEDDING_LOS_STATUSES = new Set<WeddingProgressStatus>(['LOS']);
 
@@ -444,18 +444,18 @@ export function computeMiceMonthlyTable(customers: MiceCustomer[], year: number)
 
 // ===== WEDDING 월별 세일즈 표 (인콜 → 상담 → 계약) =====
 // MICE 표와 같은 코호트 방식. 귀속월 = 신규문의일(inquiry_date), 없으면 등록일.
-// 웨딩은 진행단계가 상태값에 다 있어서(상담·INQ·TEN·DEF·LOS) 체크 없이 상태로 센다.
+// 웨딩은 진행단계가 상태값에 다 있어서(상담·INQ·DEF·LOS) 체크 없이 상태로 센다.
 // '상담 도달' 에 LOS 포함 — 상담까지 갔다가 잃은 건도 상담은 한 것이다(통계 퍼널과 동일 규칙).
 // 상담 전에 이탈한 건은 신규문의·상담취소 상태로 남으므로 상담 수에 안 잡힌다.
 export interface WeddingMonthlyRow {
   month: number; // 1~12
   received: number; // 신규 인콜 (전 상태)
-  consulted: number; // 상담 도달 (상담·INQ·TEN·DEF·LOS)
+  consulted: number; // 상담 도달 (상담·INQ·DEF·LOS)
   contracted: number; // 계약 = DEF
   notContracted: number; // 상담 후 미계약 = 상담 도달 − 계약 (진행 중·잃음 포함)
 }
 
-const WEDDING_CONSULT_REACHED = new Set<WeddingProgressStatus>(['상담', 'INQ', 'TEN', 'DEF', 'LOS']);
+const WEDDING_CONSULT_REACHED = new Set<WeddingProgressStatus>(['상담', 'INQ', 'DEF', 'LOS']);
 
 export function computeWeddingMonthlyTable(customers: WeddingCustomer[], year: number): WeddingMonthlyRow[] {
   const rows: WeddingMonthlyRow[] = Array.from({ length: 12 }, (_, i) => ({

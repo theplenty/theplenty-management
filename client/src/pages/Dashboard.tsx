@@ -97,7 +97,6 @@ const MICE_STATUS_COLOR: Record<string, string> = {
 
 const WEDDING_STATUS_COLOR: Record<string, string> = {
   INQ: NV.stone,
-  TEN: NV.warning,
   DEF: NV.primary,
   LOS: NV.error,
 };
@@ -407,9 +406,9 @@ export default function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <Card title="주간 진행단계 (INQ/TEN/DEF/LOS)">
+          <Card title="주간 진행단계 (INQ/DEF/LOS)">
             <StatusCounterGrid
-              statuses={['INQ', 'TEN', 'DEF', 'LOS']}
+              statuses={['INQ', 'DEF', 'LOS']}
               colorMap={WEDDING_STATUS_COLOR}
               counts={weddingSummary.weekCounts as unknown as Record<string, number>}
               onClick={(s) =>
@@ -421,9 +420,9 @@ export default function Dashboard() {
               }
             />
           </Card>
-          <Card title="월간 진행단계 (INQ/TEN/DEF/LOS)">
+          <Card title="월간 진행단계 (INQ/DEF/LOS)">
             <StatusCounterGrid
-              statuses={['INQ', 'TEN', 'DEF', 'LOS']}
+              statuses={['INQ', 'DEF', 'LOS']}
               colorMap={WEDDING_STATUS_COLOR}
               counts={weddingSummary.monthCounts as unknown as Record<string, number>}
               onClick={(s) =>

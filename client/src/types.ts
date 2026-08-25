@@ -169,12 +169,12 @@ export interface MiceCustomer {
 }
 
 // ===== WEDDING 고객 =====
+// TEN 은 2026-08-25 제거 — 기존 데이터는 서버 migrate 에서 INQ(가예약)로 접힌다.
 export type WeddingProgressStatus =
   | '신규문의'
   | '상담'
   | '상담취소'
   | 'INQ'
-  | 'TEN'
   | 'DEF'
   | 'LOS';
 
@@ -334,13 +334,12 @@ export const MICE_INQUIRY_STATUS_DESC: Record<MiceInquiryStatus, string> = {
   LOS: '취소 — 진행하다 드랍됨',
 };
 
-// WEDDING 진행단계
+// WEDDING 진행단계 (TEN 은 2026-08-25 폐기 — INQ 로 흡수)
 export const WEDDING_PROGRESS_OPTIONS: WeddingProgressStatus[] = [
   '신규문의',
   '상담',
   '상담취소',
   'INQ',
-  'TEN',
   'DEF',
   'LOS',
 ];
@@ -1000,6 +999,15 @@ export interface WeddingLanding {
 }
 
 export type WeddingLandingState = 'active' | 'contracted' | 'closed' | 'expired';
+
+// 웨딩 고객 DB 목록에 내려오는 고객별 대표 랜딩 요약 — 가블록형(행사)·상담형(고객) 통합.
+// 여러 개면 서버가 active > contracted > expired > closed 순으로 하나를 고른다.
+export interface WeddingLandingSummary {
+  mode: 'block' | 'consult';
+  state: WeddingLandingState;
+  block_until: string;
+  updated_at: string;
+}
 
 export interface WeddingLandingFlowerPhoto {
   url: string;

@@ -218,12 +218,12 @@ export interface MiceCustomer {
 
 // ===== WEDDING 고객 =====
 
+// TEN 은 2026-08-25 제거 (행사 상태의 TEN 폐기와 같은 정리) — 남은 데이터는 migrate 에서 INQ 로 접는다.
 export type WeddingProgressStatus =
   | '신규문의'
   | '상담'
   | '상담취소'
   | 'INQ'
-  | 'TEN'
   | 'DEF'
   | 'LOS';
 

@@ -99,11 +99,10 @@ export default function HelpPopover() {
             <Section title="📚 용어">
               <div className="text-xs leading-relaxed space-y-1">
                 <div>
-                  <b>MICE 단계</b>: 단순문의 → INQ(적극문의) → TEN(가예약) → DEF(확정) /
-                  LOS(잃은건)
+                  <b>MICE 문의</b>: 문의 → 입금확인중 → DEF(확정) / LOS(잃은건)
                 </div>
                 <div>
-                  <b>WEDDING 단계</b>: 신규문의 → 상담 → INQ/TEN → DEF / LOS (중간
+                  <b>WEDDING 단계</b>: 신규문의 → 상담 → INQ(가예약) → DEF / LOS (중간
                   상담취소 가능)
                 </div>
                 <div>

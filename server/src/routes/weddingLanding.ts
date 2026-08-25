@@ -299,6 +299,47 @@ function landingCustomer(landing: WeddingLanding) {
   return cp ? store.wedding_customers.find((c) => c.id === cp.customer_id) : undefined;
 }
 
+// ===== 목록용 요약 =====
+// 웨딩 고객 DB 목록에서 "랜딩 보낸 고객 + 닫히는 날(D-day)" 을 보여주기 위한 고객별 대표 랜딩.
+// 랜딩은 가블록형(행사)·상담형(고객) 두 경로로 발행되지만 저장소는 wedding_landings 하나라
+// 여기서 고객 id 로 합쳐 내려준다. 고객당 여러 개면 active > contracted > expired > closed 순.
+export interface WeddingLandingSummaryRow {
+  mode: 'block' | 'consult';
+  state: LandingState;
+  block_until: string;
+  updated_at: string;
+}
+
+const SUMMARY_STATE_RANK: Record<LandingState, number> = {
+  active: 0,
+  contracted: 1,
+  expired: 2,
+  closed: 3,
+};
+
+export function weddingLandingSummary(): Record<string, WeddingLandingSummaryRow> {
+  const out: Record<string, WeddingLandingSummaryRow> = {};
+  for (const l of store.wedding_landings) {
+    const cust = landingCustomer(l);
+    if (!cust || cust.deleted_at) continue;
+    const row: WeddingLandingSummaryRow = {
+      mode: l.mode === 'consult' ? 'consult' : 'block',
+      state: landingState(l),
+      block_until: l.block_until || '',
+      updated_at: l.updated_at || '',
+    };
+    const cur = out[cust.id];
+    if (
+      !cur ||
+      SUMMARY_STATE_RANK[row.state] < SUMMARY_STATE_RANK[cur.state] ||
+      (SUMMARY_STATE_RANK[row.state] === SUMMARY_STATE_RANK[cur.state] && row.updated_at > cur.updated_at)
+    ) {
+      out[cust.id] = row;
+    }
+  }
+  return out;
+}
+
 // 랜딩 → 예식 예정일시 (block: 행사 시작일시 / consult: 견적 출처 예식후보의 희망일시)
 function landingDatetime(landing: WeddingLanding): string {
   if (landing.mode === 'consult') {

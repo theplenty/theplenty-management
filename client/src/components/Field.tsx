@@ -28,7 +28,6 @@ interface StatusBadgeProps {
 
 const STATUS_STYLES: Record<string, string> = {
   INQ: 'bg-gray-200 text-gray-700',
-  TEN: 'bg-yellow-200 text-yellow-900',
   DEF: 'bg-green-200 text-green-900',
   LOS: 'bg-red-200 text-red-900 line-through',
   X: 'bg-gray-100 text-gray-500',

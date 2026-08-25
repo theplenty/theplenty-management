@@ -129,7 +129,7 @@ function seedWeddingCustomers() {
     {
       customer_type: 'WEDDING',
       wedding_event_name: '김민수 ♥ 박지영 결혼식',
-      progress_status: 'TEN',
+      progress_status: 'INQ',
       inquiry_date: '2026-03-05',
       desired_consultation_date: '2026-03-12',
       first_inform_comment: '하객 250~300명 예상, 본식+식사 풀패키지 문의',

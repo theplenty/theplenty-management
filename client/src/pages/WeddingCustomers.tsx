@@ -14,6 +14,7 @@ import {
   WEDDING_SOURCE_OPTIONS,
   type WeddingCustomer,
   type WeddingEventInquiry,
+  type WeddingLandingSummary,
   type WeddingProgressStatus,
   type WeddingSource,
   type WeddingSourceDetail,
@@ -51,6 +52,55 @@ function nextWeddingDatetime(c: WeddingCustomer): string {
   }
   return '';
 }
+
+// ===== 랜딩 요약 (목록 표시용) =====
+// 랜딩은 행사 캘린더(가블록형)·고객정보(상담형) 두 곳에서 발행되지만 저장소는 하나라,
+// 서버가 고객별 대표 랜딩을 목록 응답에 합쳐서 내려준다. 여기서는 상태·D-day 만 그린다.
+
+/** block_until(YYYY-MM-DD)까지 남은 날 수. 오늘이면 0, 지났으면 음수. */
+function landingDday(until: string): number | null {
+  if (!until) return null;
+  const [y, m, d] = until.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const now = new Date();
+  const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const t1 = new Date(y, m - 1, d).getTime();
+  return Math.round((t1 - t0) / 86400000);
+}
+
+const LANDING_MODE_LABEL = { block: '가블록형 (행사 캘린더 발행)', consult: '상담형 (고객정보 발행)' } as const;
+
+function LandingBadge({ s }: { s?: WeddingLandingSummary }) {
+  if (!s) return <span className="text-gray-300">-</span>;
+  const tip = `${LANDING_MODE_LABEL[s.mode]}${s.block_until ? ` · 종료일 ${s.block_until}` : ''}`;
+  if (s.state === 'active') {
+    const dd = landingDday(s.block_until);
+    const label = dd === null ? '열림' : dd <= 0 ? '열림 D-0 (오늘 마감)' : `열림 D-${dd}`;
+    const cls = dd !== null && dd <= 1 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-800';
+    return <span className={`badge ${cls}`} title={tip}>{label}</span>;
+  }
+  if (s.state === 'contracted') return <span className="badge bg-blue-100 text-blue-800" title={tip}>계약완료</span>;
+  if (s.state === 'expired') return <span className="badge bg-amber-100 text-amber-800" title={tip}>만료</span>;
+  return <span className="badge bg-gray-200 text-gray-600" title={tip}>닫힘</span>;
+}
+
+/** 정렬용 — 열림은 D-day 오름차순, 그 뒤로 계약완료 < 만료 < 닫힘 < 미발행 */
+function landingSortValue(s?: WeddingLandingSummary): number {
+  if (!s) return 99999;
+  if (s.state === 'active') return landingDday(s.block_until) ?? 9000;
+  if (s.state === 'contracted') return 10000;
+  if (s.state === 'expired') return 20000;
+  return 30000;
+}
+
+type LandingFilterKey = 'ALL' | 'sent' | 'active' | 'contracted' | 'ended';
+const LANDING_FILTERS: { key: LandingFilterKey; label: string; match: (s?: WeddingLandingSummary) => boolean }[] = [
+  { key: 'ALL', label: '전체', match: () => true },
+  { key: 'sent', label: '발행됨', match: (s) => !!s },
+  { key: 'active', label: '열림 (D-day)', match: (s) => s?.state === 'active' },
+  { key: 'contracted', label: '계약완료', match: (s) => s?.state === 'contracted' },
+  { key: 'ended', label: '만료·닫힘', match: (s) => s?.state === 'expired' || s?.state === 'closed' },
+];
 
 // 사용자 요청 순서: 번호 / 행사명 / 진행단계 / 신규문의일자 / 희망상담일자 / 예식일자 /
 // 유입경로 / 희망예산 / 견적비용 / 담당. ('번호' 열은 테이블에서 별도 # 컬럼으로 렌더 — 여기엔 빠짐)
@@ -222,9 +272,13 @@ export default function WeddingCustomers() {
   );
 
   const [items, setItems] = useState<WeddingCustomer[]>([]);
+  // 고객 id → 대표 랜딩 요약 (가블록형·상담형 통합, 서버가 목록과 함께 내려줌)
+  const [landings, setLandings] = useState<Record<string, WeddingLandingSummary>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [stageFilter, setStageFilter] = useState<'ALL' | WeddingProgressStatus>('ALL');
+  const [landingFilter, setLandingFilter] = useState<LandingFilterKey>('ALL');
   const debouncedQuery = useDebouncedValue(query, 200);
   const [showSuggest, setShowSuggest] = useState(false);
   // 고객별 행사 개최 횟수 — 검색에서 실적 확인용
@@ -245,8 +299,12 @@ export default function WeddingCustomers() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<{ customers: WeddingCustomer[] }>('/api/customers/wedding');
+      const res = await api.get<{
+        customers: WeddingCustomer[];
+        landings?: Record<string, WeddingLandingSummary>;
+      }>('/api/customers/wedding');
       setItems(res.customers);
+      setLandings(res.landings || {});
     } catch (e) {
       setError('목록을 불러오지 못했습니다.');
       console.error(e);
@@ -320,12 +378,34 @@ export default function WeddingCustomers() {
   }, [items]);
 
   const filtered = useMemo(() => {
-    if (!debouncedQuery.trim()) return items;
-    return items.filter((c) => {
-      const e = searchIndex.get(c.id);
-      return e ? fuzzyMatchEntry(e, debouncedQuery) : false;
-    });
-  }, [items, debouncedQuery, searchIndex]);
+    let list = items;
+    if (debouncedQuery.trim()) {
+      list = list.filter((c) => {
+        const e = searchIndex.get(c.id);
+        return e ? fuzzyMatchEntry(e, debouncedQuery) : false;
+      });
+    }
+    if (stageFilter !== 'ALL') list = list.filter((c) => c.progress_status === stageFilter);
+    if (landingFilter !== 'ALL') {
+      const f = LANDING_FILTERS.find((x) => x.key === landingFilter);
+      if (f) list = list.filter((c) => f.match(landings[c.id]));
+    }
+    return list;
+  }, [items, debouncedQuery, searchIndex, stageFilter, landingFilter, landings]);
+
+  // 칩별 건수 — 진행단계는 랜딩 필터와 무관하게, 랜딩은 진행단계와 무관하게 전체 기준으로 센다
+  const stageCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of items) m.set(c.progress_status, (m.get(c.progress_status) || 0) + 1);
+    return m;
+  }, [items]);
+  const landingCounts = useMemo(() => {
+    const m = new Map<LandingFilterKey, number>();
+    for (const f of LANDING_FILTERS) {
+      m.set(f.key, f.key === 'ALL' ? items.length : items.filter((c) => f.match(landings[c.id])).length);
+    }
+    return m;
+  }, [items, landings]);
 
   const suggestions = useMemo(
     () => (debouncedQuery.trim() ? filtered.slice(0, 6) : []),
@@ -467,8 +547,15 @@ export default function WeddingCustomers() {
       },
       sortValue: (c) => eventCounts[c.id]?.held ?? 0,
     };
-    return [...WEDDING_COLUMNS, eventCountCol];
-  }, [eventCounts]);
+    // 랜딩 컬럼 — 발행 여부·상태·닫히는 날(D-day)
+    const landingCol: WedCol = {
+      key: 'landing',
+      label: '랜딩',
+      render: (c) => <LandingBadge s={landings[c.id]} />,
+      sortValue: (c) => landingSortValue(landings[c.id]),
+    };
+    return [...WEDDING_COLUMNS, landingCol, eventCountCol];
+  }, [eventCounts, landings]);
 
   const visibleColumns = useMemo(
     () => allColumns.filter((col) => !tc.isHidden(col.key)),
@@ -484,6 +571,8 @@ export default function WeddingCustomers() {
   // 페이지네이션 — 기본 40개씩 (40/60/80/100 선택 가능)
   const { page, setPage, pageItems, pageSize, setPageSize } = usePaginated(sortedFiltered, [
     debouncedQuery,
+    stageFilter,
+    landingFilter,
     tc.sort.key,
     tc.sort.dir,
   ]);
@@ -523,10 +612,12 @@ export default function WeddingCustomers() {
                 errors: Array<{ row?: number; key?: string; reason: string }>;
               }>('/api/customers/wedding/_bulk-upsert', { rows: grouped, dryRun });
               if (!dryRun) {
-                const refreshed = await api.get<{ customers: WeddingCustomer[] }>(
-                  '/api/customers/wedding'
-                );
+                const refreshed = await api.get<{
+                  customers: WeddingCustomer[];
+                  landings?: Record<string, WeddingLandingSummary>;
+                }>('/api/customers/wedding');
                 setItems(refreshed.customers);
+                setLandings(refreshed.landings || {});
               }
               return res;
             }}
@@ -536,6 +627,50 @@ export default function WeddingCustomers() {
               + 신규 등록
             </button>
           )}
+        </div>
+      </div>
+
+      {/* 필터 칩 — 진행단계 / 랜딩(고객 랜딩페이지 발행·상태) */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-gray-400">진행단계</span>
+          {(['ALL', ...WEDDING_PROGRESS_OPTIONS] as ('ALL' | WeddingProgressStatus)[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStageFilter(s)}
+              className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                stageFilter === s
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white hover:bg-gray-50 border-gray-300'
+              }`}
+            >
+              {s === 'ALL' ? '전체' : s}
+              <span className={`ml-1 ${stageFilter === s ? 'text-blue-100' : 'text-gray-400'}`}>
+                {(s === 'ALL' ? items.length : stageCounts.get(s) || 0).toLocaleString()}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-gray-400" title="가블록형(행사 캘린더)·상담형(고객정보) 랜딩을 합쳐서 봅니다">
+            💌 랜딩
+          </span>
+          {LANDING_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setLandingFilter(f.key)}
+              className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                landingFilter === f.key
+                  ? 'bg-rose-500 text-white border-rose-500'
+                  : 'bg-white hover:bg-gray-50 border-gray-300'
+              }`}
+            >
+              {f.label}
+              <span className={`ml-1 ${landingFilter === f.key ? 'text-rose-100' : 'text-gray-400'}`}>
+                {(landingCounts.get(f.key) || 0).toLocaleString()}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -587,7 +722,7 @@ export default function WeddingCustomers() {
           <div className="text-center text-gray-400 py-8 bg-white border rounded-lg">불러오는 중...</div>
         ) : sortedFiltered.length === 0 ? (
           <div className="text-center text-gray-400 py-8 bg-white border rounded-lg">
-            {query ? '검색 결과가 없습니다.' : '등록된 고객이 없습니다.'}
+            {query || stageFilter !== 'ALL' || landingFilter !== 'ALL' ? '조건에 맞는 고객이 없습니다.' : '등록된 고객이 없습니다.'}
           </div>
         ) : (
           pageItems.map((c, i) => (
@@ -601,7 +736,10 @@ export default function WeddingCustomers() {
                   <span className="text-gray-400 font-normal mr-1.5">#{page * pageSize + i + 1}</span>
                   {c.wedding_event_name || '(이름 없음)'}
                 </span>
-                <StatusBadge value={c.progress_status} variant={c.progress_status} />
+                <span className="flex items-center gap-1 shrink-0">
+                  {landings[c.id] && <LandingBadge s={landings[c.id]} />}
+                  <StatusBadge value={c.progress_status} variant={c.progress_status} />
+                </span>
               </div>
               <div className="text-xs text-gray-600 flex flex-wrap gap-x-3 gap-y-0.5 mb-1">
                 {c.inquiry_date && <span>문의 {fmtDateOrDateTime(c.inquiry_date)}</span>}
@@ -664,7 +802,7 @@ export default function WeddingCustomers() {
               ) : sortedFiltered.length === 0 ? (
                 <tr>
                   <td colSpan={visibleColumns.length + 2} className="text-center text-gray-400 py-8">
-                    {query ? '검색 결과가 없습니다.' : '등록된 고객이 없습니다.'}
+                    {query || stageFilter !== 'ALL' || landingFilter !== 'ALL' ? '조건에 맞는 고객이 없습니다.' : '등록된 고객이 없습니다.'}
                   </td>
                 </tr>
               ) : (

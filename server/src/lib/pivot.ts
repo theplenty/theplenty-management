@@ -599,11 +599,11 @@ const MICE_FUNNEL: { key: string; label: string; reached: string[]; needsProgres
   { key: 'def', label: '계약 확정 (DEF)', reached: ['DEF'] },
 ];
 
+// TEN 단계는 2026-08-25 폐기 — 옛 데이터 호환으로 reached 에는 남겨둔다 (INQ 계열로 흡수).
 const WEDDING_FUNNEL: { key: string; label: string; reached: string[] }[] = [
   { key: 'inquiry', label: '신규 문의', reached: ['신규문의', '상담', '상담취소', 'INQ', 'TEN', 'DEF', 'LOS'] },
   { key: 'consult', label: '상담 진행', reached: ['상담', 'INQ', 'TEN', 'DEF', 'LOS'] },
   { key: 'inq', label: '가예약 (INQ)', reached: ['INQ', 'TEN', 'DEF'] },
-  { key: 'ten', label: '가계약 (TEN)', reached: ['TEN', 'DEF'] },
   { key: 'def', label: '계약 확정 (DEF)', reached: ['DEF'] },
 ];
 

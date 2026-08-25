@@ -154,12 +154,31 @@ function migrateMiceCustomers() {
   }
 }
 
+// 진행단계 정규화 표 — 공백 변형('신규 문의' 등, 옛 엑셀 유입)은 정식 값으로,
+// TEN(2026-08-25 폐기)은 같은 '가예약' 계열인 INQ 로 접는다.
+const WEDDING_STATUS_CANON = new Map<string, string>([
+  ...(['신규문의', '상담', '상담취소', 'INQ', 'DEF', 'LOS'] as const).map(
+    (s) => [s.replace(/\s+/g, ''), s] as [string, string]
+  ),
+  ['TEN', 'INQ'],
+]);
+
 function migrateWeddingCustomers() {
   let convertedCount = 0;
   let renameCount = 0;
+  const statusFixedIds: string[] = []; // 진행단계 정규화(TEN→INQ·공백 변형)한 건
 
   for (const c of store.wedding_customers) {
     const raw = c as unknown as Record<string, unknown>;
+
+    if (typeof raw.progress_status === 'string') {
+      const canon = WEDDING_STATUS_CANON.get(raw.progress_status.replace(/\s+/g, ''));
+      if (canon && canon !== raw.progress_status) {
+        raw.progress_status = canon;
+        statusFixedIds.push(c.id);
+      }
+    }
+    if (raw.wedding_progress_status === 'TEN') raw.wedding_progress_status = 'INQ';
 
     if (!Array.isArray(raw.event_inquiries)) {
       const oldStatus = (raw.wedding_progress_status as string) || 'INQ';
@@ -225,12 +244,18 @@ function migrateWeddingCustomers() {
     if (dirty) renameCount++;
   }
 
-  if (convertedCount + renameCount > 0) {
+  if (convertedCount + renameCount + statusFixedIds.length > 0) {
     persist('wedding_customers');
+    // persist()는 Firestore 모드에서 no-op — 정규화한 건은 doc 단위로 직접 반영
+    for (const id of statusFixedIds) persistDoc('wedding_customers', id);
     if (convertedCount > 0)
       console.log(`[migrate] wedding_customers ${convertedCount}건 → 신규 스키마로 이전`);
     if (renameCount > 0)
       console.log(`[migrate] wedding_customers ${renameCount}건 → 담당지배인 필드 추가`);
+    if (statusFixedIds.length > 0)
+      console.log(
+        `[migrate] wedding_customers ${statusFixedIds.length}건 → 진행단계 정규화 (TEN→INQ · 공백 변형)`
+      );
   }
 }
 
