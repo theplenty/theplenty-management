@@ -36,7 +36,7 @@ const cust = await api('/api/customers/mice', {
   body: {
     organization_name: '_스모크 업체',
     inquiries: [
-      { progress_status: 'DEF', inquiry_channel: 'INCALL', contacts: [], call_date: '2026-08-01', inquiry_event_date_text: '2026-09-10', quote_sent: true, contract_replied: true, deposit_paid: true, deposit_amount: 300000 },
+      { progress_status: 'DEF', inquiry_channel: 'INCALL', contacts: [], call_date: '2026-08-01', inquiry_event_date_text: '2026-09-10', quote_sent: true, contract_replied: true, deposit_paid: true, deposit_amount: 300000, deposit_depositor: '홍길동', deposit_date: '2026-08-15', invoice_type: '현금영수증', invoice_issue_status: '발행완료' },
       { progress_status: 'DEF', inquiry_channel: 'INCALL', contacts: [], call_date: '2026-08-05', inquiry_event_date_text: '2026-09-20', deposit_paid: true, deposit_amount: 700000 },
     ],
   },
@@ -60,6 +60,9 @@ check('행사 gateway_fee = 300,000', Number(full1.body.event?.gateway_fee) === 
 check('입금상태 입금완료', full1.body.invoice?.payment_status === '입금완료');
 check('입금액 300,000', Number(full1.body.invoice?.payment_amount) === 300000);
 check('고객↔행사 링크 자동 생성', (full1.body.customer_links || []).some((l: any) => l.customer_id === cid));
+check('입금자명 미러', full1.body.invoice?.depositor_name === '홍길동', full1.body.invoice?.depositor_name);
+check('입금일자 미러', full1.body.invoice?.payment_date === '2026-08-15', full1.body.invoice?.payment_date);
+check('계산서 발행 미러', full1.body.invoice?.invoice_type === '현금영수증' && full1.body.invoice?.invoice_issue_status === '발행완료');
 
 // 출처 조회
 const src = await api(`/api/events/${e1}/deposit-source`);
@@ -67,10 +70,10 @@ check('출처 문의 조회', src.body.source?.customerId === cid && src.body.so
 
 // ── 이미 대관료가 있는 행사 → 덮지 않음 ──
 const link2 = await api(`/api/customers/mice/${cid}/inquiries/${q2}/link`, { method: 'POST', body: { event_id: e2 } });
-const kept = (link2.body.pushed || []).find((p: any) => p.inquiryId === q2);
-check('기존 대관료 유지(안 덮음)', !!kept && kept.filled.every((f: string) => f !== '가톨릭대관료') && kept.kept.some((k: string) => k.includes('가톨릭대관료')), JSON.stringify(kept));
+const m2 = (link2.body.pushed || []).find((p: any) => p.inquiryId === q2);
+check('문의가 행사 대관료를 덮어씀(미러)', !!m2 && m2.filled.includes('가톨릭대관료'), JSON.stringify(m2));
 const full2 = await api(`/api/events/${e2}`);
-check('행사B 대관료 그대로 500,000', Number(full2.body.event?.gateway_fee) === 500000, String(full2.body.event?.gateway_fee));
+check('행사B 대관료 700,000 (문의 값 승리)', Number(full2.body.event?.gateway_fee) === 700000, String(full2.body.event?.gateway_fee));
 
 // ── 한 행사에 두 문의 연결 차단 ──
 const dup = await api(`/api/customers/mice/${cid}/inquiries/${q2}/link`, { method: 'POST', body: { event_id: e1 } });
@@ -88,7 +91,9 @@ check('반영 스탬프 유지', !!keptLink?.revenue_pushed_at);
 const bumped = cur.body.customer.inquiries.map((q: any) => (q.id === q1 ? { ...q, deposit_amount: 350000 } : q));
 const rePatch = await api(`/api/customers/mice/${cid}`, { method: 'PATCH', body: { inquiries: bumped } });
 const rePushed = (rePatch.body.pushed || []).find((p: any) => p.inquiryId === q1);
-check('금액 변경 시 재평가 — 기존 대관료는 유지', !!rePushed && rePushed.kept.some((k: string) => k.includes('가톨릭대관료')), JSON.stringify(rePushed));
+check('금액 변경 시 행사도 갱신(미러)', !!rePushed && rePushed.filled.includes('가톨릭대관료'), JSON.stringify(rePushed));
+const reFull = await api(`/api/events/${e1}`);
+check('행사A 대관료 350,000 갱신', Number(reFull.body.event?.gateway_fee) === 350000, String(reFull.body.event?.gateway_fee));
 
 // ── 문의에서 행사 생성 + 즉시 연결 ──
 const cust2 = await api('/api/customers/mice', {
@@ -111,6 +116,22 @@ check('해제 후에도 대관료 유지(회계 기록 보존)', Number(full3b.b
 const src3 = await api(`/api/events/${e3}/deposit-source`);
 check('해제 후 출처 표시 사라짐', src3.body.source === null);
 
+// ── 역채움: 행사에 입금 기록이 있으면 연결 시 문의의 빈 칸으로 끌어온다 ──
+const evB = await api('/api/events', { method: 'POST', body: { event_type: 'MICE', event_name: '_스모크 역채움', status: 'DEF', start_datetime: '2026-12-01T09:00:00' } });
+await api(`/api/events/${evB.body.event.id}`, { method: 'PATCH', body: { gateway_fee: 1100000 } });
+await api(`/api/events/${evB.body.event.id}`, { method: 'PATCH', body: { invoice: { payment_status: '입금완료', depositor_name: '윤혜주', payment_amount: 1100000, payment_date: '2025-12-03', invoice_type: '현금영수증', invoice_issue_status: '발행완료' } } });
+const custB = await api('/api/customers/mice', {
+  method: 'POST',
+  body: { organization_name: '_스모크 역채움업체', inquiries: [{ progress_status: 'DEF', inquiry_channel: 'INCALL', contacts: [], call_date: '2026-08-12' }] },
+});
+const cidB = custB.body.customer.id, qB = custB.body.customer.inquiries[0].id;
+const linkB = await api(`/api/customers/mice/${cidB}/inquiries/${qB}/link`, { method: 'POST', body: { event_id: evB.body.event.id } });
+check('역채움 항목 보고', (linkB.body.pulled || []).includes('계약금') && (linkB.body.pulled || []).includes('입금자명'), JSON.stringify(linkB.body.pulled));
+const qAfter = linkB.body.customer.inquiries[0];
+check('문의에 계약금 1,100,000 채워짐', Number(qAfter.deposit_amount) === 1100000, String(qAfter.deposit_amount));
+check('문의에 입금자명·일자·계산서 채워짐', qAfter.deposit_depositor === '윤혜주' && qAfter.deposit_date === '2025-12-03' && qAfter.invoice_type === '현금영수증');
+check('입금완료 기록 → 계약금 체크 자동 ON', qAfter.deposit_paid === true);
+
 // ── 미반영 조건: 계약금 체크 없으면 안 흘러감 ──
 const cust3 = await api('/api/customers/mice', {
   method: 'POST',
@@ -123,7 +144,7 @@ const full4 = await api(`/api/events/${ev4.body.event.id}`);
 check('계약금 미체크 → 반영 안 됨', full4.body.event?.gateway_fee == null || Number(full4.body.event.gateway_fee) === 0, String(full4.body.event?.gateway_fee));
 
 // ── 정리 ──
-for (const id of [cid, cid2, cid3]) await api(`/api/customers/mice/${id}`, { method: 'DELETE' });
-for (const id of [e1, e2, e3, ev4.body.event.id]) await api(`/api/events/${id}`, { method: 'DELETE' });
+for (const id of [cid, cid2, cid3, cidB]) await api(`/api/customers/mice/${id}`, { method: 'DELETE' });
+for (const id of [e1, e2, e3, ev4.body.event.id, evB.body.event.id]) await api(`/api/events/${id}`, { method: 'DELETE' });
 console.log(fails ? `\n❌ 실패 ${fails}건` : '\n✅ 전체 통과');
 process.exit(fails ? 1 : 0);

@@ -156,6 +156,13 @@ export interface MiceInquiry {
    * 매출탭 '가톨릭대관료'(gateway_fee)로 흘러간다. (S2)
    */
   deposit_amount?: number | null;
+  /** 입금 상세 (S2-2) — 매출탭 가톨릭대관료 블록의 원본이 문의로 옮겨왔다. 여기서 쓰고 행사는 읽기만. */
+  deposit_depositor?: string;              // 입금자명
+  deposit_date?: string | null;            // 입금일자 (YYYY-MM-DD)
+  invoice_type?: string;                   // 계산서 발행 (세금계산서/현금영수증)
+  invoice_issue_status?: string;           // 계산서 발행상태 (가톨릭요청/발행완료)
+  tax_invoice_issue_date?: string | null;  // 세금계산서 발행일자
+
 
   /** 이 문의가 성사된 실제 행사. 연결·해제는 전용 API 한 곳에서만 다룬다(양쪽 필드 동기화 보장). */
   linked_event_id?: string | null;
@@ -165,6 +172,8 @@ export interface MiceInquiry {
   /** 계약금 → 행사 매출 자동 반영 스탬프. 반영 금액을 남겨 행사에서 나중에 바뀌었는지 비교한다. */
   revenue_pushed_at?: string | null;
   revenue_pushed_amount?: number | null;
+  /** 마지막으로 행사에 밀어낸 값들의 지문 — 같으면 재반영 생략 */
+  revenue_pushed_fp?: string | null;
 
   /**
    * "이 건은 더 이상 콜백하지 않는다" 고 사람이 닫은 시각.

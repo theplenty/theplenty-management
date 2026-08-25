@@ -1,15 +1,17 @@
 /**
  * 문의↔행사 연결 + 계약금(= 가톨릭대 대관료) 자동 반영. (S2)
  *
- * 플렌티는 **계약금 = 가톨릭대 대관료** 구조다. 세일즈는 고객정보(문의)에서 계약금을 관리하고,
- * 확정되는 순간 그 값이 연결된 행사의 매출탭으로 흘러간다.
+ * 플렌티는 **계약금 = 가톨릭대 대관료** 구조다. 입금 상세(입금자명·입금일자·계산서)까지
+ * 전부 **고객정보의 문의가 원본**이고, 행사 매출탭의 가톨릭대관료 블록은 읽기 전용 거울이다.
+ * (2026-08-22 사장님 확정 — 처음엔 "비어 있을 때만 채움"이었으나, 매출탭 입력을 막으면서
+ *  문의 값이 항상 이긴다로 바뀌었다.)
  *
  * 원칙:
- *  - **문의 → 행사 단방향**. 행사에서 사람이 고친 값을 문의로 되돌리지 않는다(루프·경합 방지).
- *  - **비어 있을 때만 채운다**. 이미 값이 있으면 덮지 않고 그대로 둔다 — 연회팀이 조정한 값을
- *    시스템이 조용히 되돌리는 사고를 막는다. 다름은 화면에서 배지로 알린다.
- *  - `gateway_fee` 는 admin 전용 매출 필드지만, 이 반영은 **시스템 동작**이라 역할 게이트를 타지 않는다.
- *    세일즈가 매출 권한 없이도 결과가 채워지는 것이 이 기능의 값.
+ *  - **문의 → 행사 단방향 미러**. 문의에 값이 있으면 행사를 덮어쓴다.
+ *  - **빈 값은 밀지 않는다** — 문의에 아직 안 적은 칸 때문에 행사의 옛 기록이 지워지면 안 된다.
+ *  - **연결하는 순간 한 번만 역채움** — 행사에 이미 있던 입금 기록을 문의의 빈 칸으로 끌어온다.
+ *    (소급 연결 때 옛 데이터가 문의로 올라와, 이후 수정을 문의에서 하게 하는 다리)
+ *  - `gateway_fee` 는 admin 전용 매출 필드지만 이 반영은 시스템 동작이라 역할 게이트를 안 탄다.
  */
 import { nanoid } from 'nanoid';
 import { store, persistDoc } from '../store/mockStore.js';
@@ -23,6 +25,18 @@ export function isPushReady(inq: MiceInquiry): boolean {
     !!inq.deposit_paid &&
     Number(inq.deposit_amount) > 0
   );
+}
+
+/** 이번에 밀어낼 값들의 지문 — 같으면 재반영(로그 포함)을 건너뛴다 */
+function pushFingerprint(inq: MiceInquiry): string {
+  return JSON.stringify([
+    Number(inq.deposit_amount) || 0,
+    inq.deposit_depositor || '',
+    inq.deposit_date || (inq.deposit_paid_at || '').slice(0, 10) || '',
+    inq.invoice_type || '',
+    inq.invoice_issue_status || '',
+    inq.tax_invoice_issue_date || '',
+  ]);
 }
 
 function invoiceOf(eventId: string): Invoice {
@@ -48,60 +62,54 @@ export interface PushResult {
   inquiryId: string;
   eventId: string;
   amount: number;
-  /** 실제로 채운 항목 — 비어 있던 칸만 */
+  /** 실제로 값이 바뀐 항목 */
   filled: string[];
-  /** 이미 다른 값이 있어 건드리지 않은 항목 */
+  /** 문의가 비어 있어 행사 기존 값을 남겨둔 항목 */
   kept: string[];
 }
 
 /**
- * 고객의 문의들을 훑어 조건을 만족하는 건의 계약금을 행사 매출로 반영한다.
- * 문의 객체(스탬프)는 제자리에서 갱신하고, 반영 결과를 돌려준다(변경 로그용).
+ * 고객의 문의들을 훑어 조건을 만족하는 건의 계약금·입금 상세를 행사 매출로 미러링한다.
  */
 export function pushDepositsForCustomer(customer: MiceCustomer): PushResult[] {
   const results: PushResult[] = [];
   for (const inq of customer.inquiries || []) {
     if (!isPushReady(inq)) continue;
-    const amount = Number(inq.deposit_amount);
-    // 같은 금액을 이미 반영했으면 다시 쓰지 않는다 (저장마다 로그가 쌓이는 것 방지)
-    if (inq.revenue_pushed_at && inq.revenue_pushed_amount === amount) continue;
+    const fp = pushFingerprint(inq);
+    if (inq.revenue_pushed_at && (inq as { revenue_pushed_fp?: string }).revenue_pushed_fp === fp) continue;
 
     const ev = store.events.find((e) => e.id === inq.linked_event_id);
     if (!ev) continue;
 
+    const amount = Number(inq.deposit_amount);
     const filled: string[] = [];
     const kept: string[] = [];
+    const setIf = <T>(label: string, cur: T, next: T | undefined | null, apply: (v: T) => void) => {
+      const has = next !== undefined && next !== null && String(next) !== '';
+      if (!has) {
+        if (cur !== undefined && cur !== null && String(cur) !== '') kept.push(label);
+        return;
+      }
+      if (cur !== next) {
+        apply(next as T);
+        filled.push(label);
+      }
+    };
 
-    // 대관료 — 비어 있을 때만
-    if (ev.gateway_fee == null || Number(ev.gateway_fee) === 0) {
-      ev.gateway_fee = amount;
-      filled.push('가톨릭대관료');
-    } else if (Number(ev.gateway_fee) !== amount) {
-      kept.push(`가톨릭대관료(기존 ${Number(ev.gateway_fee).toLocaleString()})`);
-    }
+    setIf('가톨릭대관료', ev.gateway_fee ?? null, amount, (v) => { ev.gateway_fee = v; });
 
-    // 입금 블록 — 비어 있는 칸만. 입금자명은 자동으로 알 수 없어 사람 몫으로 둔다.
     const inv = invoiceOf(ev.id);
-    if (!inv.payment_status) {
-      inv.payment_status = '입금완료';
-      filled.push('입금상태');
-    } else if (inv.payment_status !== '입금완료') {
-      kept.push(`입금상태(${inv.payment_status})`);
-    }
-    if (inv.payment_amount == null || Number(inv.payment_amount) === 0) {
-      inv.payment_amount = amount;
-      filled.push('입금액');
-    } else if (Number(inv.payment_amount) !== amount) {
-      kept.push(`입금액(기존 ${Number(inv.payment_amount).toLocaleString()})`);
-    }
-    const paidDate = (inq.deposit_paid_at || '').slice(0, 10);
-    if (!inv.payment_date && paidDate) {
-      inv.payment_date = paidDate;
-      filled.push('입금일자');
-    }
+    setIf('입금상태', inv.payment_status, '입금완료', (v) => { inv.payment_status = v as Invoice['payment_status']; });
+    setIf('입금액', inv.payment_amount ?? null, amount, (v) => { inv.payment_amount = v; });
+    setIf('입금자명', inv.depositor_name, inq.deposit_depositor, (v) => { inv.depositor_name = v; });
+    setIf('입금일자', inv.payment_date ?? null, inq.deposit_date || (inq.deposit_paid_at || '').slice(0, 10) || null, (v) => { inv.payment_date = v; });
+    setIf('계산서발행', inv.invoice_type, inq.invoice_type, (v) => { inv.invoice_type = v as Invoice['invoice_type']; });
+    setIf('발행상태', inv.invoice_issue_status, inq.invoice_issue_status, (v) => { inv.invoice_issue_status = v as Invoice['invoice_issue_status']; });
+    setIf('세금계산서발행일', inv.tax_invoice_issue_date ?? null, inq.tax_invoice_issue_date, (v) => { inv.tax_invoice_issue_date = v; });
 
     inq.revenue_pushed_at = new Date().toISOString();
     inq.revenue_pushed_amount = amount;
+    (inq as { revenue_pushed_fp?: string }).revenue_pushed_fp = fp;
 
     if (filled.length) {
       persistDoc('events', ev.id);
@@ -113,16 +121,46 @@ export function pushDepositsForCustomer(customer: MiceCustomer): PushResult[] {
 }
 
 /**
- * 문의 ↔ 행사 연결. 행사 쪽 역참조와 고객↔행사 링크(EventCustomerLink)까지 한 번에 맞춘다.
- * 고객링크를 함께 만드는 이유: MICE 행사 620건 중 고객 연결이 176건뿐이었고(28%),
- * 이 동선이 그 커버리지를 자연히 메운다.
+ * 연결 시 1회 역채움: 행사에 이미 적혀 있던 입금 기록을 문의의 **빈 칸에만** 끌어온다.
+ * 이후의 진실은 문의 쪽이므로, 옛 데이터가 문의로 올라와야 수정을 문의에서 할 수 있다.
+ */
+function backfillInquiryFromEvent(inq: MiceInquiry, eventId: string): string[] {
+  const ev = store.events.find((e) => e.id === eventId);
+  if (!ev) return [];
+  const inv = store.invoices.find((i) => i.event_id === eventId);
+  const pulled: string[] = [];
+  const pull = <T>(label: string, cur: T | undefined | null, from: T | undefined | null, apply: (v: T) => void) => {
+    const curEmpty = cur === undefined || cur === null || String(cur) === '' || cur === 0;
+    const has = from !== undefined && from !== null && String(from) !== '' && from !== 0;
+    if (curEmpty && has) {
+      apply(from as T);
+      pulled.push(label);
+    }
+  };
+  pull('계약금', inq.deposit_amount, ev.gateway_fee ?? inv?.payment_amount, (v) => { inq.deposit_amount = Number(v); });
+  pull('입금자명', inq.deposit_depositor, inv?.depositor_name, (v) => { inq.deposit_depositor = String(v); });
+  pull('입금일자', inq.deposit_date, inv?.payment_date, (v) => { inq.deposit_date = String(v); });
+  pull('계산서발행', inq.invoice_type, inv?.invoice_type, (v) => { inq.invoice_type = String(v); });
+  pull('발행상태', inq.invoice_issue_status, inv?.invoice_issue_status, (v) => { inq.invoice_issue_status = String(v); });
+  pull('세금계산서발행일', inq.tax_invoice_issue_date, inv?.tax_invoice_issue_date, (v) => { inq.tax_invoice_issue_date = String(v); });
+  // 입금완료 기록이 있는데 문의 계약금 체크가 꺼져 있으면 켠다 (사실이 이미 발생했으므로)
+  if (!inq.deposit_paid && inv?.payment_status === '입금완료') {
+    inq.deposit_paid = true;
+    inq.deposit_paid_at = inq.deposit_paid_at || inv.payment_date || new Date().toISOString();
+    pulled.push('계약금체크');
+  }
+  return pulled;
+}
+
+/**
+ * 문의 ↔ 행사 연결. 행사 쪽 역참조·고객↔행사 링크·역채움까지 한 번에.
  */
 export function linkInquiryToEvent(
   customer: MiceCustomer,
   inq: MiceInquiry,
   eventId: string,
   userName: string,
-): { ok: true } | { ok: false; error: string } {
+): { ok: true; pulled: string[] } | { ok: false; error: string } {
   const ev = store.events.find((e) => e.id === eventId);
   if (!ev) return { ok: false, error: '행사를 찾을 수 없습니다.' };
   if (ev.event_type !== 'MICE') return { ok: false, error: 'MICE 행사만 연결할 수 있습니다.' };
@@ -142,6 +180,8 @@ export function linkInquiryToEvent(
   ev.source_customer_id = customer.id;
   ev.source_inquiry_id = inq.id;
 
+  const pulled = backfillInquiryFromEvent(inq, eventId);
+
   // 고객↔행사 링크 자동 생성 (없을 때만)
   const exists = store.event_customers.some(
     (l) => l.event_id === eventId && l.customer_id === customer.id,
@@ -158,7 +198,7 @@ export function linkInquiryToEvent(
     persistDoc('event_customers', store.event_customers[store.event_customers.length - 1].id);
   }
   persistDoc('events', ev.id);
-  return { ok: true };
+  return { ok: true, pulled };
 }
 
 /** 연결 해제 — 이미 반영된 매출 값은 건드리지 않는다(회계 기록을 임의로 비우지 않는다). */
@@ -175,4 +215,5 @@ export function unlinkInquiry(inq: MiceInquiry): void {
   inq.linked_at = null;
   inq.revenue_pushed_at = null;
   inq.revenue_pushed_amount = null;
+  delete (inq as { revenue_pushed_fp?: string }).revenue_pushed_fp;
 }

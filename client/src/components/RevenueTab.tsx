@@ -295,124 +295,56 @@ export default function RevenueTab({
           가톨릭대관료
         </div>
         <div className="text-sm text-gray-600 mb-3">
-          가톨릭대학교 대관료 금액과 입금현황을 관리합니다. 견적서 / 계약서 첨부는 첨부파일 탭에서
-          업로드합니다.
+          계약금(= 가톨릭대관료)과 입금·계산서 정보는 <b>고객정보(MICE)의 문의</b>에서 입력·수정합니다.
+          이 화면은 읽기 전용이며, 문의를 저장하면 여기로 자동 반영됩니다.
         </div>
 
-        {/* 계약금 = 가톨릭대관료 구조라, MICE 문의에서 자동으로 흘러온 값임을 밝힌다. (S2)
-            금액이 문의와 다르면 연회팀이 조정한 값이므로 덮지 않고 차이만 알린다. */}
-        {depositSource && (
+        {depositSource ? (
           <div className="mb-3 text-xs rounded border border-blue-200 bg-blue-50 px-3 py-2 flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-semibold text-blue-900">
-              문의 #{depositSource.inquiryNo} 계약금에서 자동 반영
+              출처: 문의 #{depositSource.inquiryNo}
             </span>
-            <a href={`/customers/mice/${depositSource.customerId}`} className="text-blue-700 underline">
-              {depositSource.customerName}
+            <a href={`/customer/mice/${depositSource.customerId}`} className="text-blue-700 underline">
+              {depositSource.customerName} — 고객정보에서 수정
             </a>
-            {depositSource.amount != null && (
-              <span className="text-blue-800">계약금 {won(depositSource.amount)}</span>
-            )}
             {depositSource.amount != null && gatewayNum > 0 && gatewayNum !== depositSource.amount && (
               <span className="badge bg-amber-100 text-amber-900">
-                ⚠ 문의 계약금과 다름 — 여기 값이 우선 적용됩니다
+                ⚠ 문의 계약금({won(depositSource.amount)})과 다름 — 문의를 다시 저장하면 맞춰집니다
               </span>
             )}
+          </div>
+        ) : (
+          <div className="mb-3 text-xs rounded border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600">
+            연결된 문의가 없습니다 — 고객정보(MICE)에서 문의를 이 행사에 연결하면 계약금이 여기로 채워집니다.
           </div>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="대관료 금액 (원)" hint="행사에 부과되는 가톨릭대 임대료">
-            {roRev ? (
-              <div className="text-sm text-gray-800 py-2">{gatewayNum ? won(gatewayNum) : '—'}</div>
-            ) : (
-              <input
-                className="input text-right tabular-nums"
-                value={revenue.gateway_fee}
-                placeholder="0"
-                inputMode="numeric"
-                onChange={(e) => setRev('gateway_fee', formatKoreanCommas(e.target.value))}
-              />
-            )}
+            <div className="text-sm text-gray-800 py-2 tabular-nums">{gatewayNum ? won(gatewayNum) : '—'}</div>
           </Field>
-
           <Field label="입금상태">
-            <select
-              className="input"
-              value={invoice.payment_status}
-              onChange={(e) => setInv('payment_status', e.target.value as PaymentStatus)}
-            >
-              {PAYMENT_STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s || '선택 안 함'}
-                </option>
-              ))}
-            </select>
+            <div className="text-sm text-gray-800 py-2">{invoice.payment_status || '—'}</div>
           </Field>
-
           <Field label="입금자명">
-            <input
-              className="input"
-              value={invoice.depositor_name}
-              onChange={(e) => setInv('depositor_name', e.target.value)}
-            />
+            <div className="text-sm text-gray-800 py-2">{invoice.depositor_name || '—'}</div>
           </Field>
-
           <Field label="입금액 (원)">
-            <input
-              className="input text-right tabular-nums"
-              value={amountStr}
-              placeholder="0"
-              inputMode="numeric"
-              onChange={(e) => onInvoiceAmountChange(e.target.value)}
-            />
+            <div className="text-sm text-gray-800 py-2 tabular-nums">
+              {invoice.payment_amount ? won(Number(invoice.payment_amount)) : '—'}
+            </div>
           </Field>
-
           <Field label="입금일자">
-            <input
-              type="date"
-              className="input"
-              value={invoice.payment_date || ''}
-              onChange={(e) => setInv('payment_date', e.target.value || null)}
-            />
+            <div className="text-sm text-gray-800 py-2">{invoice.payment_date || '—'}</div>
           </Field>
-
           <Field label="계산서 발행">
-            <select
-              className="input"
-              value={invoice.invoice_type}
-              onChange={(e) => setInv('invoice_type', e.target.value as InvoiceType)}
-            >
-              {INVOICE_TYPE_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s || '선택 안 함'}
-                </option>
-              ))}
-            </select>
+            <div className="text-sm text-gray-800 py-2">{invoice.invoice_type || '—'}</div>
           </Field>
-
           <Field label="계산서 발행상태">
-            <select
-              className="input"
-              value={invoice.invoice_issue_status}
-              onChange={(e) =>
-                setInv('invoice_issue_status', e.target.value as InvoiceIssueStatus)
-              }
-            >
-              {INVOICE_ISSUE_STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s || '선택 안 함'}
-                </option>
-              ))}
-            </select>
+            <div className="text-sm text-gray-800 py-2">{invoice.invoice_issue_status || '—'}</div>
           </Field>
-
           <Field label="세금계산서 발행일자">
-            <input
-              type="date"
-              className="input"
-              value={invoice.tax_invoice_issue_date || ''}
-              onChange={(e) => setInv('tax_invoice_issue_date', e.target.value || null)}
-            />
+            <div className="text-sm text-gray-800 py-2">{invoice.tax_invoice_issue_date || '—'}</div>
           </Field>
         </div>
       </section>

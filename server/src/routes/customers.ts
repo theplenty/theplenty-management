@@ -427,11 +427,17 @@ function callTrackerFields(o: Partial<MiceInquiry>): Partial<MiceInquiry> {
     note: o.note ?? '',
     // S2 — 계약금(=가톨릭대관료)과 행사 링크. 화이트리스트 방식이라 여기서 이어받지 않으면 저장 때 사라진다.
     deposit_amount: o.deposit_amount ?? null,
+    deposit_depositor: o.deposit_depositor ?? '',
+    deposit_date: o.deposit_date ?? null,
+    invoice_type: o.invoice_type ?? '',
+    invoice_issue_status: o.invoice_issue_status ?? '',
+    tax_invoice_issue_date: o.tax_invoice_issue_date ?? null,
     linked_event_id: o.linked_event_id ?? null,
     linked_at: o.linked_at ?? null,
     linked_by_name: o.linked_by_name ?? '',
     revenue_pushed_at: o.revenue_pushed_at ?? null,
     revenue_pushed_amount: o.revenue_pushed_amount ?? null,
+    revenue_pushed_fp: o.revenue_pushed_fp ?? null,
   };
 }
 
@@ -697,10 +703,10 @@ router.post('/mice/:id/inquiries/:inqId/link', (req, res) => {
   persistDoc('mice_customers', found.customer.id);
   logChange({
     entity_type: 'mice_customer', entity_id: found.customer.id, action: 'update',
-    summary: `문의를 행사에 연결${pushed.some((x) => x.filled.length) ? ' + 계약금 자동 반영' : ''}`,
+    summary: `문의를 행사에 연결${r.pulled.length ? ` (행사 기록 ${r.pulled.join('·')} 을 문의로 가져옴)` : ''}${pushed.some((x) => x.filled.length) ? ' + 매출 반영' : ''}`,
     changes: [], user: req.user!,
   });
-  res.json({ customer: found.customer, pushed });
+  res.json({ customer: found.customer, pushed, pulled: r.pulled });
 });
 
 // DELETE 연결 해제

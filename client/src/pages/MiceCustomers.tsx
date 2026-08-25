@@ -10,6 +10,8 @@ import { useActiveUsers } from '../lib/useActiveUsers';
 import { nanoid } from '../lib/clientId';
 import {
   MICE_CATEGORIES,
+  INVOICE_ISSUE_STATUS_OPTIONS,
+  INVOICE_TYPE_OPTIONS,
   MICE_INQUIRY_STATUS_DESC,
   MICE_INQUIRY_STATUS_OPTIONS,
   miceStatusLabel,
@@ -439,6 +441,39 @@ export default function MiceCustomers() {
       ),
     }));
   }
+  /** 이 고객의 다른 문의들에서 쓰던 담당자 목록 (이름·연락처·이메일 중복 제거) — 문의마다 다시 치지 않게 */
+  function knownContacts(exceptInquiryId: string): MiceContact[] {
+    const seen = new Map<string, MiceContact>();
+    for (const i of form.inquiries) {
+      for (const c of i.contacts) {
+        if (!c.name.trim() && !c.phone.trim() && !c.email.trim()) continue;
+        const key = `${c.name.trim()}|${c.phone.trim()}|${c.email.trim()}`;
+        if (!seen.has(key)) seen.set(key, c);
+      }
+    }
+    // 현재 문의에 이미 있는 사람은 제외
+    const cur = form.inquiries.find((i) => i.id === exceptInquiryId);
+    const curKeys = new Set(
+      (cur?.contacts || []).map((c) => `${c.name.trim()}|${c.phone.trim()}|${c.email.trim()}`)
+    );
+    return [...seen.entries()].filter(([k]) => !curKeys.has(k)).map(([, c]) => c);
+  }
+  function copyContact(inquiryId: string, src: MiceContact) {
+    setForm((p) => ({
+      ...p,
+      inquiries: p.inquiries.map((i) => {
+        if (i.id !== inquiryId) return i;
+        // 빈 칸 하나만 있으면 거기에 채우고, 아니면 새 줄로
+        const blankIdx = i.contacts.findIndex((c) => !c.name.trim() && !c.phone.trim() && !c.email.trim());
+        const copied = { ...emptyContact(), name: src.name, phone: src.phone, email: src.email };
+        const contacts = blankIdx >= 0
+          ? i.contacts.map((c, idx) => (idx === blankIdx ? copied : c))
+          : [...i.contacts, copied];
+        return { ...i, contacts };
+      }),
+    }));
+  }
+
   function removeContact(inquiryId: string, contactId: string) {
     setForm((p) => ({
       ...p,
@@ -1237,6 +1272,60 @@ export default function MiceCustomers() {
                       ) : null}
                     </div>
                   </div>
+
+                  {/* 입금 상세 — 매출탭 가톨릭대관료 블록의 원본이 여기다. 저장하면 연결된 행사로 미러링. */}
+                  <div className="flex flex-wrap items-end gap-3 mb-2">
+                    <label className="text-xs text-gray-600">
+                      입금자명
+                      <input
+                        className="input mt-1 w-32"
+                        value={inq.deposit_depositor || ''}
+                        onChange={(e) => updateInquiry(inq.id, { deposit_depositor: e.target.value })}
+                      />
+                    </label>
+                    <label className="text-xs text-gray-600">
+                      입금일자
+                      <input
+                        type="date"
+                        className="input mt-1"
+                        value={inq.deposit_date || ''}
+                        onChange={(e) => updateInquiry(inq.id, { deposit_date: e.target.value || null })}
+                      />
+                    </label>
+                    <label className="text-xs text-gray-600">
+                      계산서 발행
+                      <select
+                        className="input mt-1"
+                        value={inq.invoice_type || ''}
+                        onChange={(e) => updateInquiry(inq.id, { invoice_type: e.target.value })}
+                      >
+                        {INVOICE_TYPE_OPTIONS.map((o) => (
+                          <option key={o} value={o}>{o || '선택 안 함'}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs text-gray-600">
+                      발행상태
+                      <select
+                        className="input mt-1"
+                        value={inq.invoice_issue_status || ''}
+                        onChange={(e) => updateInquiry(inq.id, { invoice_issue_status: e.target.value })}
+                      >
+                        {INVOICE_ISSUE_STATUS_OPTIONS.map((o) => (
+                          <option key={o} value={o}>{o || '선택 안 함'}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs text-gray-600">
+                      세금계산서 발행일자
+                      <input
+                        type="date"
+                        className="input mt-1"
+                        value={inq.tax_invoice_issue_date || ''}
+                        onChange={(e) => updateInquiry(inq.id, { tax_invoice_issue_date: e.target.value || null })}
+                      />
+                    </label>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <Field label="콜백 예정일">
                       <input
@@ -1305,13 +1394,34 @@ export default function MiceCustomers() {
                     <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
                       담당자 {inq.contacts.length > 0 && `(${inq.contacts.length}명)`}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => addContact(inq.id)}
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      + 담당자 추가
-                    </button>
+                    <div className="flex items-center gap-3">
+                      {knownContacts(inq.id).length > 0 && (
+                        <select
+                          className="input text-xs py-0.5"
+                          style={{ width: 190 }}
+                          value=""
+                          title="이 고객의 다른 문의에서 쓰던 담당자를 그대로 가져옵니다"
+                          onChange={(e) => {
+                            const k = knownContacts(inq.id)[Number(e.target.value)];
+                            if (k) copyContact(inq.id, k);
+                          }}
+                        >
+                          <option value="">기존 담당자 불러오기…</option>
+                          {knownContacts(inq.id).map((c, ki) => (
+                            <option key={ki} value={ki}>
+                              {[c.name || '(이름없음)', c.phone, c.email].filter(Boolean).join(' · ').slice(0, 40)}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => addContact(inq.id)}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        + 담당자 추가
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     {inq.contacts.map((ct, cIdx) => (
