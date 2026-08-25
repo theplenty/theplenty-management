@@ -200,6 +200,42 @@ const WEDDING_COLUMNS: WedCol[] = [
   },
 ];
 
+/** 목록이 빈 이유를 그대로 말해준다 — "63건" 칩을 눌렀는데 비면 필터 조합 탓인 경우가 대부분이다. */
+function EmptyReason({
+  query,
+  stageFilter,
+  landingFilter,
+  onReset,
+}: {
+  query: string;
+  stageFilter: 'ALL' | WeddingProgressStatus;
+  landingFilter: LandingFilterKey;
+  onReset: () => void;
+}) {
+  const parts: string[] = [];
+  if (stageFilter !== 'ALL') parts.push(`진행단계 '${stageFilter}'`);
+  if (landingFilter !== 'ALL')
+    parts.push(`랜딩 '${LANDING_FILTERS.find((f) => f.key === landingFilter)?.label}'`);
+  if (!parts.length && !query.trim()) return <>등록된 고객이 없습니다.</>;
+  if (!parts.length) return <>검색 결과가 없습니다.</>;
+  return (
+    <div className="space-y-1.5">
+      <div>
+        {parts.join(' + ')}
+        {query.trim() ? ` + 검색어 '${query.trim()}'` : ''} 에 해당하는 고객이 없습니다.
+      </div>
+      {parts.length > 1 && (
+        <div className="text-xs text-gray-400">
+          두 조건을 동시에 만족하는 고객이 없습니다. 한쪽 칩을 &lsquo;전체&rsquo;로 바꿔보세요.
+        </div>
+      )}
+      <button onClick={onReset} className="text-xs text-blue-600 hover:underline">
+        필터 초기화
+      </button>
+    </div>
+  );
+}
+
 type FormState = Omit<WeddingCustomer, 'id' | 'created_at' | 'updated_at' | 'customer_type'>;
 
 // 날짜+시간 문자열 처리 — "2026-05-04" (date-only) / "2026-05-04T14:30" (date+time) 둘 다 허용
@@ -377,35 +413,50 @@ export default function WeddingCustomers() {
     return map;
   }, [items]);
 
+  const searchBase = useMemo(() => {
+    if (!debouncedQuery.trim()) return items;
+    return items.filter((c) => {
+      const e = searchIndex.get(c.id);
+      return e ? fuzzyMatchEntry(e, debouncedQuery) : false;
+    });
+  }, [items, debouncedQuery, searchIndex]);
+
   const filtered = useMemo(() => {
-    let list = items;
-    if (debouncedQuery.trim()) {
-      list = list.filter((c) => {
-        const e = searchIndex.get(c.id);
-        return e ? fuzzyMatchEntry(e, debouncedQuery) : false;
-      });
-    }
+    let list = searchBase;
     if (stageFilter !== 'ALL') list = list.filter((c) => c.progress_status === stageFilter);
     if (landingFilter !== 'ALL') {
       const f = LANDING_FILTERS.find((x) => x.key === landingFilter);
       if (f) list = list.filter((c) => f.match(landings[c.id]));
     }
     return list;
-  }, [items, debouncedQuery, searchIndex, stageFilter, landingFilter, landings]);
+  }, [searchBase, stageFilter, landingFilter, landings]);
 
-  // 칩별 건수 — 진행단계는 랜딩 필터와 무관하게, 랜딩은 진행단계와 무관하게 전체 기준으로 센다
+  // 칩별 건수 — **상대 필터를 반영한 교차 건수**로 센다.
+  // (예: 랜딩 '발행됨' 이 켜져 있으면 진행단계 칩은 "발행됨 안에서 몇 건인지"를 보여준다.
+  //  전체 기준으로 세면 '상담취소 63' 을 눌렀는데 목록이 비는 일이 생겨 숫자가 거짓말이 된다.)
   const stageCounts = useMemo(() => {
+    const f = LANDING_FILTERS.find((x) => x.key === landingFilter);
+    const base = landingFilter === 'ALL' || !f ? searchBase : searchBase.filter((c) => f.match(landings[c.id]));
     const m = new Map<string, number>();
-    for (const c of items) m.set(c.progress_status, (m.get(c.progress_status) || 0) + 1);
+    m.set('ALL', base.length);
+    for (const c of base) m.set(c.progress_status, (m.get(c.progress_status) || 0) + 1);
     return m;
-  }, [items]);
+  }, [searchBase, landingFilter, landings]);
+
   const landingCounts = useMemo(() => {
+    const base = stageFilter === 'ALL' ? searchBase : searchBase.filter((c) => c.progress_status === stageFilter);
     const m = new Map<LandingFilterKey, number>();
     for (const f of LANDING_FILTERS) {
-      m.set(f.key, f.key === 'ALL' ? items.length : items.filter((c) => f.match(landings[c.id])).length);
+      m.set(f.key, f.key === 'ALL' ? base.length : base.filter((c) => f.match(landings[c.id])).length);
     }
     return m;
-  }, [items, landings]);
+  }, [searchBase, stageFilter, landings]);
+
+  const filterActive = stageFilter !== 'ALL' || landingFilter !== 'ALL';
+  function resetFilters() {
+    setStageFilter('ALL');
+    setLandingFilter('ALL');
+  }
 
   const suggestions = useMemo(
     () => (debouncedQuery.trim() ? filtered.slice(0, 6) : []),
@@ -630,48 +681,68 @@ export default function WeddingCustomers() {
         </div>
       </div>
 
-      {/* 필터 칩 — 진행단계 / 랜딩(고객 랜딩페이지 발행·상태) */}
+      {/* 필터 칩 — 진행단계 / 랜딩(고객 랜딩페이지 발행·상태).
+          숫자는 **상대 필터가 걸린 상태의 교차 건수**라, 0 으로 보이면 눌러도 빈 목록이 맞다. */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-gray-400">진행단계</span>
-          {(['ALL', ...WEDDING_PROGRESS_OPTIONS] as ('ALL' | WeddingProgressStatus)[]).map((s) => (
-            <button
-              key={s}
-              onClick={() => setStageFilter(s)}
-              className={`text-xs px-2.5 py-1 rounded-full border transition ${
-                stageFilter === s
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white hover:bg-gray-50 border-gray-300'
-              }`}
-            >
-              {s === 'ALL' ? '전체' : s}
-              <span className={`ml-1 ${stageFilter === s ? 'text-blue-100' : 'text-gray-400'}`}>
-                {(s === 'ALL' ? items.length : stageCounts.get(s) || 0).toLocaleString()}
-              </span>
-            </button>
-          ))}
+          {(['ALL', ...WEDDING_PROGRESS_OPTIONS] as ('ALL' | WeddingProgressStatus)[]).map((s) => {
+            const n = stageCounts.get(s) || 0;
+            const on = stageFilter === s;
+            return (
+              <button
+                key={s}
+                onClick={() => setStageFilter(s)}
+                title={n === 0 && landingFilter !== 'ALL' ? '현재 랜딩 필터 안에는 해당 건이 없습니다' : undefined}
+                className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                  on
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : n === 0
+                      ? 'bg-white border-gray-200 text-gray-300'
+                      : 'bg-white hover:bg-gray-50 border-gray-300'
+                }`}
+              >
+                {s === 'ALL' ? '전체' : s}
+                <span className={`ml-1 ${on ? 'text-blue-100' : n === 0 ? 'text-gray-300' : 'text-gray-400'}`}>
+                  {n.toLocaleString()}
+                </span>
+              </button>
+            );
+          })}
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-gray-400" title="가블록형(행사 캘린더)·상담형(고객정보) 랜딩을 합쳐서 봅니다">
             💌 랜딩
           </span>
-          {LANDING_FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setLandingFilter(f.key)}
-              className={`text-xs px-2.5 py-1 rounded-full border transition ${
-                landingFilter === f.key
-                  ? 'bg-rose-500 text-white border-rose-500'
-                  : 'bg-white hover:bg-gray-50 border-gray-300'
-              }`}
-            >
-              {f.label}
-              <span className={`ml-1 ${landingFilter === f.key ? 'text-rose-100' : 'text-gray-400'}`}>
-                {(landingCounts.get(f.key) || 0).toLocaleString()}
-              </span>
-            </button>
-          ))}
+          {LANDING_FILTERS.map((f) => {
+            const n = landingCounts.get(f.key) || 0;
+            const on = landingFilter === f.key;
+            return (
+              <button
+                key={f.key}
+                onClick={() => setLandingFilter(f.key)}
+                title={n === 0 && stageFilter !== 'ALL' ? `${stageFilter} 중에는 해당 건이 없습니다` : undefined}
+                className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                  on
+                    ? 'bg-rose-500 text-white border-rose-500'
+                    : n === 0
+                      ? 'bg-white border-gray-200 text-gray-300'
+                      : 'bg-white hover:bg-gray-50 border-gray-300'
+                }`}
+              >
+                {f.label}
+                <span className={`ml-1 ${on ? 'text-rose-100' : n === 0 ? 'text-gray-300' : 'text-gray-400'}`}>
+                  {n.toLocaleString()}
+                </span>
+              </button>
+            );
+          })}
         </div>
+        {filterActive && (
+          <button onClick={resetFilters} className="text-xs text-gray-500 hover:text-gray-800 underline">
+            필터 초기화
+          </button>
+        )}
       </div>
 
       <div className="mb-4 relative">
@@ -722,7 +793,12 @@ export default function WeddingCustomers() {
           <div className="text-center text-gray-400 py-8 bg-white border rounded-lg">불러오는 중...</div>
         ) : sortedFiltered.length === 0 ? (
           <div className="text-center text-gray-400 py-8 bg-white border rounded-lg">
-            {query || stageFilter !== 'ALL' || landingFilter !== 'ALL' ? '조건에 맞는 고객이 없습니다.' : '등록된 고객이 없습니다.'}
+            <EmptyReason
+              query={query}
+              stageFilter={stageFilter}
+              landingFilter={landingFilter}
+              onReset={resetFilters}
+            />
           </div>
         ) : (
           pageItems.map((c, i) => (
@@ -802,7 +878,12 @@ export default function WeddingCustomers() {
               ) : sortedFiltered.length === 0 ? (
                 <tr>
                   <td colSpan={visibleColumns.length + 2} className="text-center text-gray-400 py-8">
-                    {query || stageFilter !== 'ALL' || landingFilter !== 'ALL' ? '조건에 맞는 고객이 없습니다.' : '등록된 고객이 없습니다.'}
+                    <EmptyReason
+              query={query}
+              stageFilter={stageFilter}
+              landingFilter={landingFilter}
+              onReset={resetFilters}
+            />
                   </td>
                 </tr>
               ) : (
