@@ -1,6 +1,13 @@
 /**
  * 문의↔행사 연결 + 계약금(= 가톨릭대 대관료) 자동 반영. (S2)
  *
+ * 연결과 계약금은 별개다 (2026-08-26 확정):
+ *  - **연결은 여러 문의가 가능** — 한 행사에 주최사·대행사 등 컨택포인트가 여럿이라
+ *    각자의 문의가 같은 행사를 물 수 있다 (예: 종근당 웹세미나 ← 종근당 + 인터엠디).
+ *  - **계약금 원본은 행사당 문의 하나** — 행사의 source_inquiry_id 가 그 자리다.
+ *    처음 연결한 문의가 원본이 되고, 나머지는 '참조 연결'(매출 반영 없음)이다.
+ *    참조 문의에 계약금을 적어도 밀리지 않고 skipped 로 이유를 알려준다.
+ *
  * 플렌티는 **계약금 = 가톨릭대 대관료** 구조다. 입금 상세(입금자명·입금일자·계산서)까지
  * 전부 **고객정보의 문의가 원본**이고, 행사 매출탭의 가톨릭대관료 블록은 읽기 전용 거울이다.
  * (2026-08-22 사장님 확정 — 처음엔 "비어 있을 때만 채움"이었으나, 매출탭 입력을 막으면서
@@ -57,6 +64,25 @@ function invoiceOf(eventId: string): Invoice {
   return row;
 }
 
+/** 계약금 반영이 건너뛰어진 문의 — 왜 안 밀렸는지 화면에 알려주기 위한 것 */
+export interface PushSkipped {
+  inquiryId: string;
+  eventId: string;
+  /** 계약금 원본을 쥔 업체·문의 */
+  owner_org: string;
+  owner_inquiry_no: number;
+}
+
+/** 행사의 계약금 원본 문의를 찾는다 (source_inquiry_id 기준) */
+function depositOwnerOf(eventId: string): { customer: MiceCustomer; inq: MiceInquiry; no: number } | null {
+  const ev = store.events.find((e) => e.id === eventId);
+  if (!ev?.source_inquiry_id || !ev.source_customer_id) return null;
+  const c = store.mice_customers.find((x) => x.id === ev.source_customer_id);
+  const idx = (c?.inquiries || []).findIndex((q) => q.id === ev.source_inquiry_id);
+  if (!c || idx < 0) return null;
+  return { customer: c, inq: c.inquiries[idx], no: idx + 1 };
+}
+
 export interface PushResult {
   inquiryId: string;
   eventId: string;
@@ -70,15 +96,34 @@ export interface PushResult {
 /**
  * 고객의 문의들을 훑어 조건을 만족하는 건의 계약금·입금 상세를 행사 매출로 미러링한다.
  */
-export function pushDepositsForCustomer(customer: MiceCustomer): PushResult[] {
+export function pushDepositsForCustomer(customer: MiceCustomer): { results: PushResult[]; skipped: PushSkipped[] } {
   const results: PushResult[] = [];
+  const skipped: PushSkipped[] = [];
   for (const inq of customer.inquiries || []) {
     if (!isPushReady(inq)) continue;
-    const fp = pushFingerprint(inq);
-    if (inq.revenue_pushed_at && (inq as { revenue_pushed_fp?: string }).revenue_pushed_fp === fp) continue;
 
     const ev = store.events.find((e) => e.id === inq.linked_event_id);
     if (!ev) continue;
+
+    // 참조 연결(계약금 원본이 다른 문의)이면 매출로 밀지 않는다 — 한 행사에 두 계약금 금지
+    if (ev.source_inquiry_id && ev.source_inquiry_id !== inq.id) {
+      const owner = depositOwnerOf(ev.id);
+      skipped.push({
+        inquiryId: inq.id,
+        eventId: ev.id,
+        owner_org: owner?.customer.organization_name || '(다른 업체)',
+        owner_inquiry_no: owner?.no || 0,
+      });
+      continue;
+    }
+    // 원본이 비어 있으면(옛 데이터) 이 문의가 원본이 된다
+    if (!ev.source_inquiry_id) {
+      ev.source_inquiry_id = inq.id;
+      ev.source_customer_id = customer.id;
+    }
+
+    const fp = pushFingerprint(inq);
+    if (inq.revenue_pushed_at && (inq as { revenue_pushed_fp?: string }).revenue_pushed_fp === fp) continue;
 
     const amount = Number(inq.deposit_amount);
     const filled: string[] = [];
@@ -117,7 +162,7 @@ export function pushDepositsForCustomer(customer: MiceCustomer): PushResult[] {
     }
     results.push({ inquiryId: inq.id, eventId: ev.id, amount, filled, kept });
   }
-  return results;
+  return { results, skipped };
 }
 
 /**
@@ -159,27 +204,36 @@ export function linkInquiryToEvent(
   inq: MiceInquiry,
   eventId: string,
   userName: string,
-): { ok: true; pulled: string[] } | { ok: false; error: string } {
+):
+  | { ok: true; pulled: string[]; role: 'primary' | 'secondary'; owner_org?: string; owner_inquiry_no?: number }
+  | { ok: false; error: string } {
   const ev = store.events.find((e) => e.id === eventId);
   if (!ev) return { ok: false, error: '행사를 찾을 수 없습니다.' };
   if (ev.event_type !== 'MICE') return { ok: false, error: 'MICE 행사만 연결할 수 있습니다.' };
 
-  // 다른 문의가 이미 이 행사를 물고 있으면 막는다 — 한 행사에 두 계약금이 흘러들면 매출이 꼬인다.
-  for (const c of store.mice_customers) {
-    for (const q of c.inquiries || []) {
-      if (q.linked_event_id === eventId && q.id !== inq.id) {
-        return { ok: false, error: `이미 다른 문의(${c.organization_name})에 연결된 행사입니다.` };
-      }
+  // 같은 업체의 다른 문의가 이미 물고 있으면 막는다 — 한 업체의 한 딜은 문의 하나로 관리한다.
+  // (다른 업체의 문의는 허용 — 주최사·대행사가 같은 행사에 각자 연결되는 게 실무다)
+  for (const q of customer.inquiries || []) {
+    if (q.linked_event_id === eventId && q.id !== inq.id) {
+      return { ok: false, error: '이 업체의 다른 문의가 이미 이 행사에 연결되어 있습니다.' };
     }
   }
+
+  // 계약금 원본(source_inquiry_id)은 행사당 하나 — 비어 있으면 이 문의가 원본이 되고,
+  // 이미 다른 문의가 쥐고 있으면 이 연결은 '참조'다 (매출 반영 없음, 역채움 없음).
+  const owner = depositOwnerOf(eventId);
+  const isPrimary = !owner || owner.inq.id === inq.id;
 
   inq.linked_event_id = eventId;
   inq.linked_at = new Date().toISOString();
   inq.linked_by_name = userName;
-  ev.source_customer_id = customer.id;
-  ev.source_inquiry_id = inq.id;
 
-  const pulled = backfillInquiryFromEvent(inq, eventId);
+  let pulled: string[] = [];
+  if (isPrimary) {
+    ev.source_customer_id = customer.id;
+    ev.source_inquiry_id = inq.id;
+    pulled = backfillInquiryFromEvent(inq, eventId);
+  }
 
   // 고객↔행사 링크 자동 생성 (없을 때만)
   const exists = store.event_customers.some(
@@ -197,7 +251,15 @@ export function linkInquiryToEvent(
     persistDoc('event_customers', store.event_customers[store.event_customers.length - 1].id);
   }
   persistDoc('events', ev.id);
-  return { ok: true, pulled };
+  return isPrimary
+    ? { ok: true, pulled, role: 'primary' }
+    : {
+        ok: true,
+        pulled,
+        role: 'secondary',
+        owner_org: owner!.customer.organization_name,
+        owner_inquiry_no: owner!.no,
+      };
 }
 
 /** 연결 해제 — 이미 반영된 매출 값은 건드리지 않는다(회계 기록을 임의로 비우지 않는다). */

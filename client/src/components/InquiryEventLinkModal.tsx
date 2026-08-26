@@ -16,6 +16,8 @@ interface Candidate {
   halls: string[];
   gateway_fee: number | null;
   already_linked: boolean;
+  /** 이 행사의 계약금 원본을 쥔 다른 업체 문의 — 있으면 이 연결은 '참조'가 된다 */
+  deposit_owner: { org: string; inquiry_no: number } | null;
   reasons: string[];
 }
 
@@ -91,12 +93,22 @@ export default function InquiryEventLinkModal({
     setBusy(true);
     setErr(null);
     try {
-      const r = await api.post<{ customer: MiceCustomer; pushed: { filled: string[]; amount: number }[] }>(
-        `${base}/link`,
-        { event_id: eventId },
-      );
+      const r = await api.post<{
+        customer: MiceCustomer;
+        pushed: { filled: string[]; amount: number }[];
+        link_role?: 'primary' | 'secondary';
+        owner_org?: string | null;
+        owner_inquiry_no?: number | null;
+      }>(`${base}/link`, { event_id: eventId });
       const filled = r.pushed?.find((p) => p.filled.length);
-      onLinked(filled ? `연결 완료 — 매출에 ${filled.filled.join(', ')} 반영됨` : '행사 연결 완료', r.customer);
+      onLinked(
+        r.link_role === 'secondary'
+          ? `참조 연결 완료 — 계약금·매출은 ${r.owner_org || '다른 업체'} 문의 #${r.owner_inquiry_no || '?'} 에서 관리됩니다`
+          : filled
+            ? `연결 완료 — 매출에 ${filled.filled.join(', ')} 반영됨`
+            : '행사 연결 완료',
+        r.customer,
+      );
       onClose();
     } catch (e) {
       setErr((e as { payload?: { error?: string } })?.payload?.error || String(e));
@@ -223,17 +235,30 @@ export default function InquiryEventLinkModal({
                       {c.gateway_fee ? ` · 대관료 ${Number(c.gateway_fee).toLocaleString()}원 입력됨` : ''}
                     </div>
                     <div className="text-[11px] text-blue-600 mt-0.5">{c.reasons.join(' · ')}</div>
+                    {/* 다른 업체 문의가 계약금 원본인 행사 — 연결은 되지만 '참조'가 됨을 미리 알린다.
+                        한 행사에 주최사·대행사 등 여러 컨택포인트가 붙는 실무 때문(2026-08-26). */}
+                    {c.deposit_owner && !c.already_linked && (
+                      <div className="text-[11px] text-amber-700 mt-0.5">
+                        💰 계약금은 <b>{c.deposit_owner.org}</b> 문의 #{c.deposit_owner.inquiry_no} 에서 관리 중 —
+                        여기서는 <b>참조 연결</b>됩니다 (이 문의의 계약금은 매출로 반영되지 않음)
+                      </div>
+                    )}
                   </div>
                   {c.already_linked ? (
                     <span className="text-xs text-emerald-700 font-semibold shrink-0 ml-3">연결됨</span>
                   ) : (
                     <button
                       type="button"
-                      className="btn-xs border-blue-600 bg-blue-600 text-white hover:bg-blue-700 shrink-0 ml-3"
+                      className={
+                        'btn-xs shrink-0 ml-3 ' +
+                        (c.deposit_owner
+                          ? 'border-amber-500 bg-amber-500 text-white hover:bg-amber-600'
+                          : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700')
+                      }
                       disabled={busy}
                       onClick={() => link(c.id)}
                     >
-                      연결
+                      {c.deposit_owner ? '참조 연결' : '연결'}
                     </button>
                   )}
                 </div>

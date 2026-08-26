@@ -520,12 +520,22 @@ export default function MiceCustomers() {
     setSaving(true);
     try {
       if (editingId) {
-        const res = await api.patch<{ customer: MiceCustomer }>(
-          `/api/customers/mice/${editingId}`,
-          form
-        );
+        const res = await api.patch<{
+          customer: MiceCustomer;
+          push_skipped?: { owner_org: string; owner_inquiry_no: number }[];
+        }>(`/api/customers/mice/${editingId}`, form);
         setItems((prev) => prev.map((x) => (x.id === editingId ? res.customer : x)));
         setLogRefresh((n) => n + 1);
+        // 참조 연결 문의에 계약금을 적은 경우 — 조용히 안 밀리면 "왜 매출에 없지?" 가 되므로 알려준다
+        if (res.push_skipped?.length) {
+          const sk = res.push_skipped[0];
+          alert(
+            '저장되었습니다.\n\n' +
+              '※ 이 문의는 행사에 참조 연결되어 있어 계약금이 매출로 반영되지 않습니다.\n' +
+              '계약금·매출은 ' + sk.owner_org + ' 문의 #' + sk.owner_inquiry_no + ' 에서 관리됩니다.'
+          );
+          return;
+        }
       } else {
         const res = await api.post<{ customer: MiceCustomer }>('/api/customers/mice', form);
         setItems((prev) => [res.customer, ...prev]);

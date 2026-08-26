@@ -575,8 +575,9 @@ router.patch('/mice/:id', (req, res) => {
       item.inquiries || []
     );
   }
-  // 계약금(=가톨릭대관료) 자동 반영 — 확정·계약금체크·금액·행사링크가 갖춰진 문의만
-  const pushed = pushDepositsForCustomer(item);
+  // 계약금(=가톨릭대관료) 자동 반영 — 확정·계약금체크·금액·행사링크가 갖춰진 문의만.
+  // 참조 연결(계약금 원본이 다른 업체 문의)은 밀지 않고 skipped 로 이유를 돌려준다.
+  const { results: pushed, skipped: pushSkipped } = pushDepositsForCustomer(item);
   const now = new Date().toISOString();
   item.updated_at = now;
   item.last_modified_by_id = req.user!.id;
@@ -606,7 +607,7 @@ router.patch('/mice/:id', (req, res) => {
       user: req.user!,
     });
   }
-  res.json({ customer: item, pushed });
+  res.json({ customer: item, pushed, push_skipped: pushSkipped });
 });
 
 // ── 문의 ↔ 행사 연결 (S2) ──────────────────────────────────────────────
@@ -647,10 +648,19 @@ router.get('/mice/:id/inquiries/:inqId/event-candidates', (req, res) => {
   const linkedIds = new Set(
     store.event_customers.filter((l) => l.customer_id === customer.id).map((l) => l.event_id),
   );
-  const takenByOther = new Set<string>();
-  for (const c of store.mice_customers)
-    for (const q of c.inquiries || [])
-      if (q.linked_event_id && q.id !== inq.id) takenByOther.add(q.linked_event_id);
+  // 같은 업체의 다른 문의가 물고 있는 행사만 제외 — 한 업체의 한 딜은 문의 하나.
+  // 다른 업체가 물고 있는 행사는 후보에 남는다 (주최사·대행사가 같은 행사에 각자 연결).
+  // 대신 그 행사의 계약금 원본이 누구인지 표시해, 참조 연결임을 알고 누르게 한다.
+  const takenBySameCustomer = new Set<string>();
+  for (const q of customer.inquiries || [])
+    if (q.linked_event_id && q.id !== inq.id) takenBySameCustomer.add(q.linked_event_id);
+  const ownerOf = (e: { source_inquiry_id?: string | null; source_customer_id?: string | null }) => {
+    if (!e.source_inquiry_id || e.source_inquiry_id === inq.id) return null;
+    const c = store.mice_customers.find((x) => x.id === e.source_customer_id);
+    if (!c) return null;
+    const idx = (c.inquiries || []).findIndex((q) => q.id === e.source_inquiry_id);
+    return { org: c.organization_name, inquiry_no: idx >= 0 ? idx + 1 : 0 };
+  };
 
   const target = guessInquiryDate(inq);
   const orgKey = (customer.organization_name || '').replace(/\s+/g, '');
@@ -667,7 +677,7 @@ router.get('/mice/:id/inquiries/:inqId/event-candidates', (req, res) => {
     return '';
   })();
   const rows = store.events
-    .filter((e) => e.event_type === 'MICE' && !isDeleted(e) && !takenByOther.has(e.id))
+    .filter((e) => e.event_type === 'MICE' && !isDeleted(e) && !takenBySameCustomer.has(e.id))
     .map((e) => {
       const day = (e.start_datetime || '').slice(0, 10);
       const gap = target && day ? Math.abs((new Date(day).getTime() - new Date(target).getTime()) / 86400000) : null;
@@ -682,7 +692,8 @@ router.get('/mice/:id/inquiries/:inqId/event-candidates', (req, res) => {
         id: e.id, event_name: e.event_name, status: e.status,
         start_datetime: e.start_datetime, halls: e.halls,
         gateway_fee: e.gateway_fee ?? null,
-        already_linked: e.source_inquiry_id === inq.id,
+        already_linked: inq.linked_event_id === e.id,
+        deposit_owner: ownerOf(e),
         reasons, score,
       };
     })
@@ -712,14 +723,19 @@ router.post('/mice/:id/inquiries/:inqId/link', (req, res) => {
   if (!eventId) return res.status(400).json({ error: 'event_id 필요' });
   const r = linkInquiryToEvent(found.customer, found.inq, eventId, req.user!.name);
   if (!r.ok) return res.status(400).json({ error: r.error });
-  const pushed = pushDepositsForCustomer(found.customer);
+  const { results: pushed } = pushDepositsForCustomer(found.customer);
   persistDoc('mice_customers', found.customer.id);
   logChange({
     entity_type: 'mice_customer', entity_id: found.customer.id, action: 'update',
-    summary: `문의를 행사에 연결${r.pulled.length ? ` (행사 기록 ${r.pulled.join('·')} 을 문의로 가져옴)` : ''}${pushed.some((x) => x.filled.length) ? ' + 매출 반영' : ''}`,
+    summary: r.role === 'secondary'
+      ? `문의를 행사에 참조 연결 (계약금은 ${r.owner_org} 문의에서 관리)`
+      : `문의를 행사에 연결${r.pulled.length ? ` (행사 기록 ${r.pulled.join('·')} 을 문의로 가져옴)` : ''}${pushed.some((x) => x.filled.length) ? ' + 매출 반영' : ''}`,
     changes: [], user: req.user!,
   });
-  res.json({ customer: found.customer, pushed, pulled: r.pulled });
+  res.json({
+    customer: found.customer, pushed, pulled: r.pulled,
+    link_role: r.role, owner_org: r.owner_org ?? null, owner_inquiry_no: r.owner_inquiry_no ?? null,
+  });
 });
 
 // DELETE 연결 해제
@@ -773,7 +789,7 @@ router.post('/mice/:id/inquiries/:inqId/create-event', (req, res) => {
   persistDoc('events', ev.id);
   const r = linkInquiryToEvent(customer, inq, ev.id, req.user!.name);
   if (!r.ok) return res.status(400).json({ error: r.error });
-  const pushed = pushDepositsForCustomer(customer);
+  const { results: pushed } = pushDepositsForCustomer(customer);
   persistDoc('mice_customers', customer.id);
   logChange({
     entity_type: 'event', entity_id: ev.id, action: 'create',
