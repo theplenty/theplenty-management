@@ -1,4 +1,4 @@
-// S2 ⑥ 승인된 짝만 연결 — 사장님이 고른 pairs 만 반영. 백업 후 적용.
+// S2 ⑥ 승인된 짝만 연결 — 대표님이 고른 pairs 만 반영. 백업 후 적용.
 // 사용: npx tsx scripts/apply-inquiry-event-links.ts --pairs "custId:inqId:eventId,..." [--apply]
 import './_loadEnv.js';
 import fs from 'fs';

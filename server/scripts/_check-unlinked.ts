@@ -32,7 +32,7 @@ for (const d of mice.docs) {
 }
 console.log(`MICE 고객 ${custs}명 · 문의 ${inqTotal}건`);
 console.log(`\n[탭에 실제로 뜨는 것] 마지막 문의가 DEF+미연결인 고객: ${lastDefUnlinked}명`);
-console.log(`[사장님이 기대하는 것?] DEF+미연결 문의를 하나라도 가진 고객: ${anyDefUnlinked}명`);
+console.log(`[대표님이 기대하는 것?] DEF+미연결 문의를 하나라도 가진 고객: ${anyDefUnlinked}명`);
 console.log(`  → 마지막 문의가 아니라서 탭에서 빠지는 고객: ${anyDefUnlinked - lastDefUnlinked}명`);
 console.log(`\nDEF 문의: 연결됨 ${inqDefLinked}건 / 미연결 ${inqDefUnlinked}건`);
 console.log(`\n행사 미연결 문의를 상태별로 세면:`, byStatusUnlinked);

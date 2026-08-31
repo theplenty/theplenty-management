@@ -1,4 +1,4 @@
-// 읽기 전용: 사장님이 지적한 두 건이 이제 연결 가능한지 확인
+// 읽기 전용: 대표님이 지적한 두 건이 이제 연결 가능한지 확인
 import './_loadEnv.js';
 const { firestore } = await import('../src/lib/firebase.js');
 

@@ -1,5 +1,5 @@
 // S2 ⑥ 소급 매칭 후보 제안 (읽기 전용) — 확정 문의 ↔ 기존 행사 짝 찾기.
-// 자동 연결하지 않는다. 사장님이 목록을 보고 승인한 것만 연결한다.
+// 자동 연결하지 않는다. 대표님이 목록을 보고 승인한 것만 연결한다.
 import './_loadEnv.js';
 import fs from 'fs';
 const { firestore } = await import('../src/lib/firebase.js');
