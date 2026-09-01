@@ -56,7 +56,11 @@ for (const { custId, inqId, eventId } of pairs) {
   // 고객↔행사 링크 (없을 때만)
   const dup = await firestore.collection('event_customers').where('event_id', '==', eventId).where('customer_id', '==', custId).get();
   if (dup.empty) {
-    await firestore.collection('event_customers').add({
+    // id 필드를 반드시 넣는다 — 앱의 store 는 문서 id 가 아니라 이 필드를 쓴다.
+    // 이게 빠지면 행사 수정 화면에서 저장이 통째로 실패한다(2026-09-01 발생).
+    const ref = firestore.collection('event_customers').doc();
+    await ref.set({
+      id: ref.id,
       event_id: eventId, customer_id: custId, customer_role: '주최사',
       is_contact_point: true, contact_point_contact_id: inq.contacts?.[0]?.id || '',
     });

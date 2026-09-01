@@ -486,7 +486,9 @@ export default function EventEditor({
         assigned_manager_id: form.assigned_manager_id,
         assigned_manager_name: form.assigned_manager_name,
         food_items: foods.map((f) => ({
-          id: f.id.startsWith('tmp_') ? undefined : f.id,
+          // id 가 없는 레코드(과거 일괄 스크립트가 id 필드 없이 넣은 건)에도 죽지 않게.
+          // 빈 id 는 서버가 새로 발급한다 — 저장 자체가 막히는 것보다 낫다.
+          id: !f.id || f.id.startsWith('tmp_') ? undefined : f.id,
           menu_name: f.menu_name,
           gtd_contract: f.gtd_contract,
           exp_contract: f.exp_contract,
@@ -498,7 +500,7 @@ export default function EventEditor({
           memo: f.memo,
         })),
         customer_links: links.map((l) => ({
-          id: l.id.startsWith('tmp_') ? undefined : l.id,
+          id: !l.id || l.id.startsWith('tmp_') ? undefined : l.id,
           customer_id: l.customer_id,
           customer_role: l.customer_role,
           is_contact_point: l.is_contact_point,
