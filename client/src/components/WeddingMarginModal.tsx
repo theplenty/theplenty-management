@@ -129,6 +129,7 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
           init = defaultInputs(loaded, saved);
           // 배열 길이를 현재 cfg에 맞춰 보정
           init.opt = loaded.optItems.map((_, i) => saved.opt?.[i] ?? false);
+          init.optSvc = loaded.optItems.map((it, i) => saved.optSvc?.[i] ?? !!it.svc);
           init.otherOn = loaded.otherItems.map((it, i) => saved.otherOn?.[i] ?? !it.off);
           init.otherSvc = loaded.otherItems.map((it, i) => saved.otherSvc?.[i] ?? !!it.svc);
           init.otherQty = loaded.otherItems.map((it, i) => saved.otherQty?.[i] ?? it.qty ?? 1);
@@ -437,21 +438,42 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
               </div>
               <div className="text-[10.5px] text-gray-400 mt-0.5">기간·시즌에 따라 대관 할인가를 직접 입력해 조정할 수 있습니다 · 전 고객 묶음 제공</div>
               <div className="mt-2 space-y-1">
-                <div className="text-[11px] text-gray-400">추가 옵션 (별도 청구 · 무료 아님)</div>
+                <div className="text-[11px] text-gray-400">추가 옵션 (체크=제공 · SVC=무상)</div>
                 {/* label로 줄 전체를 감싸면 주변 아무 곳이나 클릭해도 토글되므로, 체크박스에만 반응하도록 div 사용 */}
-                {cfg.optItems.map((it, i) => (
-                  <div key={i} className="flex items-center gap-1.5 text-xs">
-                    <input
-                      type="checkbox"
-                      className="cursor-pointer"
-                      checked={inputs.opt[i]}
-                      onChange={(e) => { const opt = [...inputs.opt]; opt[i] = e.target.checked; setInp({ opt }); }}
-                    />
-                    <span>
-                      {it.n} <span className="text-gray-400">({won(it.p)})</span>
-                    </span>
-                  </div>
-                ))}
+                {cfg.optItems.map((it, i) => {
+                  const isSvc = !!inputs.optSvc?.[i];
+                  return (
+                    <div key={i} className="flex items-center gap-1.5 text-xs">
+                      <input
+                        type="checkbox"
+                        className="cursor-pointer"
+                        checked={inputs.opt[i]}
+                        onChange={(e) => { const opt = [...inputs.opt]; opt[i] = e.target.checked; setInp({ opt }); }}
+                      />
+                      <span className={inputs.opt[i] ? '' : 'text-gray-400'}>
+                        {it.n}{' '}
+                        <span className={isSvc && inputs.opt[i] ? 'text-[#c0392b] line-through' : 'text-gray-400'}>
+                          ({won(it.p)})
+                        </span>
+                      </span>
+                      {/* 청구/SVC 는 제공하기로 한 항목에만 의미가 있다 */}
+                      {inputs.opt[i] && (
+                        <select
+                          value={isSvc ? '1' : '0'}
+                          onChange={(e) => {
+                            const a = [...(inputs.optSvc ?? cfg.optItems.map(() => false))];
+                            a[i] = e.target.value === '1';
+                            setInp({ optSvc: a });
+                          }}
+                          className="border border-gray-300 rounded px-1 py-0.5 text-[11px]"
+                        >
+                          <option value="0">청구</option>
+                          <option value="1">SVC</option>
+                        </select>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </Section>
 
@@ -533,7 +555,7 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
               <table className="w-full text-[11.5px]">
                 <tbody>
                   <Row l={`식대 (${inputs.course}코스 ${won(result.effMeal)}×${result.guests})`} r={won(result.mealRev)} />
-                  <Row l="플라워(청구) / 렌탈패키지 / 옵션·기타" r={won(result.flowerRev + result.rentRev + result.noodleRev + result.optLines.reduce((s, it) => s + it.p, 0) + result.otherLines.filter((o) => !o.svc).reduce((s, o) => s + o.p, 0))} />
+                  <Row l="플라워(청구) / 렌탈패키지 / 옵션·기타" r={won(result.flowerRev + result.rentRev + result.noodleRev + result.optLines.filter((o) => !o.svc).reduce((s, it) => s + it.p, 0) + result.otherLines.filter((o) => !o.svc).reduce((s, o) => s + o.p, 0))} />
                   <Row l="A 고객견적" r={won(result.A)} bold />
                   <Row l="식대원가(행사시점) / 외부인건비" r={'-' + won(result.fut.food + result.fut.ext)} />
                   <Row l="플라워원가(제공) / 고정경비" r={'-' + won(result.fut.flowerCost + cfg.cost.fixed)} />
@@ -712,17 +734,21 @@ function AdminEditor({ cfg, setCfg, onSave, onReset, msg }: {
       </Section>
 
       {/* 옵션 */}
-      <Section title="⚙ 옵션 항목 (별도 청구)">
+      <Section title="⚙ 옵션 항목 (기본 청구/SVC — 견적별로 바꿀 수 있음)">
         {cfg.optItems.map((it, i) => (
           <div key={i} className="flex items-center gap-1.5 mb-1">
             {T(it.n, (v) => { const a = [...cfg.optItems]; a[i] = { ...it, n: v }; up({ optItems: a }); }, '120px')}
             {N(it.p, (v) => { const a = [...cfg.optItems]; a[i] = { ...it, p: v }; up({ optItems: a }); })}
             {T(it.rmk, (v) => { const a = [...cfg.optItems]; a[i] = { ...it, rmk: v }; up({ optItems: a }); }, '240px')}
+            <select value={it.svc ? '1' : '0'} onChange={(e) => { const a = [...cfg.optItems]; a[i] = { ...it, svc: e.target.value === '1' }; up({ optItems: a }); }} className="border border-gray-300 rounded px-1 py-1 text-xs">
+              <option value="0">기본 청구</option>
+              <option value="1">기본 SVC</option>
+            </select>
             <span className="text-[10px] text-gray-400">보증≥</span>{N(it.minG, (v) => { const a = [...cfg.optItems]; a[i] = { ...it, minG: v }; up({ optItems: a }); })}
             <button onClick={() => up({ optItems: cfg.optItems.filter((_, j) => j !== i) })} className="text-[#c0392b] bg-[#fbe9e7] border border-[#f0b7ae] rounded px-1.5">×</button>
           </div>
         ))}
-        <button onClick={() => up({ optItems: [...cfg.optItems, { n: '새 옵션', p: 0, rmk: '', minG: 0 }] })} className="text-xs border border-[#5b4a3a] text-[#5b4a3a] rounded px-2 py-1">+ 옵션</button>
+        <button onClick={() => up({ optItems: [...cfg.optItems, { n: '새 옵션', p: 0, rmk: '', minG: 0, svc: false }] })} className="text-xs border border-[#5b4a3a] text-[#5b4a3a] rounded px-2 py-1">+ 옵션</button>
       </Section>
 
       {/* 고객유형 */}

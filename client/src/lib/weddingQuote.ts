@@ -162,7 +162,10 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
     : optionRow(noodleName, '', noodleP * L.guests);
   let optRows = '';
   cfg.optItems.forEach((it, i) => {
-    if (inp.opt[i]) optRows += qrow(it.n + ' (옵션)', it.rmk, it.p, it.p, '');
+    if (inp.opt[i]) {
+      const isSvc = !!inp.optSvc?.[i];
+      optRows += qrow(it.n + ' (옵션)', it.rmk, it.p, isSvc ? 0 : it.p, isSvc ? '무상 제공 혜택' : '');
+    }
     else if (exposeOpt.test(it.n)) optRows += optionRow(it.n + ' (옵션)', it.rmk, it.p);
   });
   let otherRows = '';

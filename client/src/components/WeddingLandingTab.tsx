@@ -46,11 +46,23 @@ const STATE_BADGE: Record<WeddingLandingState, { label: string; cls: string }> =
   expired: { label: '가블록 기간 만료', cls: 'bg-amber-100 text-amber-800' },
 };
 
-function plusDays(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + n);
+const ymd = (d: Date): string => {
   const p = (x: number) => String(x).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+/**
+ * 기본 열람 기한 = **다음 주 금요일** (월~일을 한 주로 본다).
+ * 상담 후 "주말에 가족과 상의하고 결정" 하는 흐름이라 이번 주 금요일은 너무 촉박하고,
+ * 단순 +7일은 요일이 매번 달라져 고객·직원 모두 기억하기 어렵다. 다음 주 금요일이면
+ * 최소 8일 ~ 최대 14일이 확보되고 마감 요일이 항상 같다.
+ * 예: 수요일에 발행 → 11일 뒤 금요일 / 금요일에 발행 → 7일 뒤 금요일
+ */
+function nextWeekFriday(): string {
+  const d = new Date();
+  const dow = (d.getDay() + 6) % 7; // 월=0 … 일=6
+  d.setDate(d.getDate() - dow + 11); // 이번 주 월요일 → +7일(다음 주) +4일(금요일)
+  return ymd(d);
 }
 
 export default function WeddingLandingTab({ eventId, startDatetime, customerIds, canManage, consultCustomerId }: Props) {
@@ -103,12 +115,12 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
         const loaded = cfgRes?.setting?.value ?? DEFAULT_WEDDING_CALC;
         setCfg(normalizeCalcSettings(loaded));
         if (landingRes.landing) {
-          setBlockUntil(landingRes.landing.block_until || plusDays(7));
+          setBlockUntil(landingRes.landing.block_until || nextWeekFriday());
           setPriorities(landingRes.landing.priorities || []);
           setCustomNote(landingRes.landing.custom_note || '');
           setInquiryId(landingRes.landing.inquiry_id || '');
         } else {
-          setBlockUntil(plusDays(7)); // 기본 가블록 7일
+          setBlockUntil(nextWeekFriday()); // 기본 = 다음 주 금요일
         }
       } catch (e) {
         console.error('[landing] load error', e);
@@ -375,7 +387,7 @@ export default function WeddingLandingTab({ eventId, startDatetime, customerIds,
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="text-[11px] uppercase tracking-wide text-gray-500">
-            {isConsult ? '링크 열람 기한 (기본 상담 후 7일)' : '가블록 종료일 (이 날짜까지 열람 가능)'}
+            {isConsult ? '링크 열람 기한 (기본 다음 주 금요일)' : '가블록 종료일 (기본 다음 주 금요일 · 이 날짜까지 열람 가능)'}
           </label>
           <input
             type="date"

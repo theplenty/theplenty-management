@@ -8,7 +8,9 @@ export type CourseKey = 'A' | 'B' | 'C';
 
 export interface WCPriceTier { label: string; from: string; A: number; B: number; C: number; fB: number; fL: number; fG: number; }
 export interface WCRentItem { n: string; rmk: string; }
-export interface WCOptItem { n: string; p: number; rmk: string; minG: number; }
+// svc — 이 옵션의 **기본** 무상 여부. 서브홀 대관료·중계TV 추가처럼 청구할 때도 있고
+// 서비스로 줄 때도 있는 항목이 있어, 견적별로 inputs.optSvc 로 다시 고를 수 있다.
+export interface WCOptItem { n: string; p: number; rmk: string; minG: number; svc?: boolean; }
 export interface WCOtherItem { n: string; p: number; rmk: string; svc: boolean; qty?: number; qtyMode?: boolean; off?: boolean; }
 export interface WCBevItem { n: string; p: number; rmk: string; }
 export interface WCCtype { name: string; mealDisc: number; flowerUp: boolean; }
@@ -249,7 +251,8 @@ export interface CalcInputs {
   flowerBill: FlowerGrade;
   flowerGive: FlowerGrade;
   flowerUp: boolean;
-  opt: boolean[];        // optItems 길이
+  opt: boolean[];        // optItems 길이 — 제공 여부
+  optSvc?: boolean[];    // optItems 길이 — true면 무상(SVC). 옛 견적엔 없어 optional
   otherOn: boolean[];    // otherItems 길이
   otherSvc: boolean[];   // otherItems 길이
   otherQty: number[];    // otherItems 길이 (qtyMode 항목용)
@@ -284,6 +287,7 @@ export function defaultInputs(cfg: WeddingCalcSettings, prefill?: Partial<CalcIn
     flowerGive: prefill?.flowerGive ?? (ct?.flowerUp ? 'lux' : 'basic'),
     flowerUp: prefill?.flowerUp ?? (ct?.flowerUp ?? false),
     opt: prefill?.opt ?? cfg.optItems.map(() => false),
+    optSvc: prefill?.optSvc ?? cfg.optItems.map((it) => !!it.svc),
     otherOn: prefill?.otherOn ?? cfg.otherItems.map((it) => !it.off),
     otherSvc: prefill?.otherSvc ?? cfg.otherItems.map((it) => !!it.svc),
     otherQty: prefill?.otherQty ?? cfg.otherItems.map((it) => it.qty ?? 1),
@@ -345,7 +349,7 @@ export interface MarginResult {
   flowerGiveP: number; flowerRev: number; flowerBenefit: number;
   rentRev: number; rentBenefit: number;
   noodleRev: number;
-  optLines: WCOptItem[];
+  optLines: QuoteLine[];
   otherLines: QuoteLine[];
   A: number; totalBenefit: number; listTotal: number;
   now: CostScenario; fut: CostScenario;
@@ -374,9 +378,18 @@ export function computeMargin(inp: CalcInputs, cfg: WeddingCalcSettings): Margin
   const rentRev = inp.rentSpecial ?? cfg.rentSpecial;
   const rentBenefit = cfg.rentList - rentRev;
 
-  let optRev = 0;
-  const optLines: WCOptItem[] = [];
-  cfg.optItems.forEach((it, i) => { if (inp.opt[i]) { optRev += it.p; optLines.push(it); } });
+  // 옵션 — 체크하면 제공. SVC 로 고르면 고객가 0 이지만 정가는 혜택으로 잡힌다.
+  // (서브홀 대관료·중계TV 추가처럼 청구할 때도 서비스로 줄 때도 있는 항목 때문)
+  let optRev = 0, optBenefit = 0, optListSum = 0;
+  const optLines: QuoteLine[] = [];
+  cfg.optItems.forEach((it, i) => {
+    if (!inp.opt[i]) return;
+    const isSvc = !!inp.optSvc?.[i];
+    optRev += isSvc ? 0 : it.p;
+    if (isSvc) optBenefit += it.p;
+    optListSum += it.p;
+    optLines.push({ n: it.n, p: it.p, rmk: it.rmk, svc: isSvc });
+  });
 
   let otherRev = 0, otherBenefit = 0, otherListSum = 0;
   const otherLines: QuoteLine[] = [];
@@ -395,8 +408,9 @@ export function computeMargin(inp: CalcInputs, cfg: WeddingCalcSettings): Margin
   const noodleRev = inp.noodle ? (cfg.noodleP ?? 5000) * guests : 0;
 
   const A = mealRev + flowerRev + rentRev + optRev + otherRev + noodleRev;
-  const totalBenefit = mealBenefit + flowerBenefit + rentBenefit + otherBenefit;
-  const listTotal = mealList + flowerGiveP + cfg.rentList + optRev + otherListSum + noodleRev;
+  const totalBenefit = mealBenefit + flowerBenefit + rentBenefit + optBenefit + otherBenefit;
+  // 정가 합계는 SVC 여부와 무관하게 정가로 잡는다 — 그래야 '혜택' 금액이 맞아떨어진다
+  const listTotal = mealList + flowerGiveP + cfg.rentList + optListSum + otherListSum + noodleRev;
 
   function costAt(fF: number, lF: number): CostScenario {
     const food = courseFoodCost(cfg, inp.course) * (1 + fF) * guests;
