@@ -65,7 +65,17 @@ function esc(s: string): string {
 }
 
 // 견적서 본문 HTML (qbox 내부). 참조 HTML showQuote() 포팅.
-export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: MarginResult): string {
+/**
+ * 발행 차수 정보 — 2차 이상 견적서에 "이전 제안가 → 추가 할인 → 최종" 을 보여주기 위한 것.
+ * 1차로 끝나는 고객이 대부분이고, 끝까지 추가 할인을 요구한 경우에만 2차가 나간다.
+ * 그때 고객이 "추가 혜택을 받았다"는 걸 명확히 보게 하려고 이전 금액을 같이 찍는다(대표님 결정 2026-09-02).
+ */
+export interface QuoteIssueInfo {
+  no: number;                 // 발행 차수
+  prevTotal: number | null;   // 직전 발행본의 최종 제안가 (1차면 null)
+}
+
+export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: MarginResult, issue?: QuoteIssueInfo): string {
   // ── FOOD: A/B/C 코스 전부 표기 — 선택 코스만 고객가·합계 포함, 나머지는 단가·할인만 보여줌
   //    (고객이 돌아가서 코스를 바꿀 수 있으므로 비교 기준 제공)
   const selMark = ` <b style="color:${QUOTE_GREEN}">✓ 선택</b>`;
@@ -181,7 +191,7 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
   });
 
   return `
-    <div class="qhead"><div class="t">PLENTY CONVENTION</div><div style="font-size:12px;color:#7a756c;letter-spacing:.2em">WEDDING ESTIMATE</div></div>
+    <div class="qhead"><div class="t">PLENTY CONVENTION</div><div style="font-size:12px;color:#7a756c;letter-spacing:.2em">WEDDING ESTIMATE${issue ? ` · ${issue.no}차 견적서` : ''}</div></div>
     <div class="qmeta">
       <div><b>Name of Event</b> : ${esc(inp.groom) || '_____'} & ${esc(inp.bride) || '_____'} 님</div>
       <div><b>Date & Time</b> : ${inp.wdate ? esc(insertWeekday(inp.wdate)) : '____'}${inp.wtime ? ` ${esc(inp.wtime)}` : ` (${esc(inp.time)})`}</div>
@@ -197,7 +207,18 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
           : '';
       })()}</div>
       <div class="amt">₩ ${won(L.totalBenefit)} 할인</div></div>
-    <div class="qsub">정상가 ${won(L.listTotal)}원 → 최종 ${won(L.A)}원</div>
+    <div class="qsub">정상가 ${won(L.listTotal)}원 → 최종 ${won(L.A)}원</div>${(() => {
+      // 2차 이상 — 직전 발행본 대비 추가 할인을 별도 블록으로. 고객이 이미 1차 견적서를 갖고 있으니
+      // 숫자가 대조돼야 한다. 추가 할인이 0 이하(조건이 바뀌어 오히려 올랐거나 같으면)면 블록을 안 찍는다.
+      if (!issue || issue.no < 2 || issue.prevTotal == null) return '';
+      const extra = issue.prevTotal - L.A;
+      if (extra <= 0) return '';
+      return `
+    <table class="qt" style="margin-top:8px"><tr><th colspan="2" style="text-align:left">${issue.no}차 견적 — 추가 할인 안내</th></tr>
+      <tr><td>${issue.no - 1}차 제안가</td><td class="n" style="color:#999;text-decoration:line-through">${won(issue.prevTotal)}</td></tr>
+      <tr><td><b style="color:#c0392b">추가 할인 혜택</b></td><td class="n"><b style="color:#c0392b">▼ ${won(extra)}</b></td></tr>
+      <tr><td><b>최종 제안가</b></td><td class="n"><b>${won(L.A)}</b></td></tr></table>`;
+    })()}
     <div class="qsec">1) FOOD & BEVERAGE <span style="font-size:10px;color:#7a756c">*Currency: KRW</span></div>
     <table class="qt"><tr><th>ITEM</th><th class="n">정상가</th><th class="n">혜택</th><th class="n">고객가</th></tr>${courseRows}${noodleRow}${bev}</table>
     <div class="qsec">2) FLOWER</div>
@@ -211,10 +232,10 @@ export function buildQuoteHtml(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
 }
 
 // 새 창 인쇄용 전체 문서
-export function openQuotePrint(inp: CalcInputs, cfg: WeddingCalcSettings, L: MarginResult): void {
+export function openQuotePrint(inp: CalcInputs, cfg: WeddingCalcSettings, L: MarginResult, issue?: QuoteIssueInfo): void {
   const w = window.open('', '_blank', 'width=900,height=1000');
   if (!w) { alert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.'); return; }
-  const title = `견적서_${inp.groom || ''}_${inp.bride || ''}`.replace(/_+$/, '');
+  const title = `견적서${issue ? `_${issue.no}차` : ''}_${inp.groom || ''}_${inp.bride || ''}`.replace(/_+$/, '');
   const btnCss = 'flex:1;color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;cursor:pointer';
   w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>${esc(title)}</title>
     <style>body{margin:0;background:#fff;padding:16px}${QUOTE_CSS}
@@ -226,7 +247,7 @@ export function openQuotePrint(inp: CalcInputs, cfg: WeddingCalcSettings, L: Mar
     <body><div class="no-print">
     <button onclick="window.print()" style="${btnCss};background:#5b4a3a">🖨 인쇄 / PDF 저장</button>
     <button id="jpgbtn" onclick="saveJpg()" style="${btnCss};background:#1f6b3f">🖼 JPG로 저장</button></div>
-    <div class="qbox">${buildQuoteHtml(inp, cfg, L)}</div>
+    <div class="qbox">${buildQuoteHtml(inp, cfg, L, issue)}</div>
     <script>
     function saveJpg(){
       var btn=document.getElementById('jpgbtn'); btn.disabled=true; btn.textContent='저장 중...';

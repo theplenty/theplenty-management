@@ -92,6 +92,19 @@ router.post('/', (req, res) => {
   const prev = store.quote_versions.filter((q) => q.inquiry_id === inquiryId);
   const version = prev.reduce((m, q) => Math.max(m, q.version), 0) + 1;
 
+  // 고객 발행 — 저장과 별개로 "실제로 고객에게 나간" 차수를 센다.
+  // 2차부터는 사유가 필수다. 사유 없는 추가 할인이 쌓이면 나중에 아무도 왜 깎았는지 모른다.
+  const issue = b.issue === true;
+  let issueNo: number | null = null;
+  let issueReason = '';
+  if (issue) {
+    issueNo = prev.reduce((m, q) => Math.max(m, q.issue_no ?? 0), 0) + 1;
+    issueReason = str(b.issue_reason);
+    if (issueNo >= 2 && !issueReason) {
+      return res.status(400).json({ error: `${issueNo}차 발행에는 사유가 필요합니다.` });
+    }
+  }
+
   const row: QuoteVersion = {
     id: nanoid(12),
     tenant_id: req.tenantId || DEFAULT_TENANT_ID,
@@ -127,6 +140,11 @@ router.post('/', (req, res) => {
     inputs_json: inputsJson,
     summary_text: str(b.summary_text),
     note: str(b.note),
+
+    issue_no: issueNo,
+    issued_at: issue ? new Date().toISOString() : null,
+    issued_by_name: issue ? req.user!.name : '',
+    issue_reason: issueReason,
   };
 
   store.quote_versions.push(row);

@@ -926,4 +926,13 @@ export interface QuoteVersion {
   inputs_json: string;          // CalcInputs 원본 (재현용)
   summary_text: string;         // 사람이 읽는 한 줄 요약
   note: string;                 // 이 버전에 대한 메모 (왜 이 조건으로 냈는지)
+
+  // ── 고객 발행 (2026-09-02) ──
+  // version 은 "저장 횟수"라 차수로 쓸 수 없었다 — 저장을 두 번 누르면 같은 금액이 두 줄 쌓이고,
+  // 조건을 이리저리 바꿔본 계산 흔적까지 전부 N차로 보였다(조영동 건 6차 중 실제 발행은 2~3개).
+  // 그래서 **고객에게 실제로 나간 것**만 issue_no 로 따로 센다. null 이면 계산 저장본.
+  issue_no?: number | null;     // 발행 차수 (1차, 2차 …). 발행된 것만 센다
+  issued_at?: string | null;
+  issued_by_name?: string;
+  issue_reason?: string;        // 2차 이상 발행 사유 — 왜 더 깎아줬는지. 2차부터 필수
 }

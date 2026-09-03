@@ -68,6 +68,53 @@ interface QuoteVersionRow {
   summary_text: string;
   inputs_json: string;
   note: string;
+  total_benefit?: number;
+  // 고객 발행 — version(저장 횟수)과 별개. null 이면 계산 저장본
+  issue_no?: number | null;
+  issued_at?: string | null;
+  issued_by_name?: string;
+  issue_reason?: string;
+}
+
+/** 2차 이상 발행 사유 — 버튼으로 고르게 해서 입력 마찰을 줄인다. 직접 입력도 된다 */
+const ISSUE_REASONS = ['고객 추가 할인 요청', '타 홀 경쟁 견적 제시', '인원·날짜 조건 변경', '계약 확정 조건으로 수용'];
+
+/**
+ * 두 발행본의 입력을 비교해 "무엇을 더 깎았는지"를 사람 말로 뽑는다.
+ * 직원이 사유만 적으면 되고, 실제로 바뀐 조건은 여기서 자동으로 나온다 — inputs_json 이 남아 있어서 가능하다.
+ */
+function diffInputs(prevJson: string, curJson: string, cfg: WeddingCalcSettings): string[] {
+  let a: Partial<CalcInputs>;
+  let b: Partial<CalcInputs>;
+  try {
+    a = JSON.parse(prevJson) as Partial<CalcInputs>;
+    b = JSON.parse(curJson) as Partial<CalcInputs>;
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  if ((a.mealDiscount ?? 0) !== (b.mealDiscount ?? 0)) out.push(`식대 할인 ${a.mealDiscount ?? 0}% → ${b.mealDiscount ?? 0}%`);
+  if (a.course !== b.course) out.push(`코스 ${a.course} → ${b.course}`);
+  if ((a.guests ?? 0) !== (b.guests ?? 0)) out.push(`보증인원 ${a.guests}명 → ${b.guests}명`);
+  if (a.flowerBill !== b.flowerBill) out.push(`꽃 청구 ${flowerName(a.flowerBill as FlowerGrade)} → ${flowerName(b.flowerBill as FlowerGrade)}`);
+  if (a.flowerGive !== b.flowerGive) out.push(`꽃 제공 ${flowerName(a.flowerGive as FlowerGrade)} → ${flowerName(b.flowerGive as FlowerGrade)}`);
+  if (!!a.flowerUp !== !!b.flowerUp) out.push(b.flowerUp ? '꽃 업그레이드 추가' : '꽃 업그레이드 제외');
+  if (!!a.noodle !== !!b.noodle) out.push(b.noodle ? '웨딩국수 추가' : '웨딩국수 제외');
+  const ra = a.rentSpecial ?? null;
+  const rb = b.rentSpecial ?? null;
+  if (ra !== rb) out.push(`대관 특별가 ${won(ra ?? cfg.rentSpecial)} → ${won(rb ?? cfg.rentSpecial)}`);
+  cfg.optItems.forEach((it, i) => {
+    const ao = !!a.opt?.[i], bo = !!b.opt?.[i], as = !!a.optSvc?.[i], bs = !!b.optSvc?.[i];
+    if (ao !== bo) out.push(`${it.n} ${bo ? '추가' : '제외'}`);
+    else if (bo && as !== bs) out.push(`${it.n} ${bs ? '청구 → SVC' : 'SVC → 청구'}`);
+  });
+  cfg.otherItems.forEach((it, i) => {
+    const ao = !!a.otherOn?.[i], bo = !!b.otherOn?.[i], as = !!a.otherSvc?.[i], bs = !!b.otherSvc?.[i];
+    if (ao !== bo) out.push(`${it.n} ${bo ? '추가' : '제외'}`);
+    else if (bo && as !== bs) out.push(`${it.n} ${bs ? '청구 → SVC' : 'SVC → 청구'}`);
+    else if (bo && it.qtyMode && (a.otherQty?.[i] ?? 0) !== (b.otherQty?.[i] ?? 0)) out.push(`${it.n} 수량 ${a.otherQty?.[i] ?? 0} → ${b.otherQty?.[i] ?? 0}`);
+  });
+  return out;
 }
 
 // 쉼표 숫자 입력 (Admin용)
@@ -208,14 +255,19 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
   }
 
   // ── 저장 (예식후보에 결과 반영) ────────────────────────────────────────────
-  async function handleSave() {
-    if (!inputs || !result) return;
+  // opts.issue 면 "고객 발행" — 버전에 발행 차수·사유가 붙고, 발행된 행을 돌려준다(인쇄에 쓴다).
+  // 그냥 저장이면 계산 저장본(차수 없음). 둘 다 예식후보 필드는 갱신한다.
+  async function handleSave(opts?: { issue?: boolean; reason?: string }): Promise<QuoteVersionRow | null> {
+    if (!inputs || !result) return null;
     setSaving(true);
+    let issuedRow: QuoteVersionRow | null = null;
     try {
       // ① 견적 버전을 하나 쌓는다 (덮어쓰지 않는다).
       //    금액은 지금 기준단가로 계산된 값 — 나중에 단가가 바뀌어도 이 버전은 그대로 남는다.
       try {
-        await api.post('/api/quotes', {
+        const created = await api.post<{ quote: QuoteVersionRow }>('/api/quotes', {
+          issue: !!opts?.issue,
+          issue_reason: opts?.reason || '',
           inquiry_id: inquiry.id,
           groom, bride,
           wedding_date: inputs.wdate || null,
@@ -240,10 +292,13 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
           inputs_json: JSON.stringify(inputs),
           summary_text: summaryText(inputs, result),
         });
+        if (opts?.issue) issuedRow = created.quote;
         void loadHistory();
       } catch (e) {
         // 이력 저장이 실패해도 예식후보 저장은 막지 않는다 — 직원 작업이 우선.
+        // 단, 발행은 기록이 목적이라 실패를 알려야 한다(사유 누락 400 등).
         console.error('[quote] 버전 저장 실패', e);
+        if (opts?.issue) alert('발행 기록 저장에 실패했습니다: ' + ((e as { payload?: { error?: string } }).payload?.error || (e as Error).message));
       }
 
       // ② 예식후보에도 최신값을 반영 (목록·랜딩이 이 필드를 본다)
@@ -254,6 +309,7 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
         calc_payload: JSON.stringify(inputs),
       };
       onSaved(updated);
+      return issuedRow;
     } finally {
       setSaving(false);
     }
@@ -269,6 +325,32 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
     } catch {
       alert('이 견적의 입력값을 불러올 수 없습니다.');
     }
+  }
+
+  // ── 고객 발행 ──────────────────────────────────────────────────────────────
+  // 차수는 발행된 것만 센다. 기존에 쌓인 저장본(issue_no 없음)은 전부 "계산 기록"으로 내리고
+  // 차수는 앞으로 발행하는 것부터 새로 센다(대표님 결정 2026-09-02 — 어느 게 실제로 나갔는지 지금은 알 수 없다).
+  const issued = history.filter((h) => !!h.issue_no).sort((a, b) => (a.issue_no || 0) - (b.issue_no || 0));
+  const drafts = history.filter((h) => !h.issue_no);
+  const lastIssued = issued.length ? issued[issued.length - 1] : null;
+  const nextIssueNo = (lastIssued?.issue_no || 0) + 1;
+  const previewIssue = { no: nextIssueNo, prevTotal: lastIssued?.total_amount ?? null };
+  const [issuePrompt, setIssuePrompt] = useState(false);
+  const [issueReason, setIssueReason] = useState('');
+
+  function startIssue() {
+    // 1차는 사유가 필요 없다 — 바로 발행. 2차부터 "왜 더 깎았는지"를 묻는다.
+    if (nextIssueNo === 1) { void confirmIssue(); return; }
+    setIssuePrompt(true);
+  }
+  async function confirmIssue() {
+    if (!inputs || !result || !cfg) return;
+    if (nextIssueNo >= 2 && !issueReason.trim()) return;
+    const row = await handleSave({ issue: true, reason: issueReason.trim() });
+    if (!row) return;
+    setIssuePrompt(false);
+    setIssueReason('');
+    openQuotePrint(inputs, cfg, result, { no: row.issue_no || nextIssueNo, prevTotal: lastIssued?.total_amount ?? null });
   }
 
   // ── 기준값 저장 (admin) ────────────────────────────────────────────────────
@@ -576,10 +658,46 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
         <div className="p-4">
           <style>{QUOTE_CSS}</style>
           <div className="max-w-[840px] mx-auto mb-3 flex gap-2">
-            <button onClick={() => openQuotePrint(inputs, cfg, result)} className="flex-1 bg-[#5b4a3a] text-white rounded-lg py-2 text-sm font-semibold">🖨 인쇄 / PDF 저장</button>
+            {canSave && (
+              <button onClick={startIssue} disabled={saving} className="flex-1 bg-[#c0392b] text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-50">
+                📤 {nextIssueNo}차 견적서 발행 (이력에 남김 + 인쇄)
+              </button>
+            )}
+            {/* 기록 없이 인쇄만 — 미리보기·내부 검토용. 고객에게 나가는 건 위 버튼으로 */}
+            <button onClick={() => openQuotePrint(inputs, cfg, result)} className="px-4 rounded-lg border border-gray-300 text-gray-600 text-sm">🖨 인쇄만 (기록 안 남음)</button>
             <button onClick={() => setTab('builder')} className="px-4 rounded-lg border border-gray-300 text-gray-600 text-sm">← 계산기</button>
           </div>
-          <div className="qbox" dangerouslySetInnerHTML={{ __html: buildQuoteHtml(inputs, cfg, result) }} />
+          {issuePrompt && (
+            <div className="max-w-[840px] mx-auto mb-3 border border-amber-300 bg-amber-50 rounded-lg p-3 text-sm">
+              <div className="font-semibold mb-1">
+                {nextIssueNo}차 발행 — 왜 추가 할인을 하나요?
+                {lastIssued && (
+                  <span className="font-normal text-gray-600 ml-2">
+                    ({lastIssued.issue_no}차 {won(lastIssued.total_amount)}원 → 이번 {won(result.A)}원
+                    {lastIssued.total_amount - result.A > 0 ? `, ▼${won(lastIssued.total_amount - result.A)}` : ''})
+                  </span>
+                )}
+              </div>
+              <div className="text-[11px] text-gray-500 mb-2">직원들이 이력에서 보게 됩니다. 버튼을 누르거나 직접 적으세요.</div>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {ISSUE_REASONS.map((r) => (
+                  <button key={r} onClick={() => setIssueReason(r)}
+                    className={`text-xs px-2.5 py-1 rounded border ${issueReason === r ? 'bg-[#5b4a3a] text-white border-[#5b4a3a]' : 'bg-white border-gray-300 text-gray-700'}`}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+              <input className="cin" placeholder="사유 (직접 입력 가능)" value={issueReason} onChange={(e) => setIssueReason(e.target.value)} />
+              <div className="flex gap-2 mt-2 justify-end">
+                <button onClick={() => { setIssuePrompt(false); setIssueReason(''); }} className="text-sm px-3 py-1.5 rounded border border-gray-300 text-gray-600">취소</button>
+                <button onClick={() => void confirmIssue()} disabled={!issueReason.trim() || saving} className="text-sm px-4 py-1.5 rounded bg-[#c0392b] text-white disabled:opacity-50">
+                  {saving ? '저장 중…' : `${nextIssueNo}차 발행 + 인쇄`}
+                </button>
+              </div>
+            </div>
+          )}
+          {/* 미리보기도 발행될 차수 그대로 — 2차면 '이전 제안가 → 추가 할인' 블록이 여기서 이미 보인다 */}
+          <div className="qbox" dangerouslySetInnerHTML={{ __html: buildQuoteHtml(inputs, cfg, result, previewIssue) }} />
         </div>
       )}
 
@@ -593,37 +711,84 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
               아직 저장된 견적이 없습니다. 계산기에서 저장하면 여기에 한 줄씩 쌓입니다.
             </p>
           )}
-          <ul className="space-y-2 max-w-[840px] mx-auto">
-            {history.map((v) => (
-              <li key={v.id} className="border rounded-lg p-3 bg-white">
-                <div className="flex items-baseline justify-between gap-2">
-                  <div className="flex items-baseline gap-2 min-w-0">
-                    <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-[#5b4a3a] text-white shrink-0">{v.version}차</span>
-                    <span className="text-base font-semibold tabular-nums">{won(v.total_amount)}원</span>
+          {/* 발행 이력이 위, 계산 저장본은 접어서 아래. 차수는 발행된 것만 센다 —
+              저장 버튼을 여러 번 누른 흔적이 "6차"로 보이던 문제를 이렇게 가른다. */}
+          <div className="max-w-[840px] mx-auto space-y-2">
+            {issued.length > 0 && <div className="text-xs font-semibold text-gray-500">고객 발행 이력 ({issued.length})</div>}
+            {[...issued].reverse().map((v) => {
+              const prev = issued.find((p) => p.issue_no === (v.issue_no || 0) - 1) || null;
+              const drop = prev ? prev.total_amount - v.total_amount : 0;
+              const changes = prev && cfg ? diffInputs(prev.inputs_json, v.inputs_json, cfg) : [];
+              return (
+                <div key={v.id} className="border-2 border-[#c0392b]/40 rounded-lg p-3 bg-white">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div className="flex items-baseline gap-2 min-w-0">
+                      <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-[#c0392b] text-white shrink-0">{v.issue_no}차 발행</span>
+                      <span className="text-base font-semibold tabular-nums">{won(v.total_amount)}원</span>
+                      {prev && (
+                        <span className={`text-xs font-semibold tabular-nums ${drop > 0 ? 'text-[#c0392b]' : drop < 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                          {prev.issue_no}차 대비 {drop > 0 ? `▼${won(drop)}` : drop < 0 ? `▲${won(-drop)}` : '동일'}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-400 shrink-0">
+                      {fmtDateTimeW(v.issued_at || v.created_at)} · {v.issued_by_name || v.created_by_name}
+                    </span>
                   </div>
-                  <span className="text-xs text-gray-400 shrink-0">
-                    {fmtDateTimeW(v.created_at)} · {v.created_by_name}
-                  </span>
+                  <div className="text-xs text-gray-600 mt-1">
+                    {[
+                      v.wedding_date && fmtDateW(v.wedding_date),
+                      v.guests ? `${v.guests}명` : '',
+                      v.course && `코스 ${v.course}`,
+                      v.meal_discount_rate ? `식대 -${v.meal_discount_rate}%` : '할인 없음',
+                      v.customer_type,
+                    ].filter(Boolean).join(' · ')}
+                  </div>
+                  {v.issue_reason && <div className="text-xs text-amber-800 mt-1.5">사유: {v.issue_reason}</div>}
+                  {changes.length > 0 && (
+                    <div className="text-xs text-gray-700 mt-1">바뀐 것: {changes.join(' · ')}</div>
+                  )}
+                  {v.note && <div className="text-xs text-amber-700 mt-1">※ {v.note}</div>}
+                  <button onClick={() => restoreVersion(v)} className="mt-2 text-xs px-2.5 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50">
+                    이 조건으로 계산기 열기
+                  </button>
                 </div>
-                <div className="text-xs text-gray-600 mt-1">
-                  {[
-                    v.wedding_date && fmtDateW(v.wedding_date),
-                    v.guests ? `${v.guests}명` : '',
-                    v.course && `코스 ${v.course}`,
-                    v.meal_discount_rate ? `식대 -${v.meal_discount_rate}%` : '할인 없음',
-                    v.customer_type,
-                  ].filter(Boolean).join(' · ')}
-                </div>
-                {v.note && <div className="text-xs text-amber-700 mt-1">※ {v.note}</div>}
-                <button
-                  onClick={() => restoreVersion(v)}
-                  className="mt-2 text-xs px-2.5 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
-                >
-                  이 조건으로 계산기 열기
-                </button>
-              </li>
-            ))}
-          </ul>
+              );
+            })}
+            {drafts.length > 0 && (
+              <details className="border rounded-lg bg-gray-50">
+                <summary className="cursor-pointer px-3 py-2 text-xs text-gray-500">
+                  계산 저장본 {drafts.length}건 (발행 안 됨 — 조건을 바꿔본 기록) ▸ 펼치기
+                </summary>
+                <ul className="space-y-2 p-3 pt-0">
+                  {drafts.map((v) => (
+                    <li key={v.id} className="border rounded-lg p-3 bg-white">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <div className="flex items-baseline gap-2 min-w-0">
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 shrink-0">저장 #{v.version}</span>
+                          <span className="text-sm font-semibold tabular-nums">{won(v.total_amount)}원</span>
+                        </div>
+                        <span className="text-xs text-gray-400 shrink-0">{fmtDateTimeW(v.created_at)} · {v.created_by_name}</span>
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        {[
+                          v.wedding_date && fmtDateW(v.wedding_date),
+                          v.guests ? `${v.guests}명` : '',
+                          v.course && `코스 ${v.course}`,
+                          v.meal_discount_rate ? `식대 -${v.meal_discount_rate}%` : '할인 없음',
+                          v.customer_type,
+                        ].filter(Boolean).join(' · ')}
+                      </div>
+                      {v.note && <div className="text-xs text-amber-700 mt-1">※ {v.note}</div>}
+                      <button onClick={() => restoreVersion(v)} className="mt-2 text-xs px-2.5 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50">
+                        이 조건으로 계산기 열기
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
         </div>
       )}
 
@@ -640,7 +805,7 @@ export default function WeddingMarginModal({ inquiry, idx, groom, bride, source,
           </span>
           <button onClick={onClose} className="text-sm px-3 py-1.5 rounded border border-gray-300 text-gray-600">닫기</button>
           {canSave && (
-            <button onClick={handleSave} disabled={saving} className="text-sm px-4 py-1.5 rounded bg-blue-600 text-white disabled:opacity-50">{saving ? '저장 중…' : '예식후보에 저장'}</button>
+            <button onClick={() => void handleSave()} disabled={saving} className="text-sm px-4 py-1.5 rounded bg-blue-600 text-white disabled:opacity-50">{saving ? '저장 중…' : '예식후보에 저장'}</button>
           )}
         </div>
       )}
