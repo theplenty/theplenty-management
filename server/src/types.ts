@@ -75,17 +75,19 @@ export type MiceCategory = '기업' | '학회' | '공공기관' | '학교' | '�
  * 옛 값 단순문의·INQ·TEN 은 '문의' 로 합쳤다 — INQ 는 원래 '가예약' 뜻으로 만들었지만
  * 실제로는 세일즈팀이 '보류' 로 써 왔고, 진짜 가예약은 행사(Event) 상태 쪽에 있다.
  */
-export type MiceInquiryStatus = '문의' | '입금확인중' | 'DEF' | 'LOS';
+export type MiceInquiryStatus = '문의' | '입금확인중' | 'DEF' | 'LOS' | 'DB수집';
 
-/** 옛 값 → 3분류. 저장 경로에 걸어두면 아직 안 옮겨진 문서도 다음 저장에 스스로 정리된다. */
+/** 옛 값 → 3분류. 저장 경로에 걸어두면 아직 안 옮겨진 문서도 다음 저장에 스스로 정리된다.
+ *  'DB수집' 은 통화 없이 DB 만 모은 건(채널 'DB' 와 항상 같이 다닌다) — 2026-09-11 추가. */
 export function normalizeMiceStatus(s: string | null | undefined): MiceInquiryStatus {
-  return s === 'DEF' ? 'DEF' : s === 'LOS' ? 'LOS' : s === '입금확인중' ? '입금확인중' : '문의';
+  return s === 'DEF' ? 'DEF' : s === 'LOS' ? 'LOS' : s === '입금확인중' ? '입금확인중' : s === 'DB수집' ? 'DB수집' : '문의';
 }
 
 /** 3분류 집계용 그룹 — 입금확인중은 아직 확정 전이라 진행 중(문의 계열)으로 묶는다. */
 export function miceStatusGroup(s: string | null | undefined): '문의' | 'DEF' | 'LOS' {
   const n = normalizeMiceStatus(s);
-  return n === '입금확인중' ? '문의' : n;
+  // DB수집 은 집계 대상이 아니라 그룹이 따로 없다 — 집계 쪽은 isDbCollect() 로 먼저 걸러내고, 여기서는 문의 계열로 접는다.
+  return n === '입금확인중' || n === 'DB수집' ? '문의' : n;
 }
 
 // 한 문의 내 담당자 (이름/이메일/연락처 한 묶음). 다수 담당자 지원.
@@ -98,7 +100,8 @@ export interface MiceContact {
 
 // 인콜(고객이 먼저 문의) vs 아웃콜(우리가 먼저 영업) — 영업 액션 추적용.
 // 기존 데이터는 마이그레이션에서 'INCALL' 로 일괄 채움.
-export type MiceInquiryChannel = 'INCALL' | 'OUTCALL';
+// 'DB' = 통화 없이 DB 수집만 한 건 (2026-09-11). 진행상황 'DB수집' 과 한 쌍 — 저장 시 서로 맞춘다.
+export type MiceInquiryChannel = 'INCALL' | 'OUTCALL' | 'DB';
 
 export interface MiceInquiry {
   id: string;

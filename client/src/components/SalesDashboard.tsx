@@ -109,6 +109,11 @@ export default function SalesDashboard({
     () => computeMiceChannelMetrics(miceFlat, 'OUTCALL', range, managerId || null),
     [miceFlat, range, managerId]
   );
+  // DB 수집 — 통화가 아니라 인콜/아웃콜 어느 쪽에도 안 들어간다. 건수만 따로 보여준다 (2026-09-11)
+  const miceFilteredDb = useMemo(
+    () => computeMiceChannelMetrics(miceFlat, 'DB', range, managerId || null),
+    [miceFlat, range, managerId]
+  );
 
   // 미처리 인콜 리스트 — 전체 데이터 기준 (기간 무관, 누적된 방치 건)
   const stale3 = useMemo(() => findStaleIncalls(miceFlat, 3), [miceFlat]);
@@ -134,7 +139,7 @@ export default function SalesDashboard({
 
   // ===== 드릴다운 열기 헬퍼 =====
   function openMiceDrill(
-    channel: 'INCALL' | 'OUTCALL' | null,
+    channel: 'INCALL' | 'OUTCALL' | 'DB' | null,
     statusGroup: MiceStatusGroup,
     title: string
   ) {
@@ -188,7 +193,7 @@ export default function SalesDashboard({
         </header>
 
         {/* 상단 KPI 카드 — 기간 필터 반영 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 mb-5">
           <KpiCard
             label={`${periodLabel} 인콜`}
             value={miceFilteredIncall.total}
@@ -200,6 +205,13 @@ export default function SalesDashboard({
             value={miceFilteredOutcall.total}
             accent="purple"
             onClick={() => openMiceDrill('OUTCALL', 'all', `${periodLabel} MICE 아웃콜 (${miceFilteredOutcall.total}건)`)}
+          />
+          <KpiCard
+            label={`${periodLabel} DB 수집`}
+            value={miceFilteredDb.total}
+            accent="gray"
+            sub="통화 아님 · 인콜/아웃콜 집계 제외"
+            onClick={() => openMiceDrill('DB', 'all', `${periodLabel} DB 수집 (${miceFilteredDb.total}건)`)}
           />
           <KpiCard
             label="미처리 인콜 (3일+)"
@@ -536,10 +548,12 @@ function MiceDrillTable({
                     'badge text-[10px] ' +
                     (it.inquiry.inquiry_channel === 'INCALL'
                       ? 'bg-blue-100 text-blue-800'
-                      : 'bg-purple-100 text-purple-800')
+                      : it.inquiry.inquiry_channel === 'DB'
+                        ? 'bg-slate-100 text-slate-700'
+                        : 'bg-purple-100 text-purple-800')
                   }
                 >
-                  {it.inquiry.inquiry_channel === 'INCALL' ? '📞 인콜' : '📤 아웃콜'}
+                  {it.inquiry.inquiry_channel === 'INCALL' ? '📞 인콜' : it.inquiry.inquiry_channel === 'DB' ? '🗂 DB' : '📤 아웃콜'}
                 </span>
               </td>
               <td className="px-3 py-2">

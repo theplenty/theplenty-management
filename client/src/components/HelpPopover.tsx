@@ -106,7 +106,8 @@ export default function HelpPopover() {
                   상담취소 가능)
                 </div>
                 <div>
-                  <b>INCALL</b> 📞 고객이 우리에게 / <b>OUTCALL</b> 📤 우리가 고객에게
+                  <b>INCALL</b> 📞 고객이 우리에게 / <b>OUTCALL</b> 📤 우리가 고객에게 /{' '}
+                  <b>DB 수집</b> 🗂 통화 없이 DB만 확보 (인콜·아웃콜 집계 제외)
                 </div>
               </div>
             </Section>

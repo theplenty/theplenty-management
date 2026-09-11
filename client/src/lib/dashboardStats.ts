@@ -4,6 +4,7 @@
 import {
   MICE_INQUIRY_STATUS_OPTIONS,
   miceStatusGroup,
+  isDbCollect,
   WEDDING_PROGRESS_OPTIONS,
   type EventStatus,
   type EventWithFood,
@@ -103,6 +104,7 @@ export function flattenMiceInflows(customers: MiceCustomer[]): MiceInflowRow[] {
   const rows: MiceInflowRow[] = [];
   for (const c of customers) {
     for (const inq of c.inquiries) {
+      if (isDbCollect(inq)) continue; // DB 수집 건은 통화가 아니라 신규 유입으로 세지 않는다
       const firstContact = inq.contacts[0];
       rows.push({
         customer_id: c.id,
@@ -157,6 +159,7 @@ export function miceInflowSummary(
 
   for (const c of customers) {
     for (const inq of c.inquiries) {
+      if (isDbCollect(inq)) continue; // DB 수집 제외 (flattenMiceInflows 와 같은 기준)
       const ts = miceInflowDate(inq);
       if (inRange(ts, tBound)) today++;
       if (inRange(ts, wBound)) {

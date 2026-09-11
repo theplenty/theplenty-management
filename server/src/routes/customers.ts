@@ -4,7 +4,7 @@ import { store, persistDoc, softDelete, activeRows, isDeleted } from '../store/m
 import { requireActiveRole } from '../middleware/auth.js';
 import { logChange, computeDiff, getLogsForEntity } from '../store/changeLog.js';
 import { normalizeOrgName, levenshtein } from '../lib/textNormalize.js';
-import { shiftDate } from '../lib/kstDate.js';
+import { shiftDate, todayKst } from '../lib/kstDate.js';
 import { normalizeMiceStatus } from '../types.js';
 import {
   linkInquiryToEvent,
@@ -337,9 +337,11 @@ function normalizeContacts(input: unknown): MiceContact[] {
 // MICE 고객 중 다수가 문의 0건이라, 고객정보 수정 모달이 열릴 때 빈 문의 카드가 자동 추가된다.
 // 그 placeholder 가 저장되면 created_at=now 로 잡혀 대시보드 신규유입에 잘못 집계되므로 저장 단계에서 제거한다.
 // 담당자/통화일자/문의행사일이 모두 없고 진행상황·채널이 기본값(문의/INCALL)이면 사용자가 실제로 입력하지 않은 빈 카드로 본다.
+// 통화일자는 2026-09-11 부터 카드가 생길 때 오늘 날짜로 자동 채워지므로, 카드 생성일과 같은 날짜는 '입력 안 함' 으로 본다.
 function isBlankMiceInquiry(inq: MiceInquiry): boolean {
   const hasContact = inq.contacts.length > 0;
-  const hasCall = !!inq.call_date;
+  const createdDay = inq.created_at ? todayKst(new Date(inq.created_at)) : '';
+  const hasCall = !!inq.call_date && inq.call_date !== createdDay;
   const hasDateText = !!(inq.inquiry_event_date_text && inq.inquiry_event_date_text.trim());
   const nonDefaultStatus = inq.progress_status !== '문의';
   const nonDefaultChannel = inq.inquiry_channel !== 'INCALL';
@@ -375,12 +377,18 @@ function normalizeMiceInquiries(
       const createdById = o.created_by_id || fallbackUserId;
       const createdByName = o.created_by_name || fallbackUserName;
       // 유입 채널 — 없으면 'INCALL' 로 기본값 (기존 데이터 호환)
-      const channel: MiceInquiry['inquiry_channel'] =
-        o.inquiry_channel === 'OUTCALL' ? 'OUTCALL' : 'INCALL';
+      // DB 수집 건은 채널 'DB' 와 진행상황 'DB수집' 이 한 쌍 — 어느 한쪽만 와도 둘 다 맞춰 저장한다.
+      let status = normalizeMiceStatus(o.progress_status);
+      let channel: MiceInquiry['inquiry_channel'] =
+        o.inquiry_channel === 'OUTCALL' ? 'OUTCALL' : o.inquiry_channel === 'DB' ? 'DB' : 'INCALL';
+      if (channel === 'DB' || status === 'DB수집') {
+        channel = 'DB';
+        status = 'DB수집';
+      }
       return {
         id: o.id || nanoid(10),
         // 옛 값(단순문의·INQ·TEN)이 들어와도 3분류로 접어서 저장한다
-        progress_status: normalizeMiceStatus(o.progress_status),
+        progress_status: status,
         inquiry_channel: channel,
         contacts,
         call_date: o.call_date ?? null,

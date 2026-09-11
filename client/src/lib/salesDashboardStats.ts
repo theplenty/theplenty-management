@@ -6,7 +6,7 @@
 //   - "단순문의" 상태를 "미처리" 로 간주
 
 import { todayKst } from './dateFmt';
-import { normalizeMiceStatus, miceStatusGroup } from '../types';
+import { normalizeMiceStatus, miceStatusGroup, isDbCollect } from '../types';
 import type {
   MiceCustomer,
   MiceInquiry,
@@ -100,7 +100,7 @@ export interface MiceChannelMetrics {
 
 export function computeMiceChannelMetrics(
   flat: InquiryWithCustomer[],
-  channel: 'INCALL' | 'OUTCALL',
+  channel: 'INCALL' | 'OUTCALL' | 'DB',
   range: DateRange | null,
   managerId: string | null
 ): MiceChannelMetrics {
@@ -167,7 +167,7 @@ export interface ManagerConversion {
 }
 export function computeManagerConversionRates(
   flat: InquiryWithCustomer[],
-  channel: 'INCALL' | 'OUTCALL' | null
+  channel: 'INCALL' | 'OUTCALL' | 'DB' | null
 ): ManagerConversion[] {
   const byManager = new Map<string, { id: string; name: string; total: number; converted: number }>();
   for (const f of flat) {
@@ -300,7 +300,7 @@ export type MiceStatusGroup =
 
 export function filterMiceForDrill(
   flat: InquiryWithCustomer[],
-  channel: 'INCALL' | 'OUTCALL' | null,
+  channel: 'INCALL' | 'OUTCALL' | 'DB' | null,
   statusGroup: MiceStatusGroup,
   range: DateRange | null,
   managerId: string | null
@@ -419,7 +419,7 @@ export function computeMiceMonthlyTable(customers: MiceCustomer[], year: number)
   for (const c of customers) {
     if (c.deleted_at) continue;
     for (const q of c.inquiries || []) {
-      if (q.inquiry_channel === 'OUTCALL') continue;
+      if (q.inquiry_channel === 'OUTCALL' || isDbCollect(q)) continue; // 인콜만 — DB 수집은 통화가 아님
       // 귀속월 = 통화일 우선, 없으면 등록일
       const base = (q.call_date || q.created_at || '').slice(0, 10);
       if (!base.startsWith(String(year))) continue;

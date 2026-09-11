@@ -52,23 +52,25 @@ export type MiceCategory = '기업' | '학회' | '공공기관' | '학교' | '�
  * 어디까지 갔는지(견적서·계약서·회신·계약금)는 체크 4종이 문의 건별로 따로 들고 있다.
  * 코드값 DEF/LOS 는 행사 상태와 맞추려 그대로 두고, 화면에는 확정/취소로 보인다.
  */
-export type MiceInquiryStatus = '문의' | '입금확인중' | 'DEF' | 'LOS';
+export type MiceInquiryStatus = '문의' | '입금확인중' | 'DEF' | 'LOS' | 'DB수집';
 
-/** 옛 값(단순문의·INQ·TEN) → 3분류. 아직 안 옮겨진 데이터도 화면에서 바로 읽히게 한다. */
+/** 옛 값(단순문의·INQ·TEN) → 3분류. 아직 안 옮겨진 데이터도 화면에서 바로 읽히게 한다.
+ *  'DB수집' 은 통화 없이 DB 만 모은 건 — 문의가 아니라서 인콜/아웃콜·신규유입 집계에서 뺀다 (2026-09-11). */
 export function normalizeMiceStatus(s: string | null | undefined): MiceInquiryStatus {
-  return s === 'DEF' ? 'DEF' : s === 'LOS' ? 'LOS' : s === '입금확인중' ? '입금확인중' : '문의';
+  return s === 'DEF' ? 'DEF' : s === 'LOS' ? 'LOS' : s === '입금확인중' ? '입금확인중' : s === 'DB수집' ? 'DB수집' : '문의';
 }
 
 /** 3분류 집계용 그룹 — 입금확인중은 아직 확정 전(입금 미확인)이라 진행 중(문의 계열)으로 묶는다. */
 export function miceStatusGroup(s: string | null | undefined): '문의' | 'DEF' | 'LOS' {
   const n = normalizeMiceStatus(s);
-  return n === '입금확인중' ? '문의' : n;
+  // DB수집 은 집계 대상이 아니라 그룹이 따로 없다 — 집계 쪽은 isDbCollect() 로 먼저 걸러내고, 여기서는 문의 계열로 접는다.
+  return n === '입금확인중' || n === 'DB수집' ? '문의' : n;
 }
 
 /** 화면에 쓰는 한글 라벨 */
 export function miceStatusLabel(s: string | null | undefined): string {
   const n = normalizeMiceStatus(s);
-  return n === 'DEF' ? '확정' : n === 'LOS' ? '취소' : n === '입금확인중' ? '입금확인중' : '문의';
+  return n === 'DEF' ? '확정' : n === 'LOS' ? '취소' : n === '입금확인중' ? '입금확인중' : n === 'DB수집' ? 'DB수집' : '문의';
 }
 
 export interface MiceContact {
@@ -78,12 +80,18 @@ export interface MiceContact {
   phone: string;
 }
 
-// 유입 채널 — 인콜(고객이 먼저 문의) vs 아웃콜(우리가 먼저 제안)
-export type MiceInquiryChannel = 'INCALL' | 'OUTCALL';
+// 유입 채널 — 인콜(고객이 먼저 문의) vs 아웃콜(우리가 먼저 제안) vs DB(통화 없이 DB 수집만)
+// DB 는 통화가 아니라서 인콜/아웃콜 대시보드에 안 잡히고, 진행상황은 항상 'DB수집' 으로 고정된다.
+export type MiceInquiryChannel = 'INCALL' | 'OUTCALL' | 'DB';
 export const MICE_INQUIRY_CHANNEL_LABEL: Record<MiceInquiryChannel, string> = {
   INCALL: '인콜 (고객 문의)',
   OUTCALL: '아웃콜 (영업 제안)',
+  DB: 'DB 수집 (통화 아님)',
 };
+/** DB 수집 건인가 — 채널과 진행상황 어느 쪽으로 저장돼 있어도 같은 답이 나오게 둘 다 본다. */
+export function isDbCollect(inq: { inquiry_channel?: string | null; progress_status?: string | null }): boolean {
+  return inq.inquiry_channel === 'DB' || inq.progress_status === 'DB수집';
+}
 
 export interface MiceInquiry {
   id: string;
@@ -354,6 +362,7 @@ export const MICE_INQUIRY_STATUS_DESC: Record<MiceInquiryStatus, string> = {
   입금확인중: '입금확인중 — 계약서 날인 완료, 계약금 입금 확인 대기',
   DEF: '확정 — 계약서 및 계약금 납부 완료',
   LOS: '취소 — 진행하다 드랍됨',
+  DB수집: 'DB수집 — 통화 없이 DB 만 확보 (인콜/아웃콜 집계 제외)',
 };
 
 // WEDDING 진행단계 (TEN 은 2026-08-25 폐기 — INQ 로 흡수)

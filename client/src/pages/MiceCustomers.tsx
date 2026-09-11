@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { weekdayKoOf } from '../lib/dateFmt';
+import { weekdayKoOf, todayKst } from '../lib/dateFmt';
 import { api } from '../lib/api';
 import { fuzzyMatch, buildSearchEntry, fuzzyMatchEntry, type SearchEntry } from '../lib/koreanSearch';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
@@ -21,6 +21,7 @@ import {
   type MiceCustomer,
   type MiceInquiry,
   type MiceInquiryStatus,
+  isDbCollect,
 } from '../types';
 import Modal from '../components/Modal';
 import InquiryEventLinkModal from '../components/InquiryEventLinkModal';
@@ -201,9 +202,10 @@ function emptyInquiry(authorId: string, authorName: string): MiceInquiry {
   return {
     id: nanoid(),
     progress_status: '문의',
-    inquiry_channel: 'INCALL', // 신규 문의 기본값 — 사용자가 OUTCALL 로 변경 가능
+    inquiry_channel: 'INCALL', // 신규 문의 기본값 — 사용자가 OUTCALL / DB 수집으로 변경 가능
     contacts: [emptyContact()],
-    call_date: null,
+    // 통화일자 = 오늘 (2026-09-11 대표님 요청). 서버는 생성일과 같은 날짜를 '미입력' 으로 봐서 빈 카드 판정에 안 쓴다.
+    call_date: todayKst(),
     inquiry_event_date_text: '',
     created_by_id: authorId,
     created_by_name: authorName,
@@ -1068,7 +1070,9 @@ export default function MiceCustomers() {
                           ? 'bg-green-200 text-green-900'
                           : inq.progress_status === 'LOS'
                             ? 'bg-red-200 text-red-900'
-                            : 'bg-gray-100 text-gray-600'
+                            : isDbCollect(inq)
+                              ? 'bg-slate-200 text-slate-700'
+                              : 'bg-gray-100 text-gray-600'
                       }`}
                     >
                       {miceStatusLabel(inq.progress_status)}
@@ -1094,12 +1098,13 @@ export default function MiceCustomers() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Field label="유입 채널" required>
-                    <div className="flex gap-3 mt-1 text-sm">
-                      <label className="flex items-center gap-1.5 cursor-pointer">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm">
+                      <label className={`flex items-center gap-1.5 ${isDbCollect(inq) ? 'opacity-40' : 'cursor-pointer'}`}>
                         <input
                           type="radio"
                           name={`channel-${inq.id}`}
                           value="INCALL"
+                          disabled={isDbCollect(inq)}
                           checked={inq.inquiry_channel === 'INCALL'}
                           onChange={() =>
                             updateInquiry(inq.id, { inquiry_channel: 'INCALL' })
@@ -1107,11 +1112,12 @@ export default function MiceCustomers() {
                         />
                         <span>📞 인콜 <span className="text-xs text-gray-500">(고객 문의)</span></span>
                       </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer">
+                      <label className={`flex items-center gap-1.5 ${isDbCollect(inq) ? 'opacity-40' : 'cursor-pointer'}`}>
                         <input
                           type="radio"
                           name={`channel-${inq.id}`}
                           value="OUTCALL"
+                          disabled={isDbCollect(inq)}
                           checked={inq.inquiry_channel === 'OUTCALL'}
                           onChange={() =>
                             updateInquiry(inq.id, { inquiry_channel: 'OUTCALL' })
@@ -1119,19 +1125,42 @@ export default function MiceCustomers() {
                         />
                         <span>📤 아웃콜 <span className="text-xs text-gray-500">(영업 제안)</span></span>
                       </label>
+                      {/* DB 수집 — 통화가 아니라 인콜/아웃콜 어느 쪽도 아니다. 체크하면 채널 DB + 진행상황 'DB수집' 으로
+                          고정되고 대시보드 인콜/아웃콜·신규유입 집계에서 빠진다. (2026-09-11 대표님 요청) */}
+                      <label
+                        className="flex items-center gap-1.5 cursor-pointer border-l pl-3 ml-1"
+                        title="통화 없이 DB만 확보한 건. 인콜/아웃콜 집계에 들어가지 않습니다."
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isDbCollect(inq)}
+                          onChange={(e) =>
+                            updateInquiry(
+                              inq.id,
+                              e.target.checked
+                                ? { inquiry_channel: 'DB', progress_status: 'DB수집' }
+                                : { inquiry_channel: 'INCALL', progress_status: '문의' }
+                            )
+                          }
+                        />
+                        <span>🗂 DB 수집 <span className="text-xs text-gray-500">(통화 아님)</span></span>
+                      </label>
                     </div>
                   </Field>
                   <Field label="진행상황" required>
+                    {/* DB 수집 건은 진행상황이 'DB수집' 으로 자동 고정 — 풀려면 위 체크박스를 해제 */}
                     <select
                       className="input"
                       value={inq.progress_status}
+                      disabled={isDbCollect(inq)}
+                      title={isDbCollect(inq) ? 'DB 수집 체크를 해제하면 진행상황을 고를 수 있습니다' : undefined}
                       onChange={(e) =>
                         updateInquiry(inq.id, {
                           progress_status: e.target.value as MiceInquiryStatus,
                         })
                       }
                     >
-                      {MICE_INQUIRY_STATUS_OPTIONS.map((s) => (
+                      {(isDbCollect(inq) ? (['DB수집'] as MiceInquiryStatus[]) : MICE_INQUIRY_STATUS_OPTIONS).map((s) => (
                         <option key={s} value={s}>
                           {MICE_INQUIRY_STATUS_DESC[s]}
                         </option>
@@ -1204,7 +1233,7 @@ export default function MiceCustomers() {
                       ))}
                     </select>
                   </Field>
-                  <Field label="통화일자">
+                  <Field label="통화일자 / DB입력일">
                     <input
                       type="date"
                       className="input"
