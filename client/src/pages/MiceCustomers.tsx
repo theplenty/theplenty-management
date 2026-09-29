@@ -404,6 +404,12 @@ export default function MiceCustomers() {
       .slice(0, 5);
   }, [items, form.organization_name, editingId]);
 
+  // 서버에 저장된 문의 id — 방금 추가해 아직 저장 안 된 문의는 행사 연결 API 가 404 를 낸다.
+  const savedInquiryIds = useMemo(() => {
+    const c = editingId ? items.find((x) => x.id === editingId) : null;
+    return new Set((c?.inquiries || []).map((q) => q.id));
+  }, [items, editingId]);
+
   function openNew() {
     setEditingId(null);
     setForm(emptyForm(authorId, authorName));
@@ -1305,12 +1311,21 @@ export default function MiceCustomers() {
                       <button
                         type="button"
                         className="btn-xs"
-                        disabled={!editingId}
-                        title={editingId ? '이 문의가 성사된 행사를 연결' : '고객을 먼저 저장하면 연결할 수 있습니다'}
+                        disabled={!editingId || !savedInquiryIds.has(inq.id)}
+                        title={
+                          !editingId
+                            ? '고객을 먼저 저장하면 연결할 수 있습니다'
+                            : !savedInquiryIds.has(inq.id)
+                              ? '새로 추가한 문의입니다 — 아래 [저장] 을 먼저 누르면 연결할 수 있습니다'
+                              : '이 문의가 성사된 행사를 연결'
+                        }
                         onClick={() => setLinkFor({ inquiry: inq, no: idx + 1 })}
                       >
                         {inq.linked_event_id ? '🔗 연결된 행사 보기' : '🔗 행사 연결'}
                       </button>
+                      {editingId && !savedInquiryIds.has(inq.id) && (
+                        <span className="text-xs text-amber-700">저장 후 연결 가능</span>
+                      )}
                       {inq.linked_event_id ? (
                         <Link
                           to={`/calendar?event=${inq.linked_event_id}`}
