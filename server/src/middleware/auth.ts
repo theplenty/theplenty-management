@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { nanoid } from 'nanoid';
-import { store, persistDoc, ensureHydrated } from '../store/mockStore.js';
+import { store, persistDoc, ensureHydrated, refreshUsersByEmail } from '../store/mockStore.js';
 import { DEFAULT_TENANT_ID } from '../types.js';
 import type { Role, User } from '../types.js';
 
@@ -50,13 +50,38 @@ async function verifyFirebaseIdToken(token: string): Promise<CachedToken | null>
   }
 }
 
+// 같은 이메일 문서가 둘 이상일 때(인스턴스 간 경합으로 pending 이 중복 생성된 경우)
+// 관리자가 손댄 쪽을 고른다: pending 은 항상 후순위, 나머지 중에서는 disabled 가 우선(차단이 이긴다).
+function pickUserByEmail(email: string): User | undefined {
+  const key = email.toLowerCase();
+  const matches = store.users.filter((u) => u.email.toLowerCase() === key);
+  if (matches.length <= 1) return matches[0];
+  const rank = (u: User) => (u.role === 'disabled' ? 0 : u.role === 'pending' ? 2 : 1);
+  return [...matches].sort((a, b) => rank(a) - rank(b))[0];
+}
+
+// 인스턴스 메모리의 사용자 정보가 낡았을 수 있어 Firestore 에서 다시 읽는 주기.
+// 접근 권한이 없는(없음/pending/disabled) 사용자는 권한 부여를 바로 반영하려고 짧게 잡는다.
+const USER_REFRESH_TTL_MS = 5 * 60 * 1000;
+const USER_REFRESH_INACTIVE_MS = 5 * 1000;
+const userRefreshedAt = new Map<string, number>();
+
 // 이메일로 User 조회 → 없으면 자동 생성 (pending 또는 admin if SUPER_ADMIN_EMAIL 일치).
-function findOrCreateUserByEmail(
+export async function findOrCreateUserByEmail(
   email: string,
   name?: string,
-  picture?: string
-): User {
-  let user = store.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  picture?: string,
+  opts?: { forceRefresh?: boolean }
+): Promise<User> {
+  let user = pickUserByEmail(email);
+  const key = email.toLowerCase();
+  const age = Date.now() - (userRefreshedAt.get(key) ?? 0);
+  const inactive = !user || user.role === 'pending' || user.role === 'disabled';
+  if (opts?.forceRefresh || age > USER_REFRESH_TTL_MS || (inactive && age > USER_REFRESH_INACTIVE_MS)) {
+    userRefreshedAt.set(key, Date.now());
+    await refreshUsersByEmail(email);
+    user = pickUserByEmail(email);
+  }
   if (user) {
     let dirty = false;
     if (name && !user.name) {
@@ -115,7 +140,7 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
     const token = authHeader.slice(7);
     const verified = await verifyFirebaseIdToken(token);
     if (verified) {
-      req.user = findOrCreateUserByEmail(verified.email, verified.name, verified.picture);
+      req.user = await findOrCreateUserByEmail(verified.email, verified.name, verified.picture);
       return next();
     }
     // 잘못된 토큰이면 401 반환은 안 하고, 단지 user를 채우지 않음.

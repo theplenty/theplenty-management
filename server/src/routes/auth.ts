@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { store, persistDoc } from '../store/mockStore.js';
-import { requireUser } from '../middleware/auth.js';
+import { requireUser, findOrCreateUserByEmail } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -25,39 +25,13 @@ router.post('/login', async (req, res) => {
       const decoded = await firebaseAuth.verifyIdToken(body.idToken);
       const email = decoded.email;
       if (!email) return res.status(400).json({ error: 'no_email_in_token' });
-      let user = store.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-      const now = new Date().toISOString();
-      if (!user) {
-        const isSuperAdmin =
-          !!process.env.SUPER_ADMIN_EMAIL &&
-          email.toLowerCase() === process.env.SUPER_ADMIN_EMAIL.toLowerCase();
-        user = {
-          id: nanoid(10),
-          email,
-          name: (decoded.name as string | undefined) || email.split('@')[0],
-          picture: (decoded.picture as string | undefined) || null,
-          role: isSuperAdmin ? 'admin' : 'pending',
-          team: isSuperAdmin ? 'admin' : null,
-          created_at: now,
-          updated_at: now,
-        };
-        store.users.push(user);
-        persistDoc('users', user.id);
-      } else {
-        let dirty = false;
-        if (decoded.name && !user.name) {
-          user.name = decoded.name as string;
-          dirty = true;
-        }
-        if (decoded.picture && !user.picture) {
-          user.picture = decoded.picture as string;
-          dirty = true;
-        }
-        if (dirty) {
-          user.updated_at = now;
-          persistDoc('users', user.id);
-        }
-      }
+      // 로그인 시점에는 항상 Firestore 에서 다시 읽는다 — 다른 인스턴스에서 바뀐 권한 즉시 반영
+      const user = await findOrCreateUserByEmail(
+        email,
+        decoded.name as string | undefined,
+        decoded.picture as string | undefined,
+        { forceRefresh: true }
+      );
       // 쿠키도 함께 발급해서 dev 환경의 fetch 호환 보존
       // 세션 쿠키 — maxAge 미지정 → 브라우저(또는 탭)를 닫으면 자동 만료.
       // 새로고침은 유지되지만 인터넷 창을 끄면 로그인이 풀리는 것이 의도된 동작.

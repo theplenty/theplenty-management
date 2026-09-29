@@ -333,6 +333,29 @@ async function fsDelete<K extends keyof DB>(coll: K, docId: string) {
   }
 }
 
+// 사용자 1명만 Firestore 에서 다시 읽어 메모리에 반영한다.
+// hydrate 는 인스턴스 부팅 때 1회뿐이라, 다른 인스턴스에서 바꾼 권한이 이 인스턴스 메모리에는 없다.
+// (관리자가 권한을 줬는데 당사자는 계속 '대기 중' 으로 보이던 원인)
+export async function refreshUsersByEmail(email: string): Promise<void> {
+  const backend = (process.env.STORE_BACKEND || 'json').toLowerCase();
+  if (backend !== 'firestore') return; // JSON / dual 은 로컬 파일이 기준
+  try {
+    const { firestore } = await getFirestore();
+    const candidates = Array.from(new Set([email, email.toLowerCase()]));
+    const snap = await firestore.collection('users').where('email', 'in', candidates).get();
+    for (const d of snap.docs) {
+      const fresh = d.data() as User;
+      if (!fresh?.id) continue;
+      const cur = db.users.find((u) => u.id === fresh.id);
+      // in-place 갱신 — req.user 등이 객체 reference 를 들고 있을 수 있다
+      if (cur) Object.assign(cur, fresh);
+      else db.users.push(fresh);
+    }
+  } catch (e) {
+    console.error('[mockStore] 사용자 재조회 실패:', (e as Error).message);
+  }
+}
+
 // ===================================================================
 // 디바운스 + 영속화 (JSON + Firestore)
 // ===================================================================
