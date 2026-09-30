@@ -149,12 +149,12 @@ export default function GlobalSearch() {
         type="button"
         onClick={() => setOpen(true)}
         className="flex items-center gap-2 px-3 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-500 text-sm h-9 w-full md:w-72"
-        title="전체 검색 (Ctrl+K)"
+        title="고객·행사 찾기 — 이름·전화·이메일·업체·행사명으로 해당 화면으로 바로 이동 (Ctrl+K)"
       >
         <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
         </svg>
-        <span className="truncate">전체 검색…</span>
+        <span className="truncate">👤 고객·행사 찾기…</span>
         <kbd className="hidden md:inline ml-auto text-[10px] bg-gray-100 border border-gray-300 rounded px-1 text-gray-500">
           Ctrl K
         </kbd>
@@ -180,7 +180,7 @@ export default function GlobalSearch() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={onInputKey}
-                placeholder="이름 · 전화 · 이메일 · 업체 · 행사명…"
+                placeholder="고객 이름 · 전화 · 이메일 · 업체명 · 행사명 — 찾아서 바로 이동"
                 className="flex-1 text-base outline-none placeholder:text-gray-400 min-w-0"
                 autoFocus
                 autoComplete="off"

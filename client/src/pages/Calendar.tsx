@@ -552,7 +552,12 @@ export default function Calendar() {
       {/* 상태별 체크박스 + MICE/WEDDING 드롭다운 */}
       <div className="bg-white border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3 text-xs">
         {/* 검색 — 한 줄 전체. 월 화면과 무관하게 모든 연도에서 찾고, 결과는 아래에 목록으로 나온다. */}
-        <div className="basis-full relative">
+        <div className="basis-full flex flex-wrap md:flex-nowrap items-stretch gap-2">
+          {/* 범위 라벨 — 상단 헤더의 '고객·행사 찾기' 와 다른 검색임을 이름으로 보여준다 */}
+          <span className="basis-full md:basis-auto shrink-0 flex items-center gap-1 px-3 py-1 md:py-0 rounded border border-blue-200 bg-blue-50 text-blue-800 text-xs font-semibold">
+            📅 캘린더 검색
+          </span>
+          <div className="relative flex-1 min-w-0">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">
             🔍
           </span>
@@ -563,8 +568,8 @@ export default function Calendar() {
             onKeyDown={(e) => {
               if (e.key === 'Escape') setQuery('');
             }}
-            placeholder="행사명 · 담당자 · 홀 · 메모로 검색 — 모든 연도(2025·2026·2027…)에서 찾습니다"
-            aria-label="행사 검색 (전체 기간)"
+            placeholder="행사명 · 담당자 · 홀 · 메모 — 등록된 모든 연도의 행사·상담을 한 번에 찾습니다"
+            aria-label="캘린더 검색 (등록된 모든 연도)"
             className="input !pl-9 !pr-24 !py-2 !text-sm w-full"
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
@@ -579,6 +584,13 @@ export default function Calendar() {
             ) : (
               <span className="text-[11px] text-gray-400 hidden md:inline">초성 'ㅇ' 도 가능</span>
             )}
+          </span>
+          </div>
+          <span
+            className="hidden lg:flex items-center text-[11px] text-gray-400 shrink-0"
+            title="상단 헤더의 검색은 고객(이름·전화·이메일·업체)을 찾아 그 화면으로 이동합니다"
+          >
+            고객 정보는 상단 <b className="mx-1 text-gray-500">고객·행사 찾기</b> 에서
           </span>
         </div>
         {/* ALL 토글 — 한 번 누르면 전체 체크/해제 (상담 포함). 현재 상태에 따라 동작 결정. */}
@@ -999,7 +1011,7 @@ function SearchResultsPanel({
           🔍 &lsquo;{query}&rsquo; 검색 결과 <span className="text-blue-700">{hits.length}건</span>
         </div>
         <div className="text-xs text-gray-500">
-          {yearLabel ? `${yearLabel} · ` : ''}모든 연도를 한 번에 찾았습니다
+          {yearLabel ? `${yearLabel} · ` : ''}등록된 모든 연도를 한 번에 찾았습니다
         </div>
         {filtersNarrowed && (
           <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
@@ -1015,7 +1027,9 @@ function SearchResultsPanel({
         <div className="px-4 py-10 text-center text-sm text-gray-500">
           &lsquo;{query}&rsquo; 에 해당하는 행사·상담이 없습니다.
           <div className="text-xs text-gray-400 mt-1">
-            모든 연도를 검색했습니다. 띄어쓰기를 빼거나 초성(예: ㄷㅎ)으로 다시 찾아보세요.
+            등록된 모든 연도를 검색했습니다. 띄어쓰기를 빼거나 초성(예: ㄷㅎ)으로 다시 찾아보세요.
+            <br />
+            고객 이름·전화번호는 상단 <b>고객·행사 찾기</b> 에서 찾습니다.
           </div>
         </div>
       ) : (
