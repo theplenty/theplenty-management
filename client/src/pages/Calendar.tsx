@@ -252,6 +252,55 @@ export default function Calendar() {
     return { seqOf, dupGroups, totalDupEvents: seqOf.size };
   }, [events]);
 
+  // 검색어가 있으면 캘린더 대신 "전체 기간 검색 결과" 목록을 보여준다.
+  // 월 화면에서 검색하면 그 달에 없는 행사는 아무리 쳐도 안 나와 "검색이 안 된다" 고 느끼던 문제.
+  // 상태 체크박스·구분 드롭다운은 그대로 적용된다.
+  const searchHits = useMemo((): SearchHit[] | null => {
+    const q = debouncedQuery.trim();
+    if (!q) return null;
+    const hits: SearchHit[] = [];
+    for (const e of events) {
+      if (filterType !== 'ALL' && e.event_type !== filterType) continue;
+      if ((e.status as string) in statusVisible && !statusVisible[e.status]) continue;
+      const entry = eventSearchIndex.get(e.id);
+      if (!entry || !fuzzyMatchEntry(entry, q)) continue;
+      hits.push({ kind: 'event', date: e.start_datetime || '', ev: e });
+    }
+    if (showConsultations && filterType !== 'MICE') {
+      for (const c of weddingCustomers) {
+        if (!c.desired_consultation_date) continue;
+        const entry = consultSearchIndex.get(c.id);
+        if (!entry || !fuzzyMatchEntry(entry, q)) continue;
+        hits.push({ kind: 'consult', date: c.desired_consultation_date, consult: c });
+      }
+    }
+    // 최근 날짜가 위로 — 여러 해를 한 번에 볼 때 올해 것부터 보인다
+    hits.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    return hits;
+  }, [
+    events,
+    weddingCustomers,
+    filterType,
+    statusVisible,
+    showConsultations,
+    debouncedQuery,
+    eventSearchIndex,
+    consultSearchIndex,
+  ]);
+
+  // 검색 결과 → 캘린더로 돌아올 때 숨겨져 있던 FullCalendar 크기 재계산
+  useEffect(() => {
+    if (searchHits === null) fcRef.current?.getApi().updateSize();
+  }, [searchHits]);
+
+  function showOnCalendar(date: string) {
+    setQuery('');
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return;
+    // 검색 결과가 사라진 뒤(캘린더가 다시 보인 뒤) 이동해야 렌더가 맞는다
+    setTimeout(() => fcRef.current?.getApi().changeView('dayGridMonth', d), 0);
+  }
+
   const fcEvents: EventInput[] = useMemo(() => {
     const q = debouncedQuery.trim();
     // 알려진 상태(체크박스가 있는 상태)와 알 수 없는 상태(레거시 TEN, 오타 등)를 분리.
@@ -502,6 +551,36 @@ export default function Calendar() {
 
       {/* 상태별 체크박스 + MICE/WEDDING 드롭다운 */}
       <div className="bg-white border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3 text-xs">
+        {/* 검색 — 한 줄 전체. 월 화면과 무관하게 모든 연도에서 찾고, 결과는 아래에 목록으로 나온다. */}
+        <div className="basis-full relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">
+            🔍
+          </span>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setQuery('');
+            }}
+            placeholder="행사명 · 담당자 · 홀 · 메모로 검색 — 모든 연도(2025·2026·2027…)에서 찾습니다"
+            aria-label="행사 검색 (전체 기간)"
+            className="input !pl-9 !pr-24 !py-2 !text-sm w-full"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+            {query ? (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="text-gray-500 hover:text-gray-800 text-xs underline"
+              >
+                지우기 (Esc)
+              </button>
+            ) : (
+              <span className="text-[11px] text-gray-400 hidden md:inline">초성 'ㅇ' 도 가능</span>
+            )}
+          </span>
+        </div>
         {/* ALL 토글 — 한 번 누르면 전체 체크/해제 (상담 포함). 현재 상태에 따라 동작 결정. */}
         <button
           type="button"
@@ -564,14 +643,6 @@ export default function Calendar() {
           <option value="WEDDING">WEDDING만</option>
         </select>
 
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="검색: 행사명 / 담당자 / 구분 / 메모 / 홀 (초성 'ㅇ' 검색 가능)"
-          className="input !py-1 !text-xs flex-1 min-w-[12rem]"
-        />
-
         {dupAnalysis.dupGroups.length > 0 && (
           <button
             type="button"
@@ -603,7 +674,33 @@ export default function Calendar() {
         </div>
       )}
 
-      <div className="bg-white border rounded-lg p-2 md:p-4 shadow-sm overflow-x-auto">
+      {searchHits && (
+        <SearchResultsPanel
+          query={debouncedQuery.trim()}
+          hits={searchHits}
+          filtersNarrowed={
+            !EVENT_STATUS_OPTIONS.every((s) => statusVisible[s]) ||
+            !showConsultations ||
+            filterType !== 'ALL'
+          }
+          onClear={() => setQuery('')}
+          onOpenEvent={(ev) => void openEventFromList(ev.id)}
+          onOpenConsult={(c) => {
+            if (canSeeWedding(user?.role)) navigate(`/customers/wedding#consult-${c.id}`);
+            else
+              alert(
+                `[상담]\n행사명: ${c.wedding_event_name}\n신랑: ${c.groom_name} ${c.groom_phone}\n신부: ${c.bride_name} ${c.bride_phone}\n희망상담일자: ${fmtDateTimeW(c.desired_consultation_date)}`
+              );
+          }}
+          onShowOnCalendar={showOnCalendar}
+        />
+      )}
+
+      <div
+        className={
+          (searchHits ? 'hidden ' : '') + 'bg-white border rounded-lg p-2 md:p-4 shadow-sm overflow-x-auto'
+        }
+      >
         <FullCalendar
           ref={fcRef}
           plugins={[
@@ -848,6 +945,152 @@ function sumField(
   if (any) return String(sum);
   const legacy = (ev as unknown as Record<string, number | null>)[`food_${field}`];
   return legacy != null ? String(legacy) : '-';
+}
+
+// ===== 검색 결과 — 전체 기간 목록 =====
+type SearchHit =
+  | { kind: 'event'; date: string; ev: EventWithFood }
+  | { kind: 'consult'; date: string; consult: WeddingCustomer };
+
+function SearchResultsPanel({
+  query,
+  hits,
+  filtersNarrowed,
+  onClear,
+  onOpenEvent,
+  onOpenConsult,
+  onShowOnCalendar,
+}: {
+  query: string;
+  hits: SearchHit[];
+  filtersNarrowed: boolean;
+  onClear: () => void;
+  onOpenEvent: (ev: EventWithFood) => void;
+  onOpenConsult: (c: WeddingCustomer) => void;
+  onShowOnCalendar: (date: string) => void;
+}) {
+  const years = Array.from(new Set(hits.map((h) => h.date.slice(0, 4)).filter(Boolean))).sort();
+  const yearLabel =
+    years.length === 0 ? '' : years.length === 1 ? `${years[0]}년` : `${years[0]}~${years[years.length - 1]}년`;
+  const ymLabel = (ym: string) => `${ym.slice(0, 4)}년 ${Number(ym.slice(5, 7))}월`;
+  const dayLabel = (date: string) => {
+    const d = new Date(date.length === 10 ? date + 'T00:00' : date);
+    if (Number.isNaN(d.getTime())) return date;
+    const md = `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} (${weekdayKoOf(d)})`;
+    return date.length > 10 ? `${md} ${date.slice(11, 16)}` : md;
+  };
+
+  // 연·월 헤더를 끼워 넣은 행 목록
+  const rows: Array<{ header: string; count: number } | SearchHit> = [];
+  let curYm = '';
+  for (const h of hits) {
+    const ym = h.date.slice(0, 7);
+    if (ym !== curYm) {
+      curYm = ym;
+      rows.push({ header: ymLabel(ym), count: hits.filter((x) => x.date.slice(0, 7) === ym).length });
+    }
+    rows.push(h);
+  }
+
+  return (
+    <div className="bg-white border rounded-lg shadow-sm mb-4">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b bg-gray-50 rounded-t-lg">
+        <div className="text-sm font-semibold text-gray-900">
+          🔍 &lsquo;{query}&rsquo; 검색 결과 <span className="text-blue-700">{hits.length}건</span>
+        </div>
+        <div className="text-xs text-gray-500">
+          {yearLabel ? `${yearLabel} · ` : ''}모든 연도를 한 번에 찾았습니다
+        </div>
+        {filtersNarrowed && (
+          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+            위 상태·구분 필터가 적용된 결과입니다 — 안 보이면 ALL / 전체로 두고 다시 보세요
+          </div>
+        )}
+        <button type="button" onClick={onClear} className="btn-secondary !py-1 !text-xs ml-auto">
+          ✕ 검색 지우고 캘린더로
+        </button>
+      </div>
+
+      {hits.length === 0 ? (
+        <div className="px-4 py-10 text-center text-sm text-gray-500">
+          &lsquo;{query}&rsquo; 에 해당하는 행사·상담이 없습니다.
+          <div className="text-xs text-gray-400 mt-1">
+            모든 연도를 검색했습니다. 띄어쓰기를 빼거나 초성(예: ㄷㅎ)으로 다시 찾아보세요.
+          </div>
+        </div>
+      ) : (
+        <ul className="divide-y">
+          {rows.map((r, i) => {
+            if ('header' in r) {
+              return (
+                <li key={`h-${i}`} className="px-4 py-1.5 bg-gray-50 text-xs font-semibold text-gray-600">
+                  {r.header} <span className="font-normal text-gray-400">· {r.count}건</span>
+                </li>
+              );
+            }
+            if (r.kind === 'consult') {
+              const c = r.consult;
+              return (
+                <li key={`c-${c.id}`} className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1 px-4 py-2 hover:bg-purple-50">
+                  <span className="w-28 shrink-0 text-xs text-gray-600 tabular-nums">{dayLabel(r.date)}</span>
+                  <span className="badge bg-purple-100 text-purple-800 text-[10px] shrink-0">상담</span>
+                  <button
+                    type="button"
+                    onClick={() => onOpenConsult(c)}
+                    className="basis-full md:basis-auto md:flex-1 min-w-0 text-left text-sm font-medium text-gray-900 truncate hover:underline"
+                  >
+                    {c.wedding_event_name || `${c.groom_name} ♥ ${c.bride_name}` || '(이름 없음)'}
+                    <span className="ml-2 text-xs text-gray-500 font-normal">{c.progress_status}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onShowOnCalendar(r.date)}
+                    className="text-xs text-blue-600 hover:underline shrink-0"
+                  >
+                    📅 캘린더에서 보기
+                  </button>
+                </li>
+              );
+            }
+            const ev = r.ev;
+            const color = STATUS_HEX[ev.status] || '#6b7280';
+            const cancelled = isCancelledStatus(ev.status);
+            return (
+              <li key={ev.id} className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1 px-4 py-2 hover:bg-blue-50">
+                <span className="w-28 shrink-0 text-xs text-gray-600 tabular-nums">{dayLabel(r.date)}</span>
+                <span className="badge bg-gray-100 text-gray-700 text-[10px] shrink-0">{ev.event_type}</span>
+                <span className="badge text-white text-[10px] shrink-0" style={{ background: color }}>
+                  {ev.status}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onOpenEvent(ev)}
+                  className={
+                    'basis-full md:basis-auto md:flex-1 min-w-0 text-left text-sm font-medium truncate hover:underline ' +
+                    (cancelled ? 'line-through text-gray-400' : 'text-gray-900')
+                  }
+                  title="클릭하면 행사 상세를 엽니다"
+                >
+                  {ev.event_name || '(이름 없음)'}
+                  <span className="ml-2 text-xs text-gray-500 font-normal">
+                    {(ev.halls || []).join(' / ') || '홀 미지정'}
+                    {ev.assigned_manager_name ? ` · ${ev.assigned_manager_name}` : ''}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onShowOnCalendar(r.date)}
+                  className="text-xs text-blue-600 hover:underline shrink-0"
+                >
+                  📅 캘린더에서 보기
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 // ===== 모바일 전용: 선택한 날짜의 행사·상담 리스트 =====
