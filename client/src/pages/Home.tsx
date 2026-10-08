@@ -7,6 +7,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import {
+  type MiceInquiry,
   isDbCollect,
   ROLE_LABEL,
   type Event,
@@ -25,6 +26,13 @@ import {
   collabEventName,
 } from '../lib/collaboration';
 import Dashboard from './Dashboard';
+import InflowListModal from '../components/InflowListModal';
+import {
+  flattenWeddingInflow,
+  miceInflowRowOf,
+  type MiceInflowRow,
+  type WeddingInflowRow,
+} from '../lib/dashboardStats';
 
 type EventRow = Event & { food_items?: FoodItem[] };
 
@@ -62,6 +70,16 @@ function ddayLabel(days: number): { text: string; cls: string } {
   return { text: `D-${days}`, cls: 'bg-gray-200 text-gray-700' };
 }
 
+// 월간 현황 표의 건수 — 0 이면 클릭할 게 없으니 글자만
+function CountButton({ n, className, onClick }: { n: number; className: string; onClick: () => void }) {
+  if (n === 0) return <span className="text-gray-300">0건</span>;
+  return (
+    <button type="button" onClick={onClick} className={`${className} hover:underline rounded px-0.5 hover:bg-blue-50`} title="클릭하면 목록">
+      {n}건
+    </button>
+  );
+}
+
 function inMonth(iso: string | null | undefined, monthStart: Date, monthEnd: Date): boolean {
   if (!iso) return false;
   const t = new Date(iso).getTime();
@@ -76,8 +94,16 @@ function pct(num: number, den: number): string {
 // 매핑: 상담=progress '상담' 이상 도달, 가예약=INQ 이상 도달, 계약완료=DEF. (TEN 폐기 → 가예약은 INQ)
 // 누적(도달) 기준이라 상담≥가예약≥계약완료. LOS(잃음)는 퍼널에서 제외.
 // 기준 월: 웨딩=신규문의일(inquiry_date)/생성일, MICE=문의 생성일.
-interface WedFunnelRow { name: string; consult: number; inq: number; def: number; }
-interface MiceFunnelRow { name: string; total: number; progress: number; def: number; }
+// 숫자 클릭 → 그 건들의 목록을 열기 위해 건수와 함께 실제 건도 모은다
+interface WedFunnelRow {
+  name: string; consult: number; inq: number; def: number;
+  items: { consult: WeddingCustomer[]; inq: WeddingCustomer[]; def: WeddingCustomer[] };
+}
+type MicePair = { c: MiceCustomer; inq: MiceInquiry };
+interface MiceFunnelRow {
+  name: string; total: number; progress: number; def: number;
+  items: { total: MicePair[]; progress: MicePair[]; def: MicePair[] };
+}
 
 function computeWeddingFunnel(customers: WeddingCustomer[], monthStart: Date, monthEnd: Date): WedFunnelRow[] {
   const m = new Map<string, WedFunnelRow>();
@@ -86,10 +112,10 @@ function computeWeddingFunnel(customers: WeddingCustomer[], monthStart: Date, mo
     if (!inMonth(c.inquiry_date || c.created_at, monthStart, monthEnd)) continue;
     const name = c.event_inquiries[0]?.assigned_manager_name?.trim() || '미지정';
     const s = c.progress_status;
-    const row = m.get(name) || { name, consult: 0, inq: 0, def: 0 };
-    if (s === '상담' || s === 'INQ' || s === 'DEF') row.consult += 1; // 상담 도달
-    if (s === 'INQ' || s === 'DEF') row.inq += 1;                     // 가예약(INQ) 도달
-    if (s === 'DEF') row.def += 1;                                    // 계약완료
+    const row = m.get(name) || { name, consult: 0, inq: 0, def: 0, items: { consult: [], inq: [], def: [] } };
+    if (s === '상담' || s === 'INQ' || s === 'DEF') { row.consult += 1; row.items.consult.push(c); } // 상담 도달
+    if (s === 'INQ' || s === 'DEF') { row.inq += 1; row.items.inq.push(c); }                         // 가예약(INQ) 도달
+    if (s === 'DEF') { row.def += 1; row.items.def.push(c); }                                        // 계약완료
     m.set(name, row);
   }
   return [...m.values()].filter((r) => r.consult > 0).sort((a, b) => b.consult - a.consult);
@@ -113,10 +139,12 @@ function computeMiceFunnel(customers: MiceCustomer[], monthStart: Date, monthEnd
       const moved =
         !!(inq.quote_sent || inq.contract_sent || inq.contract_replied || inq.deposit_paid) ||
         s === 'DEF';
-      const row = m.get(name) || { name, total: 0, progress: 0, def: 0 };
+      const row = m.get(name) || { name, total: 0, progress: 0, def: 0, items: { total: [], progress: [], def: [] } };
+      const pair = { c, inq };
       row.total += 1;
-      if (moved) row.progress += 1;
-      if (s === 'DEF') row.def += 1;
+      row.items.total.push(pair);
+      if (moved) { row.progress += 1; row.items.progress.push(pair); }
+      if (s === 'DEF') { row.def += 1; row.items.def.push(pair); }
       m.set(name, row);
     }
   }
@@ -208,6 +236,29 @@ export default function Home() {
   }, [statusMonth]);
   const wedFunnel = useMemo(() => computeWeddingFunnel(weddings, statusMonth, monthEnd), [weddings, statusMonth, monthEnd]);
   const miceFunnel = useMemo(() => computeMiceFunnel(mices, statusMonth, monthEnd), [mices, statusMonth, monthEnd]);
+  // 월간 현황 숫자 클릭 → 목록 모달
+  const [funnelList, setFunnelList] = useState<{
+    open: boolean; mode: 'MICE' | 'WEDDING'; title: string; miceRows?: MiceInflowRow[]; weddingRows?: WeddingInflowRow[];
+  }>({ open: false, mode: 'MICE', title: '' });
+  const monthLabel = `${statusMonth.getFullYear()}년 ${statusMonth.getMonth() + 1}월`;
+  const WED_STAGE_LABEL = { consult: '상담', inq: '가예약(INQ)', def: '계약완료(DEF)' } as const;
+  const MICE_STAGE_LABEL = { total: '문의', progress: '진행(견적 이상)', def: '계약완료' } as const;
+  function openWedList(stage: keyof WedFunnelRow['items'], rows: WedFunnelRow[], who: string) {
+    const items = rows.flatMap((r) => r.items[stage]);
+    setFunnelList({
+      open: true, mode: 'WEDDING',
+      title: `${monthLabel} 웨딩 ${WED_STAGE_LABEL[stage]} · ${who} (${items.length}건)`,
+      weddingRows: items.map(flattenWeddingInflow),
+    });
+  }
+  function openMiceList(stage: keyof MiceFunnelRow['items'], rows: MiceFunnelRow[], who: string) {
+    const items = rows.flatMap((r) => r.items[stage]);
+    setFunnelList({
+      open: true, mode: 'MICE',
+      title: `${monthLabel} MICE ${MICE_STAGE_LABEL[stage]} · ${who} (${items.length}건)`,
+      miceRows: items.map(({ c, inq }) => miceInflowRowOf(c, inq)),
+    });
+  }
   const wedTotal = useMemo(
     () => wedFunnel.reduce((a, r) => ({ consult: a.consult + r.consult, inq: a.inq + r.inq, def: a.def + r.def }), { consult: 0, inq: 0, def: 0 }),
     [wedFunnel]
@@ -297,7 +348,7 @@ export default function Home() {
       <section className="border rounded-lg bg-white mb-6">
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <h2 className="font-bold text-gray-900">
-            📊 세일즈 월간 현황 <span className="text-xs font-normal text-gray-400">(팀 전체 · 유입월 기준)</span>
+            📊 세일즈 월간 현황 <span className="text-xs font-normal text-gray-400">(팀 전체 · 유입월 기준 · 숫자 클릭 시 목록)</span>
           </h2>
           <div className="flex items-center gap-2 text-sm">
             <button onClick={() => shiftMonth(-1)} className="px-2 py-0.5 rounded hover:bg-gray-100 text-gray-600" aria-label="이전 달">‹</button>
@@ -314,9 +365,10 @@ export default function Home() {
             <h3 className="text-sm font-semibold text-gray-700">💍 웨딩 — 상담 → 가예약(INQ) → 계약완료(DEF)</h3>
             {wedTotal.consult > 0 && (
               <div className="text-xs text-gray-500">
-                팀 합계: 상담 <b className="text-gray-800">{wedTotal.consult}</b> → 가예약{' '}
-                <b className="text-amber-600">{wedTotal.inq}</b> <span className="text-gray-400">({pct(wedTotal.inq, wedTotal.consult)})</span> → 계약완료{' '}
-                <b className="text-emerald-600">{wedTotal.def}</b> <span className="text-gray-400">({pct(wedTotal.def, wedTotal.inq)})</span>
+                팀 합계: 상담{' '}
+                <button type="button" onClick={() => openWedList('consult', wedFunnel, '팀 전체')} className="font-bold text-gray-800 hover:underline">{wedTotal.consult}</button> → 가예약{' '}
+                <button type="button" onClick={() => openWedList('inq', wedFunnel, '팀 전체')} className="font-bold text-amber-600 hover:underline">{wedTotal.inq}</button> <span className="text-gray-400">({pct(wedTotal.inq, wedTotal.consult)})</span> → 계약완료{' '}
+                <button type="button" onClick={() => openWedList('def', wedFunnel, '팀 전체')} className="font-bold text-emerald-600 hover:underline">{wedTotal.def}</button> <span className="text-gray-400">({pct(wedTotal.def, wedTotal.inq)})</span>
               </div>
             )}
           </div>
@@ -338,13 +390,15 @@ export default function Home() {
                 {wedFunnel.map((r) => (
                   <tr key={r.name} className="border-t">
                     <td className="py-1.5 text-gray-800 truncate">{r.name}</td>
-                    <td className="py-1.5 text-right text-gray-700">{r.consult}건</td>
                     <td className="py-1.5 text-right">
-                      <span className="font-medium text-amber-600">{r.inq}건</span>{' '}
+                      <CountButton n={r.consult} className="text-gray-700" onClick={() => openWedList('consult', [r], r.name)} />
+                    </td>
+                    <td className="py-1.5 text-right">
+                      <CountButton n={r.inq} className="font-medium text-amber-600" onClick={() => openWedList('inq', [r], r.name)} />{' '}
                       <span className="text-[11px] text-gray-400">{pct(r.inq, r.consult)}</span>
                     </td>
                     <td className="py-1.5 text-right">
-                      <span className="font-medium text-emerald-600">{r.def}건</span>{' '}
+                      <CountButton n={r.def} className="font-medium text-emerald-600" onClick={() => openWedList('def', [r], r.name)} />{' '}
                       <span className="text-[11px] text-gray-400">{pct(r.def, r.inq)}</span>
                     </td>
                   </tr>
@@ -377,13 +431,15 @@ export default function Home() {
                 {miceFunnel.map((r) => (
                   <tr key={r.name} className="border-t">
                     <td className="py-1.5 text-gray-800 truncate">{r.name}</td>
-                    <td className="py-1.5 text-right text-gray-700">{r.total}건</td>
                     <td className="py-1.5 text-right">
-                      <span className="font-medium text-amber-600">{r.progress}건</span>{' '}
+                      <CountButton n={r.total} className="text-gray-700" onClick={() => openMiceList('total', [r], r.name)} />
+                    </td>
+                    <td className="py-1.5 text-right">
+                      <CountButton n={r.progress} className="font-medium text-amber-600" onClick={() => openMiceList('progress', [r], r.name)} />{' '}
                       <span className="text-[11px] text-gray-400">{pct(r.progress, r.total)}</span>
                     </td>
                     <td className="py-1.5 text-right">
-                      <span className="font-medium text-emerald-600">{r.def}건</span>{' '}
+                      <CountButton n={r.def} className="font-medium text-emerald-600" onClick={() => openMiceList('def', [r], r.name)} />{' '}
                       <span className="text-[11px] text-gray-400">{pct(r.def, r.progress)}</span>
                     </td>
                   </tr>
@@ -393,6 +449,15 @@ export default function Home() {
           )}
         </div>
       </section>
+
+      <InflowListModal
+        open={funnelList.open}
+        onClose={() => setFunnelList((p) => ({ ...p, open: false }))}
+        mode={funnelList.mode}
+        title={funnelList.title}
+        miceRows={funnelList.miceRows}
+        weddingRows={funnelList.weddingRows}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* 다가오는 행사 */}

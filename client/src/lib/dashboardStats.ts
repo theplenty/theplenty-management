@@ -100,26 +100,31 @@ function miceInflowDate(inq: MiceInquiry): string {
   return inq.call_date || inq.created_at;
 }
 
+/** 문의 한 건 → 리스트 모달 행. (홈 월간 현황 등 다른 화면의 숫자 클릭에서도 쓴다) */
+export function miceInflowRowOf(c: MiceCustomer, inq: MiceInquiry): MiceInflowRow {
+  const firstContact = inq.contacts[0];
+  return {
+    customer_id: c.id,
+    inquiry_id: inq.id,
+    mice_category: c.mice_category,
+    organization_name: c.organization_name,
+    contact_name: firstContact?.name || '',
+    phone: firstContact?.phone || '',
+    email: firstContact?.email || '',
+    call_date: inq.call_date,
+    inquiry_event_date_text: inq.inquiry_event_date_text,
+    progress_status: inq.progress_status,
+    customer_memo: c.memo,
+    inflow_at: miceInflowDate(inq),
+  };
+}
+
 export function flattenMiceInflows(customers: MiceCustomer[]): MiceInflowRow[] {
   const rows: MiceInflowRow[] = [];
   for (const c of customers) {
     for (const inq of c.inquiries) {
       if (isDbCollect(inq)) continue; // DB 수집 건은 통화가 아니라 신규 유입으로 세지 않는다
-      const firstContact = inq.contacts[0];
-      rows.push({
-        customer_id: c.id,
-        inquiry_id: inq.id,
-        mice_category: c.mice_category,
-        organization_name: c.organization_name,
-        contact_name: firstContact?.name || '',
-        phone: firstContact?.phone || '',
-        email: firstContact?.email || '',
-        call_date: inq.call_date,
-        inquiry_event_date_text: inq.inquiry_event_date_text,
-        progress_status: inq.progress_status,
-        customer_memo: c.memo,
-        inflow_at: miceInflowDate(inq),
-      });
+      rows.push(miceInflowRowOf(c, inq));
     }
   }
   return rows;
@@ -222,7 +227,7 @@ export interface WeddingInflowRow {
   estimate_amount: string;
 }
 
-function flattenWeddingInflow(c: WeddingCustomer): WeddingInflowRow {
+export function flattenWeddingInflow(c: WeddingCustomer): WeddingInflowRow {
   const first = c.event_inquiries[0];
   return {
     customer_id: c.id,
