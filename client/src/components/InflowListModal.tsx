@@ -2,6 +2,7 @@
 // MICE / WEDDING 별로 컬럼이 다르므로 두 가지 모드 지원.
 
 import { weekdayKoOf, insertWeekday } from '../lib/dateFmt';
+import { useNavigate } from 'react-router-dom';
 import Modal from './Modal';
 import { StatusBadge } from './Field';
 import { miceStatusLabel } from '../types';
@@ -52,6 +53,12 @@ export default function InflowListModal({
   miceRows,
   weddingRows,
 }: Props) {
+  const navigate = useNavigate();
+  // 행 클릭 → 그 고객 화면으로. 모달은 닫고 이동한다.
+  function go(path: string) {
+    onClose();
+    navigate(path);
+  }
   return (
     <Modal
       open={open}
@@ -89,7 +96,12 @@ export default function InflowListModal({
                 </tr>
               ) : (
                 (miceRows || []).map((r) => (
-                  <tr key={r.inquiry_id} className="border-t hover:bg-gray-50">
+                  <tr
+                    key={r.inquiry_id}
+                    onClick={() => go(`/customer/mice/${r.customer_id}`)}
+                    className="border-t hover:bg-blue-50 cursor-pointer"
+                    title="클릭하면 이 고객 화면으로 이동"
+                  >
                     <Td>{r.mice_category}</Td>
                     <Td className="font-medium text-gray-900">{r.organization_name}</Td>
                     <Td>{r.contact_name || '-'}</Td>
@@ -136,7 +148,12 @@ export default function InflowListModal({
                 </tr>
               ) : (
                 (weddingRows || []).map((r) => (
-                  <tr key={r.customer_id} className="border-t hover:bg-gray-50">
+                  <tr
+                    key={r.customer_id}
+                    onClick={() => go(`/customer/wedding/${r.customer_id}`)}
+                    className="border-t hover:bg-blue-50 cursor-pointer"
+                    title="클릭하면 이 고객 화면으로 이동"
+                  >
                     <Td className="font-medium text-gray-900">{r.wedding_event_name}</Td>
                     <Td>{fmtDateOrDateTime(r.inquiry_date)}</Td>
                     <Td>{fmtDateOrDateTime(r.desired_consultation_date)}</Td>
