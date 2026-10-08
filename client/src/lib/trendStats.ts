@@ -56,43 +56,54 @@ export function monthBuckets(year: number, now = new Date()): Bucket[] {
   });
 }
 
-export interface TrendRow {
+export interface TrendRow<T = StatusTransition> {
   key: string;
   label: string;
   strong?: boolean;
   indent?: boolean;
-  match: (t: StatusTransition) => boolean;
+  match: (t: T) => boolean;
 }
 
-export interface TrendCell {
-  items: StatusTransition[];
+export interface TrendCell<T = StatusTransition> {
+  items: T[];
 }
 
-export interface TrendLine {
-  row: TrendRow;
-  cells: TrendCell[]; // buckets 순서
+export interface TrendLine<T = StatusTransition> {
+  row: TrendRow<T>;
+  cells: TrendCell<T>[]; // buckets 순서
   total: number;
   unknown: number; // 시각 미상이라 어느 칸에도 못 넣은 건
 }
 
-export function buildTrendLines(transitions: StatusTransition[], buckets: Bucket[], rows: TrendRow[]): TrendLine[] {
+/** 아무 항목이나 "언제" 를 꺼내는 함수만 주면 기간 칸에 담는다 — 상태 전이 외에 고객 유입(마케팅 KPI)에도 쓴다. */
+export function buildTrendLinesBy<T>(
+  items: T[],
+  getAt: (t: T) => string | null,
+  buckets: Bucket[],
+  rows: TrendRow<T>[]
+): TrendLine<T>[] {
   return rows.map((row) => {
-    const cells: TrendCell[] = buckets.map(() => ({ items: [] }));
+    const cells: TrendCell<T>[] = buckets.map(() => ({ items: [] }));
     let unknown = 0;
     let total = 0;
-    for (const t of transitions) {
+    for (const t of items) {
       if (!row.match(t)) continue;
-      if (!t.at) {
+      const at = getAt(t);
+      if (!at) {
         unknown++;
         continue;
       }
-      const idx = buckets.findIndex((b) => t.at! >= b.fromIso && t.at! < b.toIso);
+      const idx = buckets.findIndex((b) => at >= b.fromIso && at < b.toIso);
       if (idx === -1) continue;
       cells[idx].items.push(t);
       total++;
     }
     return { row, cells, total, unknown };
   });
+}
+
+export function buildTrendLines(transitions: StatusTransition[], buckets: Bucket[], rows: TrendRow[]): TrendLine[] {
+  return buildTrendLinesBy(transitions, (t) => t.at, buckets, rows);
 }
 
 // ── 표 정의 ──

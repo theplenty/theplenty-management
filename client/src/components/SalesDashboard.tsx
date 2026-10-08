@@ -7,7 +7,10 @@ import {
   type ActiveUserOption,
   type MiceCustomer,
   type WeddingCustomer,
+  WEDDING_SOURCE_DETAIL_OPTIONS,
+  WEDDING_SOURCE_OPTIONS,
 } from '../types';
+import { weddingConsultationByYear } from '../lib/dashboardStats';
 import {
   computeMiceChannelMetrics,
   computeWeddingMetrics,
@@ -28,13 +31,21 @@ import {
   computeWeddingMonthlyTable,
   thisMonthRange,
   thisWeekRange,
+  thisYearRange,
   todayRange,
   type WeddingStatusGroup,
+  weddingBreakdown,
+  miceCategoryBreakdown,
+  miceInflowIso,
+  weddingInflowIso,
+  type BreakdownRow,
+  type MiceCategoryRow,
 } from '../lib/salesDashboardStats';
 import Modal from './Modal';
 import { api } from '../lib/api';
 import {
   buildTrendLines,
+  buildTrendLinesBy,
   CUSTOMER_TREND_ROWS,
   EVENT_TREND_ROWS,
   monthBuckets,
@@ -42,9 +53,10 @@ import {
   type Bucket,
   type StatusTransition,
   type TrendLine,
+  type TrendRow,
 } from '../lib/trendStats';
 
-type Period = 'today' | 'week' | 'month' | 'custom';
+type Period = 'today' | 'week' | 'month' | 'year' | 'custom';
 
 // 담당자 드롭다운에 표시할 역할 (영업 담당자만)
 const MANAGER_ROLES = new Set<ActiveUserOption['role']>([
@@ -100,6 +112,7 @@ export default function SalesDashboard({
     if (period === 'today') return todayRange();
     if (period === 'week') return thisWeekRange();
     if (period === 'month') return thisMonthRange();
+    if (period === 'year') return thisYearRange();
     if (period === 'custom' && customFrom && customTo) return customRange(customFrom, customTo);
     return null;
   }, [period, customFrom, customTo]);
@@ -111,7 +124,9 @@ export default function SalesDashboard({
         ? '금주'
         : period === 'month'
           ? '금월'
-          : customFrom && customTo
+          : period === 'year'
+            ? '올해'
+            : customFrom && customTo
             ? `${customFrom}~${customTo}`
             : '기간';
 
@@ -208,9 +223,18 @@ export default function SalesDashboard({
             유입 → 팔로업 → INQ/DEF/LOS 전환 · 숫자 클릭 시 리스트
           </span>
         </header>
+        <BasisNote
+          items={[
+            'MICE 고객정보 › 문의 카드',
+            '기간 = 통화일자 (없으면 등록일) · 위 공통 필터 적용',
+            '유입 채널 = 인콜 / 아웃콜 / DB 수집(통화 아님, 집계 제외)',
+            '전환 = 진행상황 DEF·LOS, INQ = 문의 상태 + 견적·계약 체크 1개 이상, 미처리 = 체크 없음',
+            '미처리 인콜 카드만 기간 무관(누적)',
+          ]}
+        />
 
-        {/* 상단 KPI 카드 — 기간 필터 반영 */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 mb-5">
+        {/* 상단 KPI 카드 — 기간 필터 반영. 전환율은 아래 전환 흐름 막대에 있어 카드로는 안 둔다 (2026-10-08 중복 정리) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5">
           <KpiCard
             label={`${periodLabel} 인콜`}
             value={miceFilteredIncall.total}
@@ -237,30 +261,12 @@ export default function SalesDashboard({
             sub={stale7.length > 0 ? `7일+ ${stale7.length}건` : '누적 기준'}
             onClick={openMiceStaleDrill}
           />
-          <KpiCard
-            label={`인콜 전환율 (${periodLabel})`}
-            value={`${miceFilteredIncall.conversionRate.toFixed(1)}%`}
-            sub={`${miceFilteredIncall.total}건 중 ${miceFilteredIncall.inq + miceFilteredIncall.def + miceFilteredIncall.los}건 전환`}
-            accent="green"
-            onClick={() =>
-              openMiceDrill('INCALL', 'converted', `${periodLabel} 인콜 전환 건 (INQ/DEF/LOS)`)
-            }
-          />
-          <KpiCard
-            label={`아웃콜 전환율 (${periodLabel})`}
-            value={`${miceFilteredOutcall.conversionRate.toFixed(1)}%`}
-            sub={`${miceFilteredOutcall.total}건 중 ${miceFilteredOutcall.inq + miceFilteredOutcall.def + miceFilteredOutcall.los}건 전환`}
-            accent="green"
-            onClick={() =>
-              openMiceDrill('OUTCALL', 'converted', `${periodLabel} 아웃콜 전환 건 (INQ/DEF/LOS)`)
-            }
-          />
         </div>
 
         {/* 퍼널 차트 — 각 단계 클릭 시 리스트 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
           <FunnelCard
-            title="인콜 (📞) → 전환 흐름"
+            title={`인콜 (📞) → 전환 흐름 · 전환율 ${miceFilteredIncall.conversionRate.toFixed(1)}%`}
             total={miceFilteredIncall.total}
             stages={[
               {
@@ -291,7 +297,7 @@ export default function SalesDashboard({
             ]}
           />
           <FunnelCard
-            title="아웃콜 (📤) → 전환 흐름"
+            title={`아웃콜 (📤) → 전환 흐름 · 전환율 ${miceFilteredOutcall.conversionRate.toFixed(1)}%`}
             total={miceFilteredOutcall.total}
             stages={[
               {
@@ -343,8 +349,16 @@ export default function SalesDashboard({
           <h2 className="text-lg md:text-xl font-bold text-gray-900">WEDDING 세일즈</h2>
           <span className="text-xs text-gray-500">인콜 → 상담 → INQ/DEF/LOS 전환</span>
         </header>
+        <BasisNote
+          items={[
+            'WEDDING 고객정보',
+            '기간 = 신규문의일자 (없으면 등록일) · 위 공통 필터 적용',
+            '단계 = 진행단계(신규문의·상담·상담취소·INQ·DEF·LOS) · 상담 예약 = 희망상담일자',
+            'DEF·LOS 건수는 아래 전환 흐름 막대에서',
+          ]}
+        />
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 mb-5">
           <KpiCard
             label={`${periodLabel} 신규 인콜`}
             value={wedFiltered.totalInflow}
@@ -389,18 +403,6 @@ export default function SalesDashboard({
             onClick={() =>
               openWeddingDrill('def', `${periodLabel} WEDDING DEF 확정 (${wedFiltered.def}건)`)
             }
-          />
-          <KpiCard
-            label="DEF"
-            value={wedFiltered.def}
-            accent="emerald"
-            onClick={() => openWeddingDrill('def', `${periodLabel} WEDDING DEF (${wedFiltered.def}건)`)}
-          />
-          <KpiCard
-            label="LOS"
-            value={wedFiltered.los}
-            accent="red"
-            onClick={() => openWeddingDrill('los', `${periodLabel} WEDDING LOS (${wedFiltered.los}건)`)}
           />
           <KpiCard
             label="장기 미전환"
@@ -462,6 +464,17 @@ export default function SalesDashboard({
           <StaleWeddingCard items={staleWed} periodLabel={periodLabel} />
         </div>
       </section>
+
+      {/* ===== 유입경로 · 마케팅 KPI — 공통 필터 + 주·월 추이 ===== */}
+      <MarketingSection
+        miceFlat={miceFlat}
+        weddingCustomers={weddingCustomers}
+        range={range}
+        periodLabel={periodLabel}
+        managerId={managerId || null}
+        onDrillMice={(title, items) => setDrill({ open: true, kind: 'mice', title, items })}
+        onDrillWedding={(title, items) => setDrill({ open: true, kind: 'wedding', title, items })}
+      />
 
       {/* ===== 주간·월간 신규 현황 — 상태가 바뀐 시점 기준 ===== */}
       <TrendSection onDrill={(title, items) => setDrill({ open: true, kind: 'list', title, items })} />
@@ -698,7 +711,7 @@ function FilterBar({
   return (
     <div className="bg-white border rounded-lg p-3 flex items-center gap-3 flex-wrap text-xs">
       <span className="text-gray-500 font-semibold">기간:</span>
-      {(['today', 'week', 'month', 'custom'] as Period[]).map((p) => (
+      {(['today', 'week', 'month', 'year', 'custom'] as Period[]).map((p) => (
         <button
           key={p}
           type="button"
@@ -710,7 +723,7 @@ function FilterBar({
               : 'bg-white border-gray-300 hover:bg-gray-50')
           }
         >
-          {p === 'today' ? '오늘' : p === 'week' ? '금주' : p === 'month' ? '금월' : '직접 선택'}
+          {p === 'today' ? '오늘' : p === 'week' ? '금주' : p === 'month' ? '금월' : p === 'year' ? '올해' : '직접 선택'}
         </button>
       ))}
       {period === 'custom' && (
@@ -1059,11 +1072,301 @@ function StaleWeddingCard({
   );
 }
 
+type TrendMode = 'week' | 'month';
+
+// ===== 📌 기준 표시 — 각 섹션이 어느 DB·어느 날짜를 기준으로 세는지 한 줄로 =====
+function BasisNote({ items }: { items: string[] }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded px-2.5 py-1.5 mb-4">
+      <span className="font-semibold text-gray-600">📌 기준</span>
+      {items.map((t, i) => (
+        <span key={i} className="flex items-center gap-2">
+          {i > 0 && <span className="text-gray-300">|</span>}
+          <span>{t}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ===== 유입경로 · 마케팅 KPI =====
+// 예전 '유입경로 현황' 은 연도 누적만 보였다. 마케팅 직원 KPI 는 주·월 단위라
+// (1) 위 공통 기간·담당자 필터를 그대로 따르는 표 + (2) 주간/월간 추이 표로 바꿨다 (2026-10-08).
+// MICE 는 마케팅 채널 칸이 없어 유입 채널(인콜/아웃콜/DB) × 업체 구분으로 본다.
+function MarketingSection({
+  miceFlat,
+  weddingCustomers,
+  range,
+  periodLabel,
+  managerId,
+  onDrillMice,
+  onDrillWedding,
+}: {
+  miceFlat: InquiryWithCustomer[];
+  weddingCustomers: WeddingCustomer[];
+  range: DateRange | null;
+  periodLabel: string;
+  managerId: string | null;
+  onDrillMice: (title: string, items: InquiryWithCustomer[]) => void;
+  onDrillWedding: (title: string, items: WeddingCustomer[]) => void;
+}) {
+  const [mode, setMode] = useState<TrendMode>('week');
+  const [year, setYear] = useState(() => new Date().getFullYear());
+
+  const bySource = useMemo(() => weddingBreakdown(weddingCustomers, 'source', range, managerId), [weddingCustomers, range, managerId]);
+  const byDetail = useMemo(() => weddingBreakdown(weddingCustomers, 'source_detail', range, managerId), [weddingCustomers, range, managerId]);
+  const byKeyword = useMemo(() => weddingBreakdown(weddingCustomers, 'search_keyword', range, managerId), [weddingCustomers, range, managerId]);
+  const miceRows = useMemo(() => miceCategoryBreakdown(miceFlat, range, managerId), [miceFlat, range, managerId]);
+
+  // 추이 표 — 담당자 필터는 따르고, 기간은 표 자체의 주/월 칸이 정한다
+  const buckets = useMemo<Bucket[]>(() => (mode === 'week' ? weekBuckets(12) : monthBuckets(year)), [mode, year]);
+  const wedItems = useMemo(
+    () => weddingCustomers.filter((c) => !c.deleted_at && (!managerId || c.event_inquiries[0]?.assigned_manager_id === managerId)),
+    [weddingCustomers, managerId]
+  );
+  const miceItems = useMemo(
+    () => miceFlat.filter((f) => !managerId || f.inquiry.assigned_manager_id === managerId),
+    [miceFlat, managerId]
+  );
+  const wedRows = useMemo<TrendRow<WeddingCustomer>[]>(
+    () => [
+      { key: 'wd-all', label: 'WEDDING 신규문의 전체', strong: true, match: () => true },
+      ...WEDDING_SOURCE_DETAIL_OPTIONS.map<TrendRow<WeddingCustomer>>((o) => ({
+        key: `wd-detail-${o}`, label: `세부경로 · ${o}`, indent: true, match: (c) => (c.source_detail || '') === o,
+      })),
+      { key: 'wd-detail-none', label: '세부경로 · 미분류', indent: true, match: (c) => !(c.source_detail || '').trim() },
+      ...WEDDING_SOURCE_OPTIONS.map<TrendRow<WeddingCustomer>>((o) => ({
+        key: `wd-src-${o}`, label: `유입경로 · ${o}`, indent: true, match: (c) => (c.source || '') === o,
+      })),
+      { key: 'wd-src-none', label: '유입경로 · 미분류', indent: true, match: (c) => !(c.source || '').trim() },
+    ],
+    []
+  );
+  const miceTrendRows = useMemo<TrendRow<InquiryWithCustomer>[]>(() => {
+    const cats = Array.from(new Set(miceItems.map((f) => f.customer.mice_category || '미분류')));
+    return [
+      { key: 'm-calls', label: 'MICE 신규 문의 (인콜+아웃콜)', strong: true, match: (f) => f.inquiry.inquiry_channel !== 'DB' },
+      { key: 'm-in', label: '인콜', indent: true, match: (f) => f.inquiry.inquiry_channel === 'INCALL' },
+      { key: 'm-out', label: '아웃콜', indent: true, match: (f) => f.inquiry.inquiry_channel === 'OUTCALL' },
+      { key: 'm-db', label: 'DB 수집 (통화 아님)', strong: true, match: (f) => f.inquiry.inquiry_channel === 'DB' },
+      ...cats.map<TrendRow<InquiryWithCustomer>>((cat) => ({
+        key: `m-cat-${cat}`, label: `구분 · ${cat} (인콜+아웃콜)`, indent: true,
+        match: (f) => f.inquiry.inquiry_channel !== 'DB' && (f.customer.mice_category || '미분류') === cat,
+      })),
+    ];
+  }, [miceItems]);
+  const wedLines = useMemo(() => buildTrendLinesBy(wedItems, weddingInflowIso, buckets, wedRows), [wedItems, buckets, wedRows]);
+  const miceLines = useMemo(() => buildTrendLinesBy(miceItems, (f) => miceInflowIso(f.inquiry), buckets, miceTrendRows), [miceItems, buckets, miceTrendRows]);
+  const modeLabel = mode === 'week' ? '최근 12주' : `${year}년 월별`;
+
+  return (
+    <section className="bg-white border rounded-lg p-4 md:p-6">
+      <header className="flex items-baseline gap-3 mb-4 flex-wrap">
+        <span className="text-xs text-gray-400 font-mono">03 / MARKETING</span>
+        <h2 className="text-lg md:text-xl font-bold text-gray-900">유입경로 · 마케팅 KPI</h2>
+        <span className="text-xs text-gray-500">어디서 들어왔고 얼마나 확정됐나 · 숫자 클릭 시 목록</span>
+      </header>
+      <BasisNote
+        items={[
+          'WEDDING 고객정보 › 유입경로 / 유입 세부경로(마케팅 채널) / 검색어 · 기간 = 신규문의일자',
+          'MICE 고객정보 › 문의 카드 유입 채널 × 업체 구분 · 기간 = 통화일자(없으면 등록일)',
+          '위 표는 공통 필터(기간·담당자) 적용 · 아래 추이 표는 주/월 칸이 기간을 정하고 담당자만 따름',
+        ]}
+      />
+
+      <h3 className="text-sm font-semibold text-gray-800 mb-2">{periodLabel} 유입 — 공통 필터 기준</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-4 gap-4 mb-6">
+        <BreakdownTable
+          title="💍 WEDDING 유입경로"
+          firstCol="유입경로"
+          rows={bySource}
+          onRow={(r) => onDrillWedding(`${periodLabel} WEDDING 유입경로 · ${r.key} (${r.total}건)`, r.items)}
+        />
+        <BreakdownTable
+          title="💍 WEDDING 유입 세부경로 (마케팅 채널)"
+          firstCol="세부경로"
+          rows={byDetail}
+          onRow={(r) => onDrillWedding(`${periodLabel} WEDDING 세부경로 · ${r.key} (${r.total}건)`, r.items)}
+        />
+        <BreakdownTable
+          title="💍 WEDDING 검색어"
+          firstCol="검색어"
+          rows={byKeyword}
+          onRow={(r) => onDrillWedding(`${periodLabel} WEDDING 검색어 · ${r.key} (${r.total}건)`, r.items)}
+          empty="검색어가 입력된 문의가 없습니다"
+        />
+        <MiceCategoryTable
+          title="🏢 MICE 업체 구분 × 유입 채널"
+          rows={miceRows}
+          onRow={(r) => onDrillMice(`${periodLabel} MICE 구분 · ${r.key} (${r.total}건)`, r.items)}
+        />
+      </div>
+
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <h3 className="text-sm font-semibold text-gray-800">주간 · 월간 유입 추이 — 마케팅 KPI</h3>
+        <div className="flex items-center gap-2 text-xs">
+          {(['week', 'month'] as TrendMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={
+                'px-2.5 py-1 rounded border ' +
+                (mode === m ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-300 hover:bg-gray-50')
+              }
+            >
+              {m === 'week' ? '주간 (최근 12주)' : '월간'}
+            </button>
+          ))}
+          {mode === 'month' && (
+            <div className="flex items-center gap-1 text-sm ml-1">
+              <button onClick={() => setYear((y) => y - 1)} className="px-2 py-0.5 rounded hover:bg-gray-100 text-gray-600" aria-label="이전 연도">‹</button>
+              <span className="font-medium text-gray-800 w-14 text-center">{year}년</span>
+              <button onClick={() => setYear((y) => y + 1)} className="px-2 py-0.5 rounded hover:bg-gray-100 text-gray-600" aria-label="다음 연도">›</button>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
+        <TrendTable
+          title="💍 WEDDING 신규문의 — 세부경로 · 유입경로별"
+          buckets={buckets}
+          lines={wedLines}
+          onCell={(line, b, items) => onDrillWedding(`${b.label} · ${line.row.label} (${items.length}건)`, items)}
+          note={`신규문의일자 기준 · ${modeLabel}`}
+          unknownLabel="날짜없음"
+        />
+        <TrendTable
+          title="🏢 MICE 신규 문의 — 채널 · 업체 구분별"
+          buckets={buckets}
+          lines={miceLines}
+          onCell={(line, b, items) => onDrillMice(`${b.label} · ${line.row.label} (${items.length}건)`, items)}
+          note={`통화일자(없으면 등록일) 기준 · DB 수집은 통화가 아니라 따로 · ${modeLabel}`}
+          unknownLabel="날짜없음"
+        />
+      </div>
+    </section>
+  );
+}
+
+const pct = (n: number, d: number) => (d > 0 ? `${Math.round((n / d) * 1000) / 10}%` : '–');
+
+function BreakdownTable({
+  title,
+  firstCol,
+  rows,
+  onRow,
+  empty = '해당 기간에 건이 없습니다',
+}: {
+  title: string;
+  firstCol: string;
+  rows: BreakdownRow<WeddingCustomer>[];
+  onRow: (r: BreakdownRow<WeddingCustomer>) => void;
+  empty?: string;
+}) {
+  const sum = rows.reduce((a, r) => ({ total: a.total + r.total, def: a.def + r.def, los: a.los + r.los }), { total: 0, def: 0, los: 0 });
+  return (
+    <div className="border rounded-lg p-3">
+      <h4 className="text-sm font-semibold text-gray-900 mb-2">{title}</h4>
+      {rows.length === 0 ? (
+        <div className="text-xs text-gray-400 py-4 text-center">{empty}</div>
+      ) : (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-[11px] text-gray-500 border-b">
+              <th className="text-left font-medium py-1.5 pr-2">{firstCol}</th>
+              <th className="text-right font-medium py-1.5 px-1">전체</th>
+              <th className="text-right font-medium py-1.5 px-1">DEF</th>
+              <th className="text-right font-medium py-1.5 px-1">DEF율</th>
+              <th className="text-right font-medium py-1.5 px-1">LOS</th>
+              <th className="text-right font-medium py-1.5 px-1">LOS율</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key} onClick={() => onRow(r)} className="border-b last:border-b-0 hover:bg-blue-50 cursor-pointer">
+                <td className="py-1.5 pr-2 text-gray-800 truncate max-w-[12rem]" title={r.key}>{r.key}</td>
+                <td className="py-1.5 px-1 text-right tabular-nums font-semibold">{r.total}</td>
+                <td className="py-1.5 px-1 text-right tabular-nums text-emerald-700">{r.def}</td>
+                <td className="py-1.5 px-1 text-right tabular-nums text-gray-500">{pct(r.def, r.total)}</td>
+                <td className="py-1.5 px-1 text-right tabular-nums text-red-600">{r.los}</td>
+                <td className="py-1.5 px-1 text-right tabular-nums text-gray-500">{pct(r.los, r.total)}</td>
+              </tr>
+            ))}
+            <tr className="border-t font-semibold text-gray-900">
+              <td className="py-1.5 pr-2">합계</td>
+              <td className="py-1.5 px-1 text-right tabular-nums">{sum.total}</td>
+              <td className="py-1.5 px-1 text-right tabular-nums text-emerald-700">{sum.def}</td>
+              <td className="py-1.5 px-1 text-right tabular-nums text-gray-500">{pct(sum.def, sum.total)}</td>
+              <td className="py-1.5 px-1 text-right tabular-nums text-red-600">{sum.los}</td>
+              <td className="py-1.5 px-1 text-right tabular-nums text-gray-500">{pct(sum.los, sum.total)}</td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function MiceCategoryTable({
+  title,
+  rows,
+  onRow,
+}: {
+  title: string;
+  rows: MiceCategoryRow[];
+  onRow: (r: MiceCategoryRow) => void;
+}) {
+  const sum = rows.reduce(
+    (a, r) => ({ incall: a.incall + r.incall, outcall: a.outcall + r.outcall, db: a.db + r.db, total: a.total + r.total, def: a.def + r.def }),
+    { incall: 0, outcall: 0, db: 0, total: 0, def: 0 }
+  );
+  return (
+    <div className="border rounded-lg p-3">
+      <h4 className="text-sm font-semibold text-gray-900 mb-2">{title}</h4>
+      {rows.length === 0 ? (
+        <div className="text-xs text-gray-400 py-4 text-center">해당 기간에 문의가 없습니다</div>
+      ) : (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-[11px] text-gray-500 border-b">
+              <th className="text-left font-medium py-1.5 pr-2">구분</th>
+              <th className="text-right font-medium py-1.5 px-1">인콜</th>
+              <th className="text-right font-medium py-1.5 px-1">아웃콜</th>
+              <th className="text-right font-medium py-1.5 px-1">DB</th>
+              <th className="text-right font-medium py-1.5 px-1">전체</th>
+              <th className="text-right font-medium py-1.5 px-1">DEF</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key} onClick={() => onRow(r)} className="border-b last:border-b-0 hover:bg-blue-50 cursor-pointer">
+                <td className="py-1.5 pr-2 text-gray-800">{r.key}</td>
+                <td className="py-1.5 px-1 text-right tabular-nums">{r.incall}</td>
+                <td className="py-1.5 px-1 text-right tabular-nums">{r.outcall}</td>
+                <td className="py-1.5 px-1 text-right tabular-nums text-gray-500">{r.db}</td>
+                <td className="py-1.5 px-1 text-right tabular-nums font-semibold">{r.total}</td>
+                <td className="py-1.5 px-1 text-right tabular-nums text-emerald-700">{r.def}</td>
+              </tr>
+            ))}
+            <tr className="border-t font-semibold text-gray-900">
+              <td className="py-1.5 pr-2">합계</td>
+              <td className="py-1.5 px-1 text-right tabular-nums">{sum.incall}</td>
+              <td className="py-1.5 px-1 text-right tabular-nums">{sum.outcall}</td>
+              <td className="py-1.5 px-1 text-right tabular-nums text-gray-500">{sum.db}</td>
+              <td className="py-1.5 px-1 text-right tabular-nums">{sum.total}</td>
+              <td className="py-1.5 px-1 text-right tabular-nums text-emerald-700">{sum.def}</td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 // ===== 주간·월간 신규 현황 — "이번 주에 새로 INQ·DEF·LOS 가 된 건" =====
 // 월별 세일즈 표(접수월 코호트)와 다르게 **상태가 바뀐 시점**으로 센다.
 // 원천은 서버 /api/stats/status-transitions — 변경이력에서 시각을 읽고, 없는 시각은 지어내지 않는다(시각 미상은 제외 표시).
-type TrendMode = 'week' | 'month';
-
 function TrendSection({ onDrill }: { onDrill: (title: string, items: StatusTransition[]) => void }) {
   const [mode, setMode] = useState<TrendMode>('week');
   const [year, setYear] = useState(() => new Date().getFullYear());
@@ -1095,9 +1398,9 @@ function TrendSection({ onDrill }: { onDrill: (title: string, items: StatusTrans
     <section className="bg-white border rounded-lg p-4 md:p-6">
       <header className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-baseline gap-3 flex-wrap">
-          <span className="text-xs text-gray-400 font-mono">03 / TREND</span>
+          <span className="text-xs text-gray-400 font-mono">04 / TREND</span>
           <h2 className="text-lg md:text-xl font-bold text-gray-900">주간 · 월간 신규 현황</h2>
-          <span className="text-xs text-gray-500">그 기간에 새로 INQ · DEF · LOS 가 된 건 — 숫자 클릭 시 목록</span>
+          <span className="text-xs text-gray-500">그 기간에 새로 INQ · DEF · LOS 가 된 건 — 숫자 클릭 시 목록 · 공통 필터와 무관(표의 주/월 칸이 기간)</span>
         </div>
         <div className="flex items-center gap-2 text-xs">
           {(['week', 'month'] as TrendMode[]).map((m) => (
@@ -1146,18 +1449,20 @@ function TrendSection({ onDrill }: { onDrill: (title: string, items: StatusTrans
   );
 }
 
-function TrendTable({
+function TrendTable<T>({
   title,
   buckets,
   lines,
   onCell,
   note,
+  unknownLabel = '미상',
 }: {
   title: string;
   buckets: Bucket[];
-  lines: TrendLine[];
-  onCell: (line: TrendLine, bucket: Bucket, items: StatusTransition[]) => void;
+  lines: TrendLine<T>[];
+  onCell: (line: TrendLine<T>, bucket: Bucket, items: T[]) => void;
   note: string;
+  unknownLabel?: string;
 }) {
   return (
     <div className="border rounded-lg p-3">
@@ -1177,7 +1482,7 @@ function TrendTable({
                 </th>
               ))}
               <th className="text-right font-semibold py-1.5 pl-2 border-l">합계</th>
-              <th className="text-right font-medium py-1.5 pl-2 text-gray-400" title="상태가 바뀐 시각을 알 수 없어 칸에 못 넣은 건">미상</th>
+              <th className="text-right font-medium py-1.5 pl-2 text-gray-400" title="시각을 알 수 없어 칸에 못 넣은 건">{unknownLabel}</th>
             </tr>
           </thead>
           <tbody>
@@ -1357,6 +1662,11 @@ function MonthlySalesTables({
   );
 
   const wedRows = useMemo(() => computeWeddingMonthlyTable(weddingCustomers, year), [weddingCustomers, year]);
+  // 예전 'WEDDING 상담 현황' 섹션의 연도별 상담→DEF 표 — 그 섹션은 이 표와 겹쳐 없앴고(2026-10-08) 한 줄만 남긴다
+  const consultYearly = useMemo(() => weddingConsultationByYear(weddingCustomers), [weddingCustomers]);
+  const consultYearlyNote = consultYearly
+    .map((r) => `${r.year}년 ${r.consultation_count}→${r.def_count} (${r.conversion_rate == null ? '–' : Math.round(r.conversion_rate) + '%'})`)
+    .join(' · ');
   const wedSum = useMemo(
     () =>
       wedRows.reduce(
@@ -1399,9 +1709,9 @@ function MonthlySalesTables({
     <section className="bg-white border rounded-lg p-4 md:p-6">
       <header className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-baseline gap-3 flex-wrap">
-          <span className="text-xs text-gray-400 font-mono">04 / MONTHLY</span>
+          <span className="text-xs text-gray-400 font-mono">05 / MONTHLY</span>
           <h2 className="text-lg md:text-xl font-bold text-gray-900">월별 세일즈 표</h2>
-          <span className="text-xs text-gray-500">접수월 기준 — 그 달 들어온 건이 이후 어디까지 갔나</span>
+          <span className="text-xs text-gray-500">접수월 기준(코호트) — 그 달 들어온 건이 이후 어디까지 갔나 · 공통 필터와 무관(연도 선택)</span>
         </div>
         <div className="flex items-center gap-1 text-sm">
           <button onClick={() => setYear((y) => y - 1)} className="px-2 py-0.5 rounded hover:bg-gray-100 text-gray-600" aria-label="이전 연도">‹</button>
@@ -1422,7 +1732,7 @@ function MonthlySalesTables({
           lines={WED_LINES}
           rows={wedRows}
           sum={wedSum}
-          note="귀속월 = 신규문의일. 상담 건수 = 상담 단계 이상 도달(진행 중·잃음 포함) · 상담 전 이탈(신규문의·상담취소로 남은 건)은 상담에 안 잡힘."
+          note={`귀속월 = 신규문의일. 상담 건수 = 상담 단계 이상 도달(진행 중·잃음 포함) · 상담 전 이탈(신규문의·상담취소로 남은 건)은 상담에 안 잡힘.${consultYearlyNote ? ` · 연도별 상담→DEF(희망상담일자 기준): ${consultYearlyNote}` : ''}`}
         />
       </div>
     </section>

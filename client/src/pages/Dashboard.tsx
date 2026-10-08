@@ -306,7 +306,7 @@ export default function Dashboard() {
       />
 
       {/* ② 월별 주류매출 카드 */}
-      <Section eyebrow="03 / Beverage" title="월별 주류매출" subtitle="고마진(~90%) 항목 · 매출관리 파일 기준 · 전월 대비 추적">
+      <Section eyebrow="06 / Beverage" title="월별 주류매출" subtitle="고마진(~90%) 항목 · 캘린더 행사 › 매출탭 주류 금액 기준 · 전월 대비 추적">
         <BeverageRevenueCard events={events} canEdit={admin} />
       </Section>
 
@@ -444,168 +444,14 @@ export default function Dashboard() {
       </>
       )}
 
-      {/* ===== Section 3: WEDDING 유입경로 현황 ===== */}
-      <Section
-        eyebrow="03 / Sources"
-        title="WEDDING 유입경로 현황"
-        subtitle={`${year}년 신규문의 기준 · 유입경로별 DEF 전환 분석`}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <Card title="연도별 전체 신규문의">
-            <SimpleTable
-              head={['연도', '건수']}
-              rightAlign={[false, true]}
-              rows={yearlyTotals.map((r) => [`${r.year}년`, r.total])}
-              empty="데이터 없음"
-            />
-          </Card>
-
-          <Card title={`${year}년 유입경로별 (DEF 전환)`} className="md:col-span-2">
-            <SourceTable rows={sourceBreakdown} />
-          </Card>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <Card title={`${year}년 유입 세부경로 (마케팅 채널)`}>
-            <SourceTable rows={sourceDetailBreakdown} />
-          </Card>
-          <Card title={`${year}년 검색어 유입 현황`}>
-            <SourceTable rows={keywordBreakdown} firstColLabel="검색어" />
-          </Card>
-        </div>
-
-        {sourceBreakdown.length > 0 && (
-          <Card title={`${year}년 유입경로별 차트`}>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart
-                data={sourceBreakdown}
-                margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
-              >
-                <CartesianGrid stroke={NV.hairline} strokeDasharray="2 2" />
-                <XAxis dataKey="source" fontSize={11} stroke={NV.mute} />
-                <YAxis allowDecimals={false} fontSize={11} stroke={NV.mute} />
-                <Tooltip
-                  contentStyle={{
-                    background: NV.canvas,
-                    border: `1px solid ${NV.hairline}`,
-                    borderRadius: 2,
-                    fontSize: 12,
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="total" name="전체" fill={NV.stone} />
-                <Bar dataKey="def_count" name="DEF 전환" fill={NV.primary} />
-                <Bar dataKey="los_count" name="LOS" fill={NV.error} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        )}
-      </Section>
-
-      {/* ===== Section 4: WEDDING 상담 현황 ===== */}
-      <Section eyebrow="04 / Consultations" title="WEDDING 상담 현황" subtitle="희망상담일자 기준 · 상담 → DEF 전환율">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <Card title="연도별 상담 → DEF 전환">
-            <SimpleTable
-              head={['연도', '상담', 'DEF', '전환율']}
-              rightAlign={[false, true, true, true]}
-              rows={consultationYearly.map((r) => [
-                `${r.year}년`,
-                r.consultation_count,
-                <span key="def" style={{ color: NV.primary, fontWeight: 700 }}>{r.def_count}</span>,
-                fmtPct(r.conversion_rate),
-              ])}
-              empty="데이터 없음"
-            />
-          </Card>
-
-          <Card title={`${year}년 월별 상담 → DEF 전환`} className="md:col-span-2">
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart
-                data={consultationMonthly.map((r) => ({ ...r, monthLabel: `${r.month}월` }))}
-                margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
-              >
-                <CartesianGrid stroke={NV.hairline} strokeDasharray="2 2" />
-                <XAxis dataKey="monthLabel" fontSize={11} stroke={NV.mute} />
-                <YAxis allowDecimals={false} fontSize={11} stroke={NV.mute} />
-                <Tooltip
-                  contentStyle={{
-                    background: NV.canvas,
-                    border: `1px solid ${NV.hairline}`,
-                    borderRadius: 2,
-                    fontSize: 12,
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="consultation_count" name="상담" fill={NV.stone} />
-                <Bar dataKey="def_count" name="DEF" fill={NV.primary} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        </div>
-
-        <Card title={`${year}년 월별 상담/DEF/전환율`}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
-              <thead style={{ background: NV.surfaceSoft, color: NV.body }}>
-                <tr>
-                  <th
-                    className="px-2 py-1.5 text-left text-xs font-bold uppercase tracking-wider"
-                    style={{ borderBottom: `1px solid ${NV.hairline}` }}
-                  >
-                    월
-                  </th>
-                  {consultationMonthly.map((r) => (
-                    <th
-                      key={r.month}
-                      className="px-2 py-1.5 text-right text-xs font-bold"
-                      style={{ borderBottom: `1px solid ${NV.hairline}` }}
-                    >
-                      {r.month}월
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr style={{ borderBottom: `1px solid ${NV.hairline}` }}>
-                  <td className="px-2 py-1.5 font-bold">상담</td>
-                  {consultationMonthly.map((r) => (
-                    <td key={r.month} className="px-2 py-1.5 text-right tabular-nums">
-                      {r.consultation_count}
-                    </td>
-                  ))}
-                </tr>
-                <tr style={{ borderBottom: `1px solid ${NV.hairline}` }}>
-                  <td className="px-2 py-1.5 font-bold">DEF</td>
-                  {consultationMonthly.map((r) => (
-                    <td
-                      key={r.month}
-                      className="px-2 py-1.5 text-right tabular-nums font-bold"
-                      style={{ color: NV.primary }}
-                    >
-                      {r.def_count}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="px-2 py-1.5 font-bold">전환율</td>
-                  {consultationMonthly.map((r) => (
-                    <td key={r.month} className="px-2 py-1.5 text-right tabular-nums">
-                      {fmtPct(r.conversion_rate)}
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </Section>
+      {/* 유입경로 현황 · 상담 현황 섹션은 세일즈 대시보드(03 MARKETING · 05 MONTHLY)로 흡수했다 (2026-10-08).
+          연도 누적만 보이던 유입경로는 공통 기간 필터 + 주/월 추이로, 상담→DEF 는 월별 표와 겹쳐 제거. */}
 
       {/* ===== Section 5: SALES 통합 목표 매출 달성 ===== */}
       <Section
-        eyebrow="05 / Targets"
+        eyebrow="07 / Targets"
         title="SALES 통합 목표 매출 달성 현황"
-        subtitle={`${year}년 · ${admin ? 'Forecasting 셀을 직접 입력 가능' : '관리자만 Forecasting 수정 가능'}`}
+        subtitle={`${year}년 · 실적 = 행사리뷰 최종 매출액(없으면 행사 매출탭) · ${admin ? 'Forecasting 셀을 직접 입력 가능' : '관리자만 Forecasting 수정 가능'}`}
       >
         <TargetTable
           year={year}

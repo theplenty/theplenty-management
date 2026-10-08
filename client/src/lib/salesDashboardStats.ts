@@ -42,6 +42,32 @@ export function thisMonthRange(now = new Date()): DateRange {
   return { fromIso: start.toISOString(), toIso: end.toISOString() };
 }
 
+export function thisYearRange(now = new Date()): DateRange {
+  const start = new Date(now.getFullYear(), 0, 1);
+  const end = new Date(now.getFullYear() + 1, 0, 1);
+  return { fromIso: start.toISOString(), toIso: end.toISOString() };
+}
+
+/** 'YYYY-MM-DD' 는 그날 0시(로컬) ISO 로 — ISO 문자열끼리 비교하는 inRange 에 맞춘다. */
+export function dayToIso(d: string | null | undefined, fallback: string): string {
+  if (!d) return fallback;
+  if (d.length === 10) {
+    const t = new Date(d + 'T00:00');
+    return Number.isNaN(t.getTime()) ? fallback : t.toISOString();
+  }
+  return d;
+}
+
+/** MICE 문의의 유입 시점 — 통화일자, 없으면 등록일. (월별 세일즈 표·신규 현황과 같은 기준) */
+export function miceInflowIso(inq: MiceInquiry): string {
+  return dayToIso(inq.call_date, inq.created_at);
+}
+
+/** WEDDING 고객의 유입 시점 — 신규문의일자, 없으면 등록일. */
+export function weddingInflowIso(c: WeddingCustomer): string {
+  return dayToIso(c.inquiry_date, c.created_at);
+}
+
 export function customRange(fromYmd: string, toYmd: string): DateRange {
   // YYYY-MM-DD 형식. to 는 inclusive 이지만 toIso 는 다음날 00:00 (exclusive 변환).
   const f = new Date(fromYmd + 'T00:00');
@@ -111,7 +137,7 @@ export function computeMiceChannelMetrics(
   let los = 0;
   for (const f of flat) {
     if (f.inquiry.inquiry_channel !== channel) continue;
-    if (range && !inRange(f.inquiry.created_at, range)) continue;
+    if (range && !inRange(miceInflowIso(f.inquiry), range)) continue;
     if (managerId && f.inquiry.assigned_manager_id !== managerId) continue;
     total += 1;
     const s = f.inquiry.progress_status;
@@ -393,6 +419,82 @@ export function findStaleWedding(
     if (ageDays >= minAgeDays) out.push({ customer: c, ageDays });
   }
   return out.sort((a, b) => b.ageDays - a.ageDays);
+}
+
+// ===== 유입경로 · 마케팅 KPI (공통 기간·담당자 필터 반영) =====
+// 예전 '유입경로 현황' 은 연도 누적만 보여줬다. 마케팅 직원 KPI 는 주·월 단위라 공통 기간 필터를 따르게 했다.
+export interface BreakdownRow<T> {
+  key: string;
+  total: number;
+  def: number;
+  los: number;
+  items: T[];
+}
+
+function weddingManagerOk(c: WeddingCustomer, managerId: string | null): boolean {
+  if (!managerId) return true;
+  return c.event_inquiries[0]?.assigned_manager_id === managerId;
+}
+
+export function weddingBreakdown(
+  customers: WeddingCustomer[],
+  by: 'source' | 'source_detail' | 'search_keyword',
+  range: DateRange | null,
+  managerId: string | null
+): BreakdownRow<WeddingCustomer>[] {
+  const map = new Map<string, BreakdownRow<WeddingCustomer>>();
+  for (const c of customers) {
+    if (c.deleted_at) continue;
+    if (!weddingManagerOk(c, managerId)) continue;
+    if (range && !inRange(weddingInflowIso(c), range)) continue;
+    let key = String(c[by] || '').trim();
+    if (by === 'search_keyword') {
+      if (!key) continue; // 검색어 없는 건은 검색어 표에 안 올린다
+      key = key.replace(/\s+/g, ' ');
+    }
+    if (!key) key = '미분류';
+    const row = map.get(key) || { key, total: 0, def: 0, los: 0, items: [] };
+    row.total += 1;
+    if (c.progress_status === 'DEF') row.def += 1;
+    if (c.progress_status === 'LOS') row.los += 1;
+    row.items.push(c);
+    map.set(key, row);
+  }
+  return [...map.values()].sort((a, b) => b.total - a.total);
+}
+
+/** MICE — 업체 구분 × 유입 채널. 마케팅 채널 칸이 없어 기존 값(채널·구분)으로만 본다 (2026-10-08 결정). */
+export interface MiceCategoryRow {
+  key: string; // 구분
+  incall: number;
+  outcall: number;
+  db: number;
+  total: number;
+  def: number;
+  items: InquiryWithCustomer[];
+}
+
+export function miceCategoryBreakdown(
+  flat: InquiryWithCustomer[],
+  range: DateRange | null,
+  managerId: string | null
+): MiceCategoryRow[] {
+  const map = new Map<string, MiceCategoryRow>();
+  for (const f of flat) {
+    if (range && !inRange(miceInflowIso(f.inquiry), range)) continue;
+    if (managerId && f.inquiry.assigned_manager_id !== managerId) continue;
+    const key = f.customer.mice_category || '미분류';
+    const row = map.get(key) || { key, incall: 0, outcall: 0, db: 0, total: 0, def: 0, items: [] };
+    const ch = f.inquiry.inquiry_channel;
+    if (ch === 'OUTCALL') row.outcall += 1;
+    else if (ch === 'DB') row.db += 1;
+    else row.incall += 1;
+    row.total += 1;
+    if (miceStatusGroup(f.inquiry.progress_status) === 'DEF') row.def += 1;
+    row.items.push(f);
+    map.set(key, row);
+  }
+  return [...map.values()].sort((a, b) => b.total - a.total);
 }
 
 // ===== MICE 월별 세일즈 표 (문의 → 견적 → 계약) =====

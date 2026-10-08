@@ -45,7 +45,9 @@ export default function HelpPopover() {
             <Section title="🎯 공통 필터 (대시보드 최상단)">
               <ul className="space-y-1 text-xs leading-relaxed">
                 <li>
-                  <b>기간</b>: 오늘 / 금주 / 금월 / 직접선택 — 두 섹션 모두에 적용
+                  <b>기간</b>: 오늘 / 금주 / 금월 / 올해 / 직접선택 — MICE·WEDDING 세일즈,
+                  유입경로·마케팅 KPI 표에 적용. 주간·월간 추이 표와 월별 세일즈 표는 표 안의
+                  주/월·연도 선택이 기간을 정함
                 </li>
                 <li>
                   <b>담당자</b>: 본인 선택 시 본인 담당 건만 — 관리자·기업·웨딩
@@ -60,7 +62,7 @@ export default function HelpPopover() {
                   <b>{'{기간}'} 인콜 / 아웃콜</b> — 채널별 신규 유입 건수
                 </li>
                 <li>
-                  <b>인콜·아웃콜 전환율</b> — 전체 중 INQ/DEF/LOS로 옮겨간 비율
+                  <b>전환율</b> — 전환 흐름 막대 제목에 표시 (전체 중 INQ/DEF/LOS로 옮겨간 비율)
                 </li>
                 <li>
                   <b>미처리 인콜 (3일+)</b> — 단순문의 상태로 방치 (누적, 기간 무관)
@@ -84,6 +86,21 @@ export default function HelpPopover() {
                 </li>
                 <li>
                   <b>장기 미전환 / 상담 예정</b> — 선택 기간 내 신규문의 기준
+                </li>
+              </ul>
+            </Section>
+
+            <Section title="📣 유입경로 · 마케팅 KPI">
+              <ul className="space-y-1 text-xs leading-relaxed">
+                <li>
+                  <b>위 표</b> — 공통 기간·담당자 필터 기준. WEDDING 은 유입경로 / 세부경로(마케팅 채널) /
+                  검색어, MICE 는 업체 구분 × 유입 채널
+                </li>
+                <li>
+                  <b>추이 표</b> — 주간(최근 12주) / 월간. 마케팅 직원 KPI 는 여기서 주·월 단위로
+                </li>
+                <li className="text-gray-500">
+                  각 섹션 머리의 <b>📌 기준</b> 줄이 어느 DB·어느 날짜로 세는지 알려줍니다
                 </li>
               </ul>
             </Section>
