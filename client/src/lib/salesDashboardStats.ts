@@ -198,6 +198,7 @@ export function computeManagerConversionRates(
   const byManager = new Map<string, { id: string; name: string; total: number; converted: number }>();
   for (const f of flat) {
     if (channel && f.inquiry.inquiry_channel !== channel) continue;
+    if (!channel && isDbCollect(f.inquiry)) continue; // 전체 기준일 때 DB 수집은 통화가 아니라 뺀다
     const id = f.inquiry.assigned_manager_id || '__none';
     const name = f.inquiry.assigned_manager_name || '미지정';
     const entry = byManager.get(id) || { id, name, total: 0, converted: 0 };

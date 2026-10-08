@@ -7,6 +7,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import {
+  isDbCollect,
   ROLE_LABEL,
   type Event,
   type EventStatus,
@@ -102,7 +103,11 @@ function computeMiceFunnel(customers: MiceCustomer[], monthStart: Date, monthEnd
   for (const c of customers) {
     if (c.deleted_at) continue;
     for (const inq of c.inquiries) {
-      if (!inMonth(inq.created_at, monthStart, monthEnd)) continue;
+      // DB 수집은 통화가 아니라 문의 접수로 안 센다 (대시보드와 같은 기준). 과거 DB 를 일괄 입력한 달에
+      // 입력자 이름으로 수백 건이 잡히던 문제 (2026-10-08).
+      if (isDbCollect(inq)) continue;
+      // 유입월 = 통화일자(없으면 등록일) — 대시보드·월별 세일즈 표와 같은 기준
+      if (!inMonth(inq.call_date ? `${inq.call_date}T00:00` : inq.created_at, monthStart, monthEnd)) continue;
       const name = inq.assigned_manager_name?.trim() || inq.created_by_name?.trim() || '미지정';
       const s = inq.progress_status;
       const moved =
