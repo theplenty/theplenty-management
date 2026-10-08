@@ -238,7 +238,53 @@ export type WeddingSource =
   | '컨설팅'
   | '워크인';
 
-export type WeddingSourceDetail = '컨설팅' | 'CTalk' | '인스타그램' | '네이버' | '지인추천';
+// 유입 세부경로(마케팅 채널). 2026-10-08 엑셀로 들어온 값에 맞춰 정리 —
+// '네이버' 는 '네이버검색' 으로 합쳤고(대표님 결정), 네이버블로그·기타를 옵션에 올렸다.
+export type WeddingSourceDetail =
+  | '컨설팅'
+  | 'CTalk'
+  | '인스타그램'
+  | '네이버검색'
+  | '네이버블로그'
+  | '지인추천'
+  | '기타';
+
+export const WEDDING_SOURCE_DETAIL_OPTIONS: WeddingSourceDetail[] = [
+  '컨설팅',
+  'CTalk',
+  '인스타그램',
+  '네이버검색',
+  '네이버블로그',
+  '지인추천',
+  '기타',
+];
+
+/**
+ * 옛 값·엑셀 값 → 현재 옵션. 모르는 값은 '' (대시보드에서 '미분류').
+ * 저장되는 모든 경로(등록·수정·엑셀 가져오기)가 이걸 거쳐야 대시보드 표와 입력창 옵션이 같아진다.
+ */
+export function normalizeWeddingSourceDetail(v: unknown): WeddingSourceDetail | '' {
+  const raw = String(v ?? '').trim();
+  if (!raw) return '';
+  const key = raw.replace(/\s+/g, '').toLowerCase();
+  const alias: Record<string, WeddingSourceDetail | ''> = {
+    네이버: '네이버검색',
+    네이버검색: '네이버검색',
+    블로그: '네이버블로그',
+    네이버블로그: '네이버블로그',
+    인스타: '인스타그램',
+    인스타그램: '인스타그램',
+    ctalk: 'CTalk',
+    씨톡: 'CTalk',
+    컨설팅: '컨설팅',
+    지인추천: '지인추천',
+    지인: '지인추천',
+    기타: '기타',
+    선택안함: '',
+    미분류: '',
+  };
+  return alias[key] ?? '';
+}
 
 export interface WeddingEventInquiry {
   id: string;

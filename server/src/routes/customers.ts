@@ -5,6 +5,7 @@ import { requireActiveRole } from '../middleware/auth.js';
 import { logChange, computeDiff, getLogsForEntity } from '../store/changeLog.js';
 import { normalizeOrgName, levenshtein } from '../lib/textNormalize.js';
 import { shiftDate, todayKst } from '../lib/kstDate.js';
+import { normalizeWeddingSourceDetail } from '../types.js';
 import { normalizeMiceStatus } from '../types.js';
 import {
   linkInquiryToEvent,
@@ -928,7 +929,7 @@ router.post('/wedding', (req, res) => {
     competing_venues: body.competing_venues || '',
     desired_budget: body.desired_budget || '',
     source: (body.source as WeddingCustomer['source']) || '',
-    source_detail: (body.source_detail as WeddingCustomer['source_detail']) || '',
+    source_detail: normalizeWeddingSourceDetail(body.source_detail),
     search_keyword: body.search_keyword || '',
     event_inquiries: normalizeWeddingInquiries(body.event_inquiries, req.user!.id, req.user!.name),
     memo: body.memo || '',
@@ -983,6 +984,7 @@ router.patch('/wedding/:id', (req, res) => {
       (item as any)[k] = body[k];
     }
   }
+  if (body.source_detail !== undefined) item.source_detail = normalizeWeddingSourceDetail(body.source_detail);
   if (body.event_inquiries !== undefined) {
     item.event_inquiries = normalizeWeddingInquiries(body.event_inquiries, req.user!.id, req.user!.name);
     // 입금 확인 스탬프 — 체크가 켜지는 순간의 시각을 서버가 찍는다 (클라이언트 시계를 믿지 않는다)
@@ -1368,7 +1370,7 @@ router.post('/wedding/_bulk-upsert', (req, res) => {
         competing_venues: r.competing_venues || '',
         desired_budget: r.desired_budget || '',
         source: (r.source as WeddingCustomer['source']) || '',
-        source_detail: (r.source_detail as WeddingCustomer['source_detail']) || '',
+        source_detail: normalizeWeddingSourceDetail(r.source_detail),
         search_keyword: r.search_keyword || '',
         event_inquiries: normalizeWeddingInquiries(
           r.event_inquiries,
