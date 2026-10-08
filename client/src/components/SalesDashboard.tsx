@@ -228,7 +228,8 @@ export default function SalesDashboard({
             'MICE 고객정보 › 문의 카드',
             '기간 = 통화일자 (없으면 등록일) · 위 공통 필터 적용',
             '유입 채널 = 인콜 / 아웃콜 / DB 수집(통화 아님, 집계 제외)',
-            '전환 = 진행상황 DEF·LOS, INQ = 문의 상태 + 견적·계약 체크 1개 이상, 미처리 = 체크 없음',
+            '전환 = 진행상황 DEF·LOS, INQ = 문의 상태 + 견적·계약 체크 1개 이상',
+            '미처리 = 체크 없음 + 콜백 예정일 살아 있음 · 단순문의 그침 = 체크 없음 + 콜백 없음/닫힘(종결)',
             '미처리 인콜 카드만 기간 무관(누적)',
           ]}
         />
@@ -258,7 +259,7 @@ export default function SalesDashboard({
             label="미처리 인콜 (3일+)"
             value={stale3.length}
             accent={stale3.length > 0 ? 'red' : 'gray'}
-            sub={stale7.length > 0 ? `7일+ ${stale7.length}건` : '누적 기준'}
+            sub={(stale7.length > 0 ? `7일+ ${stale7.length}건 · ` : '') + '콜백 예정 있는데 진전 없음 · 누적'}
             onClick={openMiceStaleDrill}
           />
         </div>
@@ -270,11 +271,18 @@ export default function SalesDashboard({
             total={miceFilteredIncall.total}
             stages={[
               {
+                label: '단순문의 그침',
+                value: miceFilteredIncall.simple,
+                color: 'bg-gray-200',
+                onClick: () =>
+                  openMiceDrill('INCALL', 'simple', `${periodLabel} 인콜 — 단순 문의로 그침 (콜백 없음)`),
+              },
+              {
                 label: '미처리',
                 value: miceFilteredIncall.unprocessed,
-                color: 'bg-gray-300',
+                color: 'bg-gray-400',
                 onClick: () =>
-                  openMiceDrill('INCALL', 'unprocessed', `${periodLabel} 인콜 — 미처리 (단순문의)`),
+                  openMiceDrill('INCALL', 'unprocessed', `${periodLabel} 인콜 — 미처리 (콜백 대기 중인데 진전 없음)`),
               },
               {
                 label: 'INQ',
@@ -301,11 +309,18 @@ export default function SalesDashboard({
             total={miceFilteredOutcall.total}
             stages={[
               {
+                label: '단순문의 그침',
+                value: miceFilteredOutcall.simple,
+                color: 'bg-gray-200',
+                onClick: () =>
+                  openMiceDrill('OUTCALL', 'simple', `${periodLabel} 아웃콜 — 단순 문의로 그침 (콜백 없음)`),
+              },
+              {
                 label: '미처리',
                 value: miceFilteredOutcall.unprocessed,
-                color: 'bg-gray-300',
+                color: 'bg-gray-400',
                 onClick: () =>
-                  openMiceDrill('OUTCALL', 'unprocessed', `${periodLabel} 아웃콜 — 미처리`),
+                  openMiceDrill('OUTCALL', 'unprocessed', `${periodLabel} 아웃콜 — 미처리 (콜백 대기 중인데 진전 없음)`),
               },
               {
                 label: 'INQ',
