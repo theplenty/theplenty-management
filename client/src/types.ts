@@ -120,6 +120,8 @@ export interface MiceInquiry {
   deposit_paid?: boolean;
   /** 견적서·회신·계약금 3개가 모두 체크된 순간 자동 기록 */
   confirmed_at?: string | null;
+  /** 진행상황이 바뀐 시각 (서버 기록) — 주간/월간 '새로 DEF/LOS 된 건' 집계용. 2026-10 이전 건은 null */
+  status_changed_at?: string | null;
   /** 체크를 켠 시각 (서버가 기록·관리, 클라이언트는 읽기만) — 월별 활동 집계용 */
   quote_sent_at?: string | null;
   contract_sent_at?: string | null;

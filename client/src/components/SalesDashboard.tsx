@@ -1,6 +1,6 @@
 // 세일즈 중심 MICE / WEDDING 대시보드 섹션 — 유입 → 팔로업 → 전환 추적.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fmtDateW, fmtDateTimeW } from '../lib/dateFmt';
 import {
@@ -32,6 +32,17 @@ import {
   type WeddingStatusGroup,
 } from '../lib/salesDashboardStats';
 import Modal from './Modal';
+import { api } from '../lib/api';
+import {
+  buildTrendLines,
+  CUSTOMER_TREND_ROWS,
+  EVENT_TREND_ROWS,
+  monthBuckets,
+  weekBuckets,
+  type Bucket,
+  type StatusTransition,
+  type TrendLine,
+} from '../lib/trendStats';
 
 type Period = 'today' | 'week' | 'month' | 'custom';
 
@@ -60,7 +71,13 @@ type WeddingDrill = {
   title: string;
   items: WeddingCustomer[];
 };
-type DrillState = { open: false } | MiceDrill | WeddingDrill;
+type ListDrill = {
+  open: true;
+  kind: 'list';
+  title: string;
+  items: StatusTransition[];
+};
+type DrillState = { open: false } | MiceDrill | WeddingDrill | ListDrill;
 
 export default function SalesDashboard({
   miceCustomers,
@@ -446,6 +463,9 @@ export default function SalesDashboard({
         </div>
       </section>
 
+      {/* ===== 주간·월간 신규 현황 — 상태가 바뀐 시점 기준 ===== */}
+      <TrendSection onDrill={(title, items) => setDrill({ open: true, kind: 'list', title, items })} />
+
       {/* ===== 월별 세일즈 표 — MICE · WEDDING 나란히 (연도 공유) ===== */}
       <MonthlySalesTables miceCustomers={miceCustomers} weddingCustomers={weddingCustomers} />
 
@@ -481,7 +501,15 @@ function DrillDownModal({
         </>
       }
     >
-      {drill.kind === 'mice' ? (
+      {drill.kind === 'list' ? (
+        <TransitionListTable
+          items={drill.items}
+          onRowClick={(t) => {
+            onClose();
+            navigate(t.kind === 'event' ? `/events/${t.id}` : t.kind === 'mice' ? `/customer/mice/${t.id}` : `/customer/wedding/${t.id}`);
+          }}
+        />
+      ) : drill.kind === 'mice' ? (
         <MiceDrillTable
           items={drill.items}
           onRowClick={(customerId) => {
@@ -1031,6 +1059,206 @@ function StaleWeddingCard({
   );
 }
 
+// ===== 주간·월간 신규 현황 — "이번 주에 새로 INQ·DEF·LOS 가 된 건" =====
+// 월별 세일즈 표(접수월 코호트)와 다르게 **상태가 바뀐 시점**으로 센다.
+// 원천은 서버 /api/stats/status-transitions — 변경이력에서 시각을 읽고, 없는 시각은 지어내지 않는다(시각 미상은 제외 표시).
+type TrendMode = 'week' | 'month';
+
+function TrendSection({ onDrill }: { onDrill: (title: string, items: StatusTransition[]) => void }) {
+  const [mode, setMode] = useState<TrendMode>('week');
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const [transitions, setTransitions] = useState<StatusTransition[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ transitions: StatusTransition[] }>('/api/stats/status-transitions')
+      .then((r) => {
+        if (!cancelled) setTransitions(r.transitions);
+      })
+      .catch((e) => {
+        console.error(e);
+        if (!cancelled) setError('신규 현황을 불러오지 못했습니다.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const buckets = useMemo<Bucket[]>(() => (mode === 'week' ? weekBuckets(12) : monthBuckets(year)), [mode, year]);
+  const eventLines = useMemo(() => buildTrendLines(transitions || [], buckets, EVENT_TREND_ROWS), [transitions, buckets]);
+  const customerLines = useMemo(() => buildTrendLines(transitions || [], buckets, CUSTOMER_TREND_ROWS), [transitions, buckets]);
+  const modeLabel = mode === 'week' ? '최근 12주' : `${year}년 월별`;
+
+  return (
+    <section className="bg-white border rounded-lg p-4 md:p-6">
+      <header className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <span className="text-xs text-gray-400 font-mono">03 / TREND</span>
+          <h2 className="text-lg md:text-xl font-bold text-gray-900">주간 · 월간 신규 현황</h2>
+          <span className="text-xs text-gray-500">그 기간에 새로 INQ · DEF · LOS 가 된 건 — 숫자 클릭 시 목록</span>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          {(['week', 'month'] as TrendMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={
+                'px-2.5 py-1 rounded border ' +
+                (mode === m ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-300 hover:bg-gray-50')
+              }
+            >
+              {m === 'week' ? '주간 (최근 12주)' : '월간'}
+            </button>
+          ))}
+          {mode === 'month' && (
+            <div className="flex items-center gap-1 text-sm ml-1">
+              <button onClick={() => setYear((y) => y - 1)} className="px-2 py-0.5 rounded hover:bg-gray-100 text-gray-600" aria-label="이전 연도">‹</button>
+              <span className="font-medium text-gray-800 w-14 text-center">{year}년</span>
+              <button onClick={() => setYear((y) => y + 1)} className="px-2 py-0.5 rounded hover:bg-gray-100 text-gray-600" aria-label="다음 연도">›</button>
+            </div>
+          )}
+        </div>
+      </header>
+      {error && <div className="text-sm text-red-600 mb-3">{error}</div>}
+      {!transitions && !error && <div className="text-xs text-gray-400">불러오는 중…</div>}
+      {transitions && (
+        <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
+          <TrendTable
+            title="📅 행사 (캘린더 상태)"
+            buckets={buckets}
+            lines={eventLines}
+            onCell={(line, b, items) => onDrill(`${b.label} · ${line.row.label}${line.row.indent ? '' : ''} (${items.length}건)`, items)}
+            note={`행사 상태가 INQ/DEF/LOS 로 바뀐 시점 기준 (변경이력). 이력 도입 전에 만든 행사는 생성일로 잡힘 · ${modeLabel}`}
+          />
+          <TrendTable
+            title="👥 고객 문의 (MICE 진행상황 · WEDDING 진행단계)"
+            buckets={buckets}
+            lines={customerLines}
+            onCell={(line, b, items) => onDrill(`${b.label} · ${line.row.label} (${items.length}건)`, items)}
+            note="신규 문의 = 통화일(없으면 등록일). MICE DEF/LOS 는 2026-10 부터 바뀐 시각을 기록 — 그 전 건은 시각을 알 수 없어 '미상' 으로 뺀다. DB 수집 제외."
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TrendTable({
+  title,
+  buckets,
+  lines,
+  onCell,
+  note,
+}: {
+  title: string;
+  buckets: Bucket[];
+  lines: TrendLine[];
+  onCell: (line: TrendLine, bucket: Bucket, items: StatusTransition[]) => void;
+  note: string;
+}) {
+  return (
+    <div className="border rounded-lg p-3">
+      <h3 className="text-sm font-semibold text-gray-900 mb-2">{title}</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs min-w-[52rem]">
+          <thead>
+            <tr className="text-[11px] text-gray-500 border-b">
+              <th className="text-left font-medium py-1.5 pr-2 w-44">항목</th>
+              {buckets.map((b) => (
+                <th
+                  key={b.key}
+                  className={`text-right font-medium py-1.5 px-1 whitespace-nowrap ${b.isCurrent ? 'text-gray-900 bg-amber-50' : ''}`}
+                  title={b.isCurrent ? '이번 기간' : undefined}
+                >
+                  {b.label}
+                </th>
+              ))}
+              <th className="text-right font-semibold py-1.5 pl-2 border-l">합계</th>
+              <th className="text-right font-medium py-1.5 pl-2 text-gray-400" title="상태가 바뀐 시각을 알 수 없어 칸에 못 넣은 건">미상</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line) => (
+              <tr key={line.row.key} className="border-b last:border-b-0">
+                <td className={`py-1.5 pr-2 ${line.row.strong ? 'font-semibold text-gray-900' : 'text-gray-600'} ${line.row.indent ? 'pl-4' : ''}`}>
+                  {line.row.indent ? '└ ' : ''}
+                  {line.row.label}
+                </td>
+                {line.cells.map((c, i) => {
+                  const b = buckets[i];
+                  const n = c.items.length;
+                  return (
+                    <td key={b.key} className={`py-0.5 px-0.5 text-right tabular-nums ${b.isCurrent ? 'bg-amber-50' : ''}`}>
+                      {n === 0 ? (
+                        <span className="text-gray-300 px-1">0</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onCell(line, b, c.items)}
+                          className={`px-1 rounded hover:bg-blue-100 ${line.row.strong ? 'font-semibold text-gray-900' : 'text-gray-700'}`}
+                        >
+                          {n}
+                        </button>
+                      )}
+                    </td>
+                  );
+                })}
+                <td className="py-1.5 pl-2 text-right tabular-nums font-semibold border-l">{line.total}</td>
+                <td className="py-1.5 pl-2 text-right tabular-nums text-gray-400">{line.unknown || ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-gray-400 mt-2">{note}</p>
+    </div>
+  );
+}
+
+function TransitionListTable({
+  items,
+  onRowClick,
+}: {
+  items: StatusTransition[];
+  onRowClick: (t: StatusTransition) => void;
+}) {
+  if (items.length === 0) {
+    return <div className="text-center text-gray-400 py-8 text-sm">해당 건이 없습니다.</div>;
+  }
+  const sorted = [...items].sort((a, b) => ((a.at || '') < (b.at || '') ? 1 : -1));
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm whitespace-nowrap">
+        <thead className="bg-gray-50 text-gray-700">
+          <tr>
+            <th className="text-left px-3 py-2 font-semibold border-b">바뀐 시각</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">구분</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">이름</th>
+            <th className="text-left px-3 py-2 font-semibold border-b">상태</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((t, i) => (
+            <tr key={`${t.kind}-${t.id}-${i}`} onClick={() => onRowClick(t)} className="border-t hover:bg-blue-50 cursor-pointer">
+              <td className="px-3 py-2 text-gray-600 tabular-nums">{t.at ? fmtDateTimeW(t.at) : '시각 미상'}</td>
+              <td className="px-3 py-2">
+                <span className="badge bg-gray-100 text-gray-700 text-[10px]">
+                  {t.kind === 'event' ? `행사 · ${t.sub}` : t.kind === 'mice' ? 'MICE 문의' : 'WEDDING 고객'}
+                </span>
+              </td>
+              <td className="px-3 py-2 font-medium text-gray-900">{t.name}</td>
+              <td className="px-3 py-2"><span className="badge bg-gray-100 text-gray-800 text-[10px]">{t.to}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ===== 월별 세일즈 표 — MICE · WEDDING 나란히 =====
 // 대표님이 손으로 만들던 두 표의 재현. 행 구성은 원본 그대로(아웃콜만 제외),
 // 귀속은 접수월 코호트("그 달 들어온 건이 이후 어디까지 갔나").
@@ -1171,7 +1399,7 @@ function MonthlySalesTables({
     <section className="bg-white border rounded-lg p-4 md:p-6">
       <header className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-baseline gap-3 flex-wrap">
-          <span className="text-xs text-gray-400 font-mono">03 / MONTHLY</span>
+          <span className="text-xs text-gray-400 font-mono">04 / MONTHLY</span>
           <h2 className="text-lg md:text-xl font-bold text-gray-900">월별 세일즈 표</h2>
           <span className="text-xs text-gray-500">접수월 기준 — 그 달 들어온 건이 이후 어디까지 갔나</span>
         </div>

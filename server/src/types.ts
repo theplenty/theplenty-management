@@ -142,6 +142,8 @@ export interface MiceInquiry {
 
   /** 자동 확정 시각 — 견적서·회신·계약금 3개가 모두 체크된 순간 기록 */
   confirmed_at?: string | null;
+  /** 진행상황이 바뀐 시각 — 주간/월간 '새로 DEF/LOS 된 건' 집계용 (2026-10 부터 저장, 이전 건은 null) */
+  status_changed_at?: string | null;
 
   /**
    * 체크를 '켠' 시각 — 월별 활동 집계용 ("6월에 견적을 몇 건 보냈나").

@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { requireActiveRole } from '../middleware/auth.js';
 import { datasetMeta, runPivot, runFunnel } from '../lib/pivot.js';
 import type { DatasetId, PivotRequest } from '../lib/pivot.js';
+import { computeStatusTransitions } from '../lib/statusTransitions.js';
 
 const router = Router();
 router.use(requireActiveRole);
@@ -54,6 +55,14 @@ router.post('/pivot', (req, res) => {
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
+});
+
+// 상태 전이 시점 목록 — 대시보드 주간/월간 '신규 INQ·DEF·LOS' 표의 원천.
+// since(ISO) 이후 것만. 기본 400일 — 월간 표가 작년까지 넘겨볼 수 있게.
+router.get('/status-transitions', (req, res) => {
+  const sinceParam = typeof req.query.since === 'string' ? req.query.since : '';
+  const since = sinceParam || new Date(Date.now() - 400 * 86400_000).toISOString();
+  res.json({ since, transitions: computeStatusTransitions(since) });
 });
 
 router.get('/funnel', (req, res) => {

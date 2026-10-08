@@ -491,6 +491,11 @@ function stampCheckTimes(next: MiceInquiry[], prev: MiceInquiry[]): MiceInquiry[
       else if (p?.[flag]) out[at] = (p[at] as string | null) ?? null; // 원래 켜져 있던 것 — 보존
       else out[at] = now; // 이번에 켜진 것
     }
+    // 진행상황이 바뀐 시각 — 주간/월간 "새로 DEF/LOS 된 건" 을 세는 기준.
+    // 새 문의가 처음부터 '문의' 가 아닌 상태로 들어오면 그 순간이 바뀐 시각이다.
+    if (!p) out.status_changed_at = q.progress_status !== '문의' ? now : (q.status_changed_at ?? null);
+    else if (p.progress_status !== q.progress_status) out.status_changed_at = now;
+    else out.status_changed_at = (p.status_changed_at as string | null | undefined) ?? q.status_changed_at ?? null;
     return out as MiceInquiry;
   });
 }
