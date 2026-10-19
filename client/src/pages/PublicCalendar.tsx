@@ -146,12 +146,14 @@ export default function PublicCalendar() {
               events={fcEvents}
               eventContent={(arg) => {
                 const halls = (arg.event.extendedProps.halls as string[]) || [];
+                // 시작~종료 병기 — FullCalendar 기본(timeText)은 시작 시간만 보여준다 (2026-10-19 대표님 요청)
+                const timeRange = fmtTimeRange(arg.event.start, arg.event.end);
                 return (
                   <div style={{ padding: '2px 4px', lineHeight: 1.4, width: '100%' }}>
                     {/* 시간 */}
-                    {arg.timeText && (
+                    {timeRange && (
                       <div style={{ fontSize: '0.72em', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                        {arg.timeText}
+                        {timeRange}
                       </div>
                     )}
                     {/* 행사명 — 긴 경우 줄바꿈 */}
@@ -181,6 +183,16 @@ export default function PublicCalendar() {
       </div>
     </div>
   );
+}
+
+const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+/** "12:00~15:00". 종료가 다음 날이면 "22:00~익일 02:00". 종료가 없으면 시작만. */
+function fmtTimeRange(start: Date | null, end: Date | null): string {
+  if (!start) return '';
+  if (!end) return hhmm(start);
+  const sameDay = start.toDateString() === end.toDateString();
+  return `${hhmm(start)}~${sameDay ? '' : '익일 '}${hhmm(end)}`;
 }
 
 function Legend({ label, color }: { label: string; color: string }) {
