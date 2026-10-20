@@ -39,6 +39,7 @@ import revenueItemsRouter from './routes/revenueItems.js';
 import eventRevenueRouter from './routes/eventRevenue.js';
 import paymentsRouter from './routes/payments.js';
 import menuCostRouter from './routes/menuCost.js';
+import storageCostRouter from './routes/storageCost.js';
 import settingsRouter from './routes/settings.js';
 import notificationsRouter from './routes/notifications.js';
 import statsRouter from './routes/stats.js';
@@ -89,6 +90,8 @@ app.use('/api/events', eventRevenueRouter);
 app.use('/api/revenue', eventRevenueRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/menu-cost', menuCostRouter);
+// 구매 시스템(plenty-storage) 원가 읽기 프록시 — S1. 키는 Secret, 브라우저는 여기만 부른다.
+app.use('/api/storage', storageCostRouter);
 app.use('/api/settings', settingsRouter);
 // 알림 자동화 (A4) — 관리자 전용 점검·수동 발송
 app.use('/api/notifications', notificationsRouter);
@@ -141,6 +144,9 @@ export const api = onRequest(
     // Cloud Run invoker 공개 — 누구나 호출 가능. 실제 인증은 Express 미들웨어(attachUser)가 처리.
     // 이게 없으면 Cloud Run 레벨에서 401 차단되어 우리 코드가 실행조차 안 됨.
     invoker: 'public',
+    // 구매 시스템 원가 읽기 키 (S1). Secret Manager → process.env.STORAGE_READ_KEY.
+    // ⚠ Secret 이 등록되기 전에 functions 를 배포하면 배포가 실패한다 — 등록 먼저.
+    secrets: ['STORAGE_READ_KEY'],
   },
   app
 );
