@@ -37,8 +37,9 @@ const MENU_CODE_RULES: Record<string, { MICE?: MenuCodeRule; WEDDING?: MenuCodeR
   'Dessert Plate(M)': { any: { code: 'CV-DES-02', basis: 'plates' } },
   'Dessert Plate(L)': { any: { code: 'CV-DES-04', basis: 'plates' } },
   웨딩국수: { any: { code: 'CV-NDL-01', basis: 'people' } }, // 화면에서 수량(인분)으로 받는다
-  // 커피+쿠키 세트(13,000). 구매 시스템 코드표에 추가 요청 중 — 코드가 생기면 여기에 적는다.
-  'Coffee Break': { any: { code: null, basis: 'people', note: '구매팀 코드 추가 요청 중' } },
+  // 커피브레이크 = 커피 3,000 + 쿠키 10,000 = 13,000원 1인 세트 (구매팀 확인 2026-10-21).
+  // 2026-06~09 소급 스냅샷엔 커피 줄이 없어 쿠키 원가만 잡힌다 — 커피는 10월 마감 스냅샷부터.
+  'Coffee Break': { any: { code: 'CV-DES-03', basis: 'people' } },
 };
 const NO_MEAL = new Set(['식사없음']);
 
@@ -61,13 +62,14 @@ export function resolveMenu(line: Pick<FoodItem, 'menu_name'> & { menu_code?: st
 }
 
 // ── 2. 매출 부서 태그 ───────────────────────────────────────────────────────
-// 항목 코드별 기본 배분. Coffee Break 는 커피 10,000(홀) + 쿠키 3,000(주방) 세트라 10:3 으로 나눈다.
+// 항목 코드별 기본 배분. Coffee Break 는 커피 3,000(홀) + 쿠키 10,000(주방) 세트라 홀 3 : 주방 10 으로 나눈다.
+// (구매 코드표의 매출귀속부서는 한 부서만 적을 수 있어 '컨벤션_홀' 로 되어 있지만, 매출 부서는 management 가 정한다)
 const REVENUE_DEPT_DEFAULT: Record<string, Partial<Record<RevenueDeptTag, number>>> = {
   FOOD: { 컨벤션_주방: 1 },
   SNACK: { 컨벤션_주방: 1 },
   BEV: { 컨벤션_홀: 1 },
   CORKAGE: { 컨벤션_홀: 1 },
-  CB: { 컨벤션_홀: 10 / 13, 컨벤션_주방: 3 / 13 },
+  CB: { 컨벤션_홀: 3 / 13, 컨벤션_주방: 10 / 13 },
   CONV: { 비식음: 1 },
   MEDIAWALL: { 비식음: 1 },
   BOOTH: { 비식음: 1 },
@@ -86,7 +88,7 @@ export function revenueDeptLabel(itemCode: string): string {
   if (!s) return '비식음';
   const keys = Object.keys(s);
   if (keys.length === 1) return keys[0] === '비식음' ? '비식음' : keys[0].replace('컨벤션_', '');
-  return '홀 10 : 주방 3';
+  return '홀 3 : 주방 10';
 }
 
 // ── 3. 식수 ─────────────────────────────────────────────────────────────────

@@ -191,7 +191,7 @@ export default function PnlPage() {
               <Issue label="수량 없음 (떡·디저트 접시 수 / 커피브레이크 인원)" items={i.missing_quantity} />
               <Issue label="매출 라인 없음 (식음 매출 빠짐)" items={i.no_revenue_lines} link="/revenue" linkLabel="매출·정산에서 입력" />
               {i.no_code_lines > 0 && (
-                <div className="text-xs text-gray-600">· 구매 코드표에 아직 없는 메뉴 라인 {i.no_code_lines}건 (커피브레이크 — 구매팀 코드 추가 요청 중)</div>
+                <div className="text-xs text-gray-600">· 구매 코드표에 없는 메뉴 라인 {i.no_code_lines}건</div>
               )}
               {i.code_not_in_snapshot.length > 0 && (
                 <div className="text-xs text-gray-600">· 그 달 스냅샷에 없는 코드: {i.code_not_in_snapshot.join(', ')}</div>

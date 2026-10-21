@@ -17,7 +17,7 @@ export function revenueDeptDefaultLabel(code: string): string {
     case 'CORKAGE':
       return '홀';
     case 'CB':
-      return '홀 10 : 주방 3'; // 커피 10,000(홀) + 쿠키 3,000(주방)
+      return '홀 3 : 주방 10'; // 커피 3,000(홀) + 쿠키 10,000(주방)
     default:
       return '비식음';
   }
