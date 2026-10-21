@@ -237,6 +237,7 @@ export default function Reviews() {
 
   return (
     <div>
+      <MissingMealBanner onOpen={(id) => navigate(`/events/${id}?tab=review`)} />
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <h1 className="text-xl md:text-2xl font-bold">연회팀 행사리뷰</h1>
@@ -404,6 +405,42 @@ export default function Reviews() {
           load();
         }}
       />
+    </div>
+  );
+}
+
+// ── 실제 식사 인원 미입력 알림 (S1) ──
+// 2026 이후 끝난 확정 행사 중 식사 메뉴가 있는데 '실제 식사 인원' 이 빈 것. 원가 계산(이론원가)에 쓰인다.
+// 식사를 안 한 행사는 0 을 넣으면 된다 — 0 은 입력한 값으로 보고 알리지 않는다.
+function MissingMealBanner({ onOpen }: { onOpen: (eventId: string) => void }) {
+  const [items, setItems] = useState<Array<{ event_id: string; event_name: string; start_datetime: string; days_since: number }>>([]);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    api
+      .get<{ events: typeof items }>('/api/storage/missing-meal-counts')
+      .then((r) => setItems(r.events))
+      .catch(() => setItems([]));
+  }, []);
+  if (!items.length) return null;
+  return (
+    <div className="mb-4 border border-amber-200 bg-amber-50 rounded-lg px-4 py-3 text-sm">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full text-left flex items-center gap-2">
+        <span>🍽</span>
+        <span className="font-semibold text-amber-900">실제 식사 인원 미입력 {items.length}건</span>
+        <span className="text-xs text-amber-800">원가 계산에 쓰입니다 · 식사 안 한 행사는 0 으로 입력</span>
+        <span className="ml-auto text-xs text-amber-700">{open ? '접기 ▲' : '목록 ▼'}</span>
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-1">
+          {items.map((e) => (
+            <li key={e.event_id}>
+              <button type="button" onClick={() => onOpen(e.event_id)} className="text-left hover:underline text-amber-900">
+                {e.start_datetime.slice(0, 10)} · {e.event_name} <span className="text-xs text-amber-700">({e.days_since}일 경과)</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

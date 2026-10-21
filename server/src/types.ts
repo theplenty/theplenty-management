@@ -430,6 +430,10 @@ export interface FoodItem {
   service_time: string;
   quantity: number | null;
   memo: string;
+  /** 구매 시스템 메뉴 코드 (S1). 비어 있으면 메뉴명·행사 구분으로 자동 판정 — 직접 지정할 때만 저장 */
+  menu_code?: string | null;
+  /** 이 메뉴의 실제 인원 — 한 행사에 세트가 2개 이상일 때만 (그 외엔 행사리뷰 실제 식사 인원을 쓴다) */
+  actual_count?: number | null;
 }
 
 export type CustomerRole = '주최사' | '대행사' | '협력사' | '회계 담당' | '기타';
@@ -839,6 +843,8 @@ export interface EventRevenueLine {
   revenue_item_id: string;
   amount: number | null;
   note: string;
+  /** 매출 부서 덮어쓰기 (S1). 비어 있으면 항목 기본값 — 컨벤션_주방 · 컨벤션_홀 · 비식음 */
+  dept?: string | null;
   created_at: string;
   updated_at: string;
 }

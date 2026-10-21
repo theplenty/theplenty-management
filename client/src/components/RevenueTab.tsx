@@ -7,6 +7,7 @@
 //   · 매출(contract_amount 등) → PUT /api/events/:id/revenue (admin 전용, 서버에서 강제)
 
 import { Field } from './Field';
+import { REVENUE_DEPT_OPTIONS, revenueDeptDefaultLabel } from '../lib/s1';
 import { formatKoreanCommas } from '../lib/numberFormat';
 import {
   INVOICE_ISSUE_STATUS_OPTIONS,
@@ -42,6 +43,8 @@ export interface RevenueDraft {
   discount_reason: string;
   gateway_fee: string;
   amounts: Record<string, string>; // revenue_item_id → 금액 문자열
+  /** 매출 부서 덮어쓰기 (S1) — revenue_item_id → '컨벤션_주방' | '컨벤션_홀' | '비식음'. 없으면 항목 기본값 */
+  depts: Record<string, string>;
 }
 
 export function emptyRevenueDraft(): RevenueDraft {
@@ -52,6 +55,7 @@ export function emptyRevenueDraft(): RevenueDraft {
     discount_reason: '',
     gateway_fee: '',
     amounts: {},
+    depts: {},
   };
 }
 
@@ -251,23 +255,50 @@ export default function RevenueTab({
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {revenueItems.map((it) => (
-                  <Field key={it.id} label={it.name_ko}>
-                    {roRev ? (
-                      <div className="text-sm text-gray-800 py-2 text-right tabular-nums">
-                        {toNum(revenue.amounts[it.id] || '') ? revenue.amounts[it.id] : '—'}
+                {revenueItems.map((it) => {
+                  // 부서 태그 (S1 P&L) — 기본값은 항목별, 이 행사만 다르면 바꾼다
+                  const dept = revenue.depts?.[it.id] || '';
+                  const deptLabel = dept
+                    ? REVENUE_DEPT_OPTIONS.find((o) => o.value === dept)?.label || dept
+                    : revenueDeptDefaultLabel(it.code);
+                  return (
+                    <Field key={it.id} label={it.name_ko}>
+                      {roRev ? (
+                        <div className="text-sm text-gray-800 py-2 text-right tabular-nums">
+                          {toNum(revenue.amounts[it.id] || '') ? revenue.amounts[it.id] : '—'}
+                        </div>
+                      ) : (
+                        <input
+                          className="input text-right tabular-nums"
+                          value={revenue.amounts[it.id] || ''}
+                          placeholder="0"
+                          inputMode="numeric"
+                          onChange={(e) => setAmount(it.id, e.target.value)}
+                        />
+                      )}
+                      <div className="mt-1 text-[11px] text-gray-400 text-right">
+                        {roRev ? (
+                          <span className={dept ? 'text-amber-700' : ''} title="부서별 P&L 에서 이 매출이 들어가는 곳">부서 {deptLabel}</span>
+                        ) : (
+                          <select
+                            className={'w-full border rounded px-1 py-0.5 text-[11px] bg-white ' + (dept ? 'border-amber-300 text-amber-800' : 'border-gray-200 text-gray-500')}
+                            value={dept}
+                            onChange={(e) =>
+                              onRevenueChange({ ...revenue, depts: { ...(revenue.depts || {}), [it.id]: e.target.value } })
+                            }
+                            title="부서별 P&L 에서 이 매출이 들어가는 곳"
+                          >
+                            {REVENUE_DEPT_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.value === '' ? `부서: ${revenueDeptDefaultLabel(it.code)} (기본)` : `부서: ${o.label}`}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </div>
-                    ) : (
-                      <input
-                        className="input text-right tabular-nums"
-                        value={revenue.amounts[it.id] || ''}
-                        placeholder="0"
-                        inputMode="numeric"
-                        onChange={(e) => setAmount(it.id, e.target.value)}
-                      />
-                    )}
-                  </Field>
-                ))}
+                    </Field>
+                  );
+                })}
               </div>
               <div className="mt-3 flex justify-end gap-6 text-sm border-t border-gray-200 pt-2">
                 <span className="text-gray-500">

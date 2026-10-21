@@ -6,6 +6,8 @@ import { DEFAULT_TENANT_ID } from '../types.js';
 
 const router = Router({ mergeParams: true });
 const ADMIN_ROLES = ['admin'] as const;
+// S1 매출 부서 덮어쓰기 값 — 비어 있으면 항목 기본값(lib/s1Pnl.ts)
+const VALID_DEPT = new Set(['컨벤션_주방', '컨벤션_홀', '비식음']);
 
 // GET /api/revenue/all-lines — 전 행사의 세부 매출 라인을 한 번에 조회.
 // 엑셀 내보내기가 행을 하나씩 펼치지 않아도 세부항목을 채울 수 있게 하기 위함
@@ -39,7 +41,7 @@ router.put('/:eventId/revenue', requireRoles(...ADMIN_ROLES), (req, res) => {
     discount_reason?: string;
     contract_date?: string | null;
     gateway_fee?: number | null;
-    lines?: Array<{ revenue_item_id: string; amount: number | null; note?: string }>;
+    lines?: Array<{ revenue_item_id: string; amount: number | null; note?: string; dept?: string | null }>;
   };
 
   // 이벤트 메타 업데이트
@@ -66,6 +68,7 @@ router.put('/:eventId/revenue', requireRoles(...ADMIN_ROLES), (req, res) => {
         revenue_item_id: l.revenue_item_id,
         amount: l.amount ?? null,
         note: l.note?.trim() ?? '',
+        ...(VALID_DEPT.has(l.dept || '') ? { dept: l.dept } : {}),
         created_at: now,
         updated_at: now,
       }));
@@ -115,6 +118,12 @@ router.post('/import', requireRoles(...ADMIN_ROLES), (req, res) => {
     persistDoc('events', event.id);
 
     if (row.items && typeof row.items === 'object') {
+      // 엑셀에는 부서 칸이 없다 — 화면에서 바꿔 둔 부서는 항목별로 그대로 잇는다
+      const prevDept = new Map(
+        store.event_revenue_lines
+          .filter((l) => l.event_id === event.id && l.dept)
+          .map((l) => [l.revenue_item_id, l.dept as string])
+      );
       const otherLines = store.event_revenue_lines.filter(l => l.event_id !== event.id);
       const now = new Date().toISOString();
       const newLines = Object.entries(row.items)
@@ -126,6 +135,7 @@ router.post('/import', requireRoles(...ADMIN_ROLES), (req, res) => {
           revenue_item_id: itemsByCode[code].id,
           amount: amount ?? null,
           note: row.note?.trim() ?? '',
+          ...(prevDept.has(itemsByCode[code].id) ? { dept: prevDept.get(itemsByCode[code].id) } : {}),
           created_at: now,
           updated_at: now,
         }));

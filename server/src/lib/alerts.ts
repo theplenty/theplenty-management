@@ -5,6 +5,7 @@
 //  2. 같은 건을 매일 다시 밀지 않는다. 규칙별 repeat_days 가 지나야 재알림.
 //  3. 웹훅 미설정이면 조용히 skip — 발송 실패로 서버가 죽지 않는다.
 import { store, persistDoc } from '../store/mockStore.js';
+import { missingMealCountEvents } from './s1Pnl.js';
 import type { NotificationLog } from '../types.js';
 import { sendSlack, slackConfigured, type SlackBlock } from './slack.js';
 import {
@@ -53,7 +54,8 @@ export type RuleId =
   | 'payment_overdue'
   | 'settlement_unpaid'
   | 'event_d7'
-  | 'revenue_missing';
+  | 'revenue_missing'
+  | 'meal_count_missing';
 
 interface RuleDef {
   id: RuleId;
@@ -75,6 +77,8 @@ const RULES: Record<RuleId, RuleDef> = {
   event_d7: { id: 'event_d7', title: '📅 D-7 행사 준비 시작', repeatDays: 30, maxItems: 10 },
   // 입력 누락 — 주 1회 상기.
   revenue_missing: { id: 'revenue_missing', title: '📝 종료 행사 매출 미입력', repeatDays: 7, maxItems: 10 },
+  // 식수가 비면 이론원가(S1)를 못 낸다 — 주 1회 상기. 0 은 입력한 값(식수 미이용)이라 알리지 않는다.
+  meal_count_missing: { id: 'meal_count_missing', title: '🍽 행사리뷰 실제 식사 인원 미입력', repeatDays: 7, maxItems: 10 },
 };
 
 export interface AlertItem {
@@ -173,6 +177,20 @@ export function collectAlerts(): AlertGroup[] {
         line:
           `• ${eventLink(m.event_id, m.event_name, 'revenue')} — ${fmtDateW(m.start_datetime)} (${m.days_since}일 경과)` +
           (m.contract_amount ? ` · 계약 ${won(m.contract_amount)}` : ''),
+      })),
+    });
+  }
+
+  // 6) 식수 미입력 (2026 이후 종료 행사)
+  const noMeal = missingMealCountEvents();
+  if (noMeal.length) {
+    groups.push({
+      rule: 'meal_count_missing',
+      title: RULES.meal_count_missing.title,
+      items: noMeal.map((m) => ({
+        rule: 'meal_count_missing' as const,
+        targetId: m.event_id,
+        line: `• ${eventLink(m.event_id, m.event_name, 'review')} — ${fmtDateW(m.start_datetime)} (${m.days_since}일 경과) · 식사 안 한 행사면 0 으로`,
       })),
     });
   }

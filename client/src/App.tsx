@@ -28,6 +28,7 @@ import Stats from './pages/Stats';
 import Field from './pages/Field';
 import Menus from './pages/Menus';
 import MenuCost from './pages/MenuCost';
+import Pnl from './pages/Pnl';
 import AdminWeddingCalc from './pages/AdminWeddingCalc';
 import Revenue from './pages/Revenue';
 import PublicCalendar from './pages/PublicCalendar';
@@ -183,6 +184,15 @@ function ProtectedRoutes() {
           element={
             <ProtectedRoute allow={['admin', 'kitchen', 'banquet']}>
               <MenuCost />
+            </ProtectedRoute>
+          }
+        />
+        {/* 컨벤션 P&L (S1) — 실제원가·COST% 는 관리자만 */}
+        <Route
+          path="/pnl"
+          element={
+            <ProtectedRoute allow={['admin']}>
+              <Pnl />
             </ProtectedRoute>
           }
         />

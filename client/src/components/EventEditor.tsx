@@ -3,7 +3,7 @@
 // layout='page'  : 원스톱 워크스페이스 — 좌측 탭 본문 + 우측 액션 패널 (로드맵 A1)
 // 저장·복제·삭제·충돌검사·탭 구성은 두 레이아웃이 100% 동일하게 동작한다.
 import { weekdayKoOf, fmtDateTimeW } from '../lib/dateFmt';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { api } from '../lib/api';
 import { detectConflict } from '../lib/conflictCheck';
 import {
@@ -230,6 +230,8 @@ export default function EventEditor({
   const [revenueItems, setRevenueItems] = useState<RevenueItem[]>([]);
   const [revenueLoading, setRevenueLoading] = useState(false);
   const [revenueLoaded, setRevenueLoaded] = useState(false);
+  // 어느 행사의 매출을 불러왔는지 — 상태(revenueLoaded)를 effect 조건에 쓰면 자기 setState 로 요청이 취소된다
+  const revenueReqRef = useRef<string | null>(null);
   // 대관료 출처 (S2 · W1) — 계약금이 MICE 문의 / 웨딩 예식후보 중 어디서 흘러왔는지 매출탭에 밝힌다
   const [depositSource, setDepositSource] = useState<{
     type?: 'mice' | 'wedding';
@@ -289,6 +291,8 @@ export default function EventEditor({
           service_time: f.service_time,
           quantity: f.quantity,
           memo: f.memo,
+          menu_code: f.menu_code ?? null,
+          actual_count: f.actual_count ?? null,
         }))
       );
       setLinks(
@@ -348,8 +352,10 @@ export default function EventEditor({
   // 매출 조회 — 모달은 탭을 처음 열 때만(lazy), 페이지는 우측 요약에 쓰므로 바로.
   useEffect(() => {
     const want = isPage || tab === 'revenue';
-    if (!want || revenueLoaded || !initialEvent?.id) return;
+    if (!want || !initialEvent?.id || revenueReqRef.current === initialEvent.id) return;
+    revenueReqRef.current = initialEvent.id;
     let cancelled = false;
+    let done = false;
     setRevenueLoading(true);
     setRevenueLoaded(true);
     api
@@ -359,15 +365,17 @@ export default function EventEditor({
     api
       .get<{
         event: Event;
-        revenue_lines: { revenue_item_id: string; amount: number | null }[];
+        revenue_lines: { revenue_item_id: string; amount: number | null; dept?: string | null }[];
         revenue_items: RevenueItem[];
       }>(`/api/events/${initialEvent.id}/revenue`)
       .then((res) => {
         if (cancelled) return;
         const ev = res.event as unknown as Record<string, unknown>;
         const amounts: Record<string, string> = {};
+        const depts: Record<string, string> = {};
         for (const l of res.revenue_lines || []) {
           if (l.amount != null) amounts[l.revenue_item_id] = Number(l.amount).toLocaleString('ko-KR');
+          if (l.dept) depts[l.revenue_item_id] = l.dept;
         }
         const numStr = (v: unknown) =>
           typeof v === 'number' && v ? Number(v).toLocaleString('ko-KR') : '';
@@ -383,18 +391,27 @@ export default function EventEditor({
           discount_reason: (ev.discount_reason as string) || '',
           gateway_fee: numStr(ev.gateway_fee),
           amounts,
+          depts,
         });
       })
       .catch(() => {
-        if (!cancelled) setRevenueLoaded(false); // 실패 시 재시도 가능하게
+        if (!cancelled) {
+          setRevenueLoaded(false); // 실패 시 재시도 가능하게
+          revenueReqRef.current = null;
+        }
       })
       .finally(() => {
+        done = true;
         if (!cancelled) setRevenueLoading(false);
       });
     return () => {
       cancelled = true;
+      // 끝나기 전에 정리되면(StrictMode 이중 실행·다른 행사로 전환) 다음 실행이 다시 불러오게 한다
+      if (!done) revenueReqRef.current = null;
     };
-  }, [isPage, tab, revenueLoaded, initialEvent?.id]);
+    // revenueLoaded 를 deps 에 넣으면 위 setRevenueLoaded(true) 가 곧바로 이 effect 를 정리(cancel)해
+    // 응답을 버리고 '불러오는 중' 에 멈췄다 (2026-08-05 ~ 10-21). 불러옴 여부는 ref 로 본다.
+  }, [isPage, tab, initialEvent?.id]);
 
   const conflict = useMemo(() => {
     if (!form.start_datetime || !form.end_datetime || form.halls.length === 0) {
@@ -498,6 +515,8 @@ export default function EventEditor({
           service_time: f.service_time,
           quantity: f.quantity,
           memo: f.memo,
+          menu_code: f.menu_code ?? null,
+          actual_count: f.actual_count ?? null,
         })),
         customer_links: links.map((l) => ({
           id: !l.id || l.id.startsWith('tmp_') ? undefined : l.id,
@@ -537,7 +556,11 @@ export default function EventEditor({
             discount_reason: revenue.discount_reason,
             gateway_fee: toNum(revenue.gateway_fee) || null,
             lines: revenueItems
-              .map((it) => ({ revenue_item_id: it.id, amount: toNum(revenue.amounts[it.id] || '') }))
+              .map((it) => ({
+                revenue_item_id: it.id,
+                amount: toNum(revenue.amounts[it.id] || ''),
+                dept: revenue.depts?.[it.id] || null,
+              }))
               .filter((l) => l.amount > 0),
           });
           if (saved?.event) res.event = saved.event;

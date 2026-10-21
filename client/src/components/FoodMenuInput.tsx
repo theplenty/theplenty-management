@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { nanoid } from '../lib/clientId';
 import { type FoodItem, type MenuMode, MENU_OPTIONS, menuModeOf } from '../types';
+import { MEAL_BASIS_MENUS } from '../lib/s1';
 
 // 식음 메뉴 입력 — MENU_OPTIONS 고정 목록에서 선택.
 // 행사 저장 후에는 menu_name이 문자열로 고정됨 (마스터 변경 영향 없음).
@@ -77,6 +78,7 @@ export default function FoodMenuInput({ items, onChange }: Props) {
       ) : (
         <div className="space-y-2">
           {items.map((r, idx) => {
+            const mealRows = items.filter((x) => MEAL_BASIS_MENUS.has(x.menu_name)).length;
             // 식사없음은 수량 입력 없이 단순 라벨 행으로 표시
             if (r.menu_name === '식사없음') {
               return (
@@ -94,6 +96,7 @@ export default function FoodMenuInput({ items, onChange }: Props) {
                 idx={idx}
                 item={r}
                 mode={mode}
+                needActualCount={mealRows > 1 && MEAL_BASIS_MENUS.has(r.menu_name)}
                 onUpdate={(patch) => updateRow(r.id, patch)}
                 onDelete={() => deleteRow(r.id)}
               />
@@ -110,18 +113,35 @@ function FoodRow({
   idx,
   item,
   mode,
+  needActualCount,
   onUpdate,
   onDelete,
 }: {
   idx: number;
   item: DraftItem;
   mode: MenuMode;
+  /** 한 행사에 식사 세트가 2개 이상 — 행사리뷰 식수 하나로 나눌 수 없어 메뉴별 실제 인원을 받는다 (S1) */
+  needActualCount?: boolean;
   onUpdate: (patch: Partial<DraftItem>) => void;
   onDelete: () => void;
 }) {
   if (mode === 'set') {
     return (
       <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border rounded-md p-2 bg-gray-50/50">
+        {needActualCount && (
+          <div className="md:col-span-12 order-last flex items-center gap-2 text-xs text-gray-600 border-t border-dashed pt-2">
+            <span className="font-medium">실제 인원</span>
+            <input
+              type="number"
+              min={0}
+              className="input !py-1 !text-sm !text-right tabular-nums !px-2 !w-24"
+              placeholder="행사 후"
+              value={item.actual_count ?? ''}
+              onChange={(e) => onUpdate({ actual_count: e.target.value === '' ? null : Number(e.target.value) })}
+            />
+            <span className="text-gray-400">세트가 2개 이상이라 메뉴별로 적어 주세요 (원가 계산용 · 안 먹었으면 0)</span>
+          </div>
+        )}
         <NameCell idx={idx} name={item.menu_name} />
         <PairCell
           mobileLabel="계약 GTD / EXP"

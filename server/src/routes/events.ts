@@ -110,6 +110,9 @@ function replaceFoodItems(eventId: string, items: Partial<FoodItem>[] | undefine
     service_time: it.service_time || '',
     quantity: it.quantity ?? null,
     memo: it.memo || '',
+    // S1 — 넘어온 값만 저장(없으면 필드 자체를 안 만든다)
+    ...(it.menu_code ? { menu_code: it.menu_code } : {}),
+    ...(it.actual_count != null ? { actual_count: it.actual_count } : {}),
   }));
   replaceMatching('event_food_items', (f) => f.event_id === eventId, newItems);
 }

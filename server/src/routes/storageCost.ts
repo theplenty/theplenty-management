@@ -12,6 +12,11 @@ import {
   storageKeyConfigured,
   type StorageResult,
 } from '../lib/storageCost.js';
+import { computeConventionPnl, menuCodePreview, missingMealCountEvents, revenueDeptLabel } from '../lib/s1Pnl.js';
+import { store } from '../store/mockStore.js';
+
+// 원가율은 민감 정보 — 메뉴별 원가 화면과 같은 범위(관리자·주방·연회). 실제원가·P&L 은 관리자만.
+const COST_ROLES = ['admin', 'kitchen', 'banquet'] as const;
 
 const router = Router();
 router.use(requireActiveRole);
@@ -40,16 +45,44 @@ router.get('/menus', async (_req, res) => {
   send(res, await getStorageMenus());
 });
 
-router.get('/menu-cost', async (req, res) => {
+router.get('/menu-cost', requireRoles(...COST_ROLES), async (req, res) => {
   const month = req.query.month;
   if (!isValidMonth(month)) return res.status(400).json({ error: 'bad_request', message: MESSAGE.bad_request });
   send(res, await getStorageMenuCost(month));
 });
 
-router.get('/cogs', async (req, res) => {
+router.get('/cogs', requireRoles('admin'), async (req, res) => {
   const month = req.query.month;
   if (!isValidMonth(month)) return res.status(400).json({ error: 'bad_request', message: MESSAGE.bad_request });
   send(res, await getStorageCogs(month));
+});
+
+// 컨벤션 P&L — 매출·식수는 management, 원가는 구매 시스템 스냅샷/실제원가. 404 면 그 칸만 빈칸.
+router.get('/pnl', requireRoles('admin'), async (req, res) => {
+  const month = req.query.month;
+  if (!isValidMonth(month)) return res.status(400).json({ error: 'bad_request', message: MESSAGE.bad_request });
+  const [mc, cg] = await Promise.all([getStorageMenuCost(month), getStorageCogs(month)]);
+  const status = (r: StorageResult<unknown>) => (r.ok ? 'ok' : r.reason);
+  res.json({
+    ...computeConventionPnl(month, mc.ok ? mc.data : null, cg.ok ? cg.data : null),
+    menu_cost_status: status(mc),
+    cogs_status: status(cg),
+  });
+});
+
+// 행사 메뉴 ↔ 코드 매핑 미리보기 (쓰기 없음)
+router.get('/menu-code-preview', requireRoles('admin'), (_req, res) => {
+  res.json(menuCodePreview());
+});
+
+// 2026 이후 종료 · 식수 미입력 행사 — 연회팀 행사리뷰 화면 배너용
+router.get('/missing-meal-counts', (_req, res) => {
+  res.json({ events: missingMealCountEvents() });
+});
+
+// 매출 항목별 기본 부서 — 매출 탭 표시용
+router.get('/revenue-depts', (_req, res) => {
+  res.json({ items: store.revenue_items.map((i) => ({ id: i.id, code: i.code, default_label: revenueDeptLabel(i.code) })) });
 });
 
 // 구매 시스템에서 마감 해제·재마감했을 때 — 이 인스턴스의 캐시만 비운다
