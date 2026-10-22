@@ -38,7 +38,7 @@ const MENU_CODE_RULES: Record<string, { MICE?: MenuCodeRule; WEDDING?: MenuCodeR
   'Dessert Plate(L)': { any: { code: 'CV-DES-04', basis: 'plates' } },
   웨딩국수: { any: { code: 'CV-NDL-01', basis: 'people' } }, // 화면에서 수량(인분)으로 받는다
   // 커피브레이크 = 커피 3,000 + 쿠키 10,000 = 13,000원 1인 세트 (구매팀 확인 2026-10-21).
-  // 2026-06~09 소급 스냅샷엔 커피 줄이 없어 쿠키 원가만 잡힌다 — 커피는 10월 마감 스냅샷부터.
+  // 원가 기준: 6~9월(소급) 쿠키만 · 10월 커피 + 바뀌기 전 쿠키 레시피 · 11월부터 새 쿠키 레시피.
   'Coffee Break': { any: { code: 'CV-DES-03', basis: 'people' } },
 };
 const NO_MEAL = new Set(['식사없음']);
