@@ -144,14 +144,14 @@ function FoodRow({
         )}
         <NameCell idx={idx} name={item.menu_name} />
         <PairCell
-          mobileLabel="계약 GTD / EXP"
+          mobileLabel="계약 GTD / EXP (계약 시)"
           gtd={item.gtd_contract}
           exp={item.exp_contract}
           onGtd={(v) => onUpdate({ gtd_contract: v })}
           onExp={(v) => onUpdate({ exp_contract: v })}
         />
         <PairCell
-          mobileLabel="확정 GTD / EXP"
+          mobileLabel="확정 GTD / EXP (행사 직전)"
           gtd={item.gtd_final}
           exp={item.exp_final}
           onGtd={(v) => onUpdate({ gtd_final: v })}
@@ -279,7 +279,8 @@ function PairCell({
 }) {
   return (
     <div className="md:col-span-3">
-      <label className="md:hidden text-[11px] uppercase tracking-wide text-gray-500">
+      {/* PC 에서도 보인다 — 계약/확정 두 칸이 라벨 없이 나란히 있으면 같은 칸이 두 번 있는 것처럼 보였다 */}
+      <label className="block text-[11px] tracking-wide text-gray-500 mb-0.5">
         {mobileLabel}
       </label>
       <div className="flex items-center gap-1">
