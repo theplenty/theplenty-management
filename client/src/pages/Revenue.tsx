@@ -754,6 +754,7 @@ export default function Revenue() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">매출 관리</h1>
           <p className="text-sm text-gray-500 mt-0.5">확정·잠정 행사별 계약 및 세부 매출 관리</p>
+          <ExcelSyncStatus />
         </div>
         <div className="flex flex-wrap gap-2">
           {canWrite && (
@@ -1623,6 +1624,57 @@ function ImportModal({ rows, loading, onConfirm, onClose }: ImportModalProps) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── 재무팀 매출표 자동 반영 상태 (scripts/sync-sales-excel.ts, 30분마다) ──
+// 폴더에 새 "(PLENTY)Sales 매출_YYMMDD" 파일이 생기면 행사 매출에 반영한다. 엑셀이 기준 — 빈칸은 앱 값 유지.
+interface ExcelSync {
+  file: string;
+  ran_at: string;
+  status: 'ok' | 'error';
+  error?: string;
+  applied?: number;
+  nochange?: number;
+  unmatched?: Array<{ date: string; name: string; status: string; reason: string }>;
+}
+function ExcelSyncStatus() {
+  const [sync, setSync] = useState<ExcelSync | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    api
+      .get<{ sync: ExcelSync | null }>('/api/revenue/excel-sync')
+      .then((r) => setSync(r.sync))
+      .catch(() => setSync(null));
+  }, []);
+  if (!sync) return null;
+  const at = new Date(sync.ran_at);
+  const when = `${at.getMonth() + 1}/${at.getDate()} ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+  const um = sync.unmatched || [];
+  return (
+    <div className="mt-1 text-xs text-gray-500">
+      {sync.status === 'error' ? (
+        <span className="text-red-600">📥 재무팀 매출표 자동 반영 실패 ({when}) — {sync.error}</span>
+      ) : (
+        <>
+          📥 재무팀 매출표 자동 반영 · {when} · <span className="text-gray-700">{sync.file}</span> · 반영 {sync.applied ?? 0}건
+          {um.length > 0 && (
+            <button type="button" onClick={() => setOpen((v) => !v)} className="ml-1 text-amber-700 hover:underline">
+              · 캘린더 행사와 못 붙인 행 {um.length}건 {open ? '▲' : '▼'}
+            </button>
+          )}
+        </>
+      )}
+      {open && um.length > 0 && (
+        <ul className="mt-1 ml-4 list-disc text-amber-800 space-y-0.5">
+          {um.map((u) => (
+            <li key={`${u.date}|${u.name}`}>
+              {u.date} [{u.status}] {u.name} — {u.reason}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -18,6 +18,19 @@ router.get('/all-lines', requireActiveRole, (_req, res) => {
   res.json({ revenue_lines: lines });
 });
 
+// GET /api/revenue/excel-sync — 재무팀 매출표 자동 반영(scripts/sync-sales-excel.ts) 마지막 결과
+router.get('/excel-sync', requireActiveRole, async (_req, res) => {
+  const backend = (process.env.STORE_BACKEND || 'json').toLowerCase();
+  if (backend === 'json') return res.json({ sync: null });
+  try {
+    const { firestore } = await import('../lib/firebase.js');
+    const doc = await firestore.collection('system_meta').doc('sales_excel_sync').get();
+    res.json({ sync: doc.exists ? doc.data() : null });
+  } catch {
+    res.json({ sync: null });
+  }
+});
+
 // GET /api/events/:eventId/revenue — 행사 매출 전체 조회
 router.get('/:eventId/revenue', requireActiveRole, (req, res) => {
   const event = store.events.find(e => e.id === req.params.eventId && !e.deleted_at);

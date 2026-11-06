@@ -235,6 +235,8 @@ async function hydrateFromFirestore() {
   const { firestore } = await import('../lib/firebase.js');
   const t0 = Date.now();
   let total = 0;
+  // 지금 리비전을 먼저 적어 둔다 — 이후 바뀌면(외부 스크립트가 직접 썼다는 뜻) 그 컬렉션만 다시 읽는다
+  _knownRevision = await readDataRevision();
   for (const coll of COLLECTIONS) {
     const snap = await firestore.collection(coll).get();
     const docs = snap.docs.map((d) => d.data());
@@ -247,6 +249,52 @@ async function hydrateFromFirestore() {
   }
   // eslint-disable-next-line no-console
   console.log(`[mockStore] hydrate 완료 — 총 ${total}건 (${Date.now() - t0}ms)`);
+}
+
+// ===================================================================
+// 외부에서 Firestore 를 직접 고쳤을 때(매출표 자동 반영 등) 인스턴스 메모리 갱신
+// ===================================================================
+// hydrate 는 인스턴스당 1회라 스크립트가 Firestore 에 쓴 값이 재배포 전까지 화면에 안 보였다.
+// 스크립트는 system_meta/data_revision 의 해당 키를 갱신하고, 서버는 1분마다 확인해 그 컬렉션만 다시 읽는다.
+const REVISION_GROUPS: Record<string, Array<keyof DB>> = {
+  revenue_at: ['events', 'event_revenue_lines'],
+};
+let _knownRevision: Record<string, string> = {};
+let _lastRevisionCheck = 0;
+const REVISION_CHECK_MS = 60_000;
+
+async function readDataRevision(): Promise<Record<string, string>> {
+  try {
+    const { firestore } = await import('../lib/firebase.js');
+    const doc = await firestore.collection('system_meta').doc('data_revision').get();
+    const d = (doc.exists ? doc.data() : {}) || {};
+    return Object.fromEntries(Object.keys(REVISION_GROUPS).map((k) => [k, String(d[k] || '')]));
+  } catch (e) {
+    console.error('[mockStore] data_revision 읽기 실패:', (e as Error).message);
+    return _knownRevision;
+  }
+}
+
+export async function refreshIfDataRevisionChanged(): Promise<void> {
+  const backend = (process.env.STORE_BACKEND || 'json').toLowerCase();
+  if (backend !== 'firestore') return;
+  if (Date.now() - _lastRevisionCheck < REVISION_CHECK_MS) return;
+  _lastRevisionCheck = Date.now();
+  const rev = await readDataRevision();
+  const changed = Object.keys(REVISION_GROUPS).filter((k) => rev[k] && rev[k] !== _knownRevision[k]);
+  if (!changed.length) return;
+  const { firestore } = await import('../lib/firebase.js');
+  for (const k of changed) {
+    for (const coll of REVISION_GROUPS[k]) {
+      const snap = await firestore.collection(coll).get();
+      const docs = snap.docs.map((d) => d.data());
+      (db[coll] as unknown[]).length = 0;
+      (db[coll] as unknown[]).push(...docs);
+      // eslint-disable-next-line no-console
+      console.log(`[mockStore] ${k} 변경 → ${coll} 다시 읽음: ${docs.length}건`);
+    }
+  }
+  _knownRevision = rev;
 }
 
 export function ensureHydrated(): Promise<void> {

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { nanoid } from 'nanoid';
-import { store, persistDoc, ensureHydrated, refreshUsersByEmail } from '../store/mockStore.js';
+import { store, persistDoc, ensureHydrated, refreshUsersByEmail, refreshIfDataRevisionChanged } from '../store/mockStore.js';
 import { DEFAULT_TENANT_ID } from '../types.js';
 import type { Role, User } from '../types.js';
 
@@ -130,6 +130,8 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
   // Cloud Functions cold start 시 Firestore에서 데이터를 in-memory로 로드 (한 번만).
   try {
     await ensureHydrated();
+    // 외부 스크립트(매출표 자동 반영 등)가 Firestore 를 직접 고쳤으면 해당 컬렉션만 다시 읽는다 (1분 스로틀)
+    await refreshIfDataRevisionChanged();
   } catch (e) {
     console.error('[auth] hydrate 실패, 다음 요청에서 재시도:', e);
   }
