@@ -1,0 +1,4 @@
+# Windows scripts must keep CRLF (cmd.exe / wscript)
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.vbs text eol=crlf
