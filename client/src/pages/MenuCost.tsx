@@ -37,7 +37,7 @@ interface MenuCostMonth {
   menus: MenuCost[];
 }
 
-const DEPT_SHORT: Record<string, string> = { 컨벤션_주방: '컨주', 컨벤션_홀: '컨홀', 카페_주방: '카주', 카페_홀: '카홀' };
+const DEPT_SHORT: Record<string, string> = { 컨벤션_주방: '컨주', 컨벤션_홀: '컨홀' };
 const won = (n: number | null | undefined) => (n == null ? '—' : Math.round(n).toLocaleString('ko-KR'));
 const pct = (r: number | null | undefined) => (r == null ? '—' : `${(r * 100).toFixed(1)}%`);
 
@@ -55,7 +55,6 @@ function shift(month: string, delta: number): string {
 
 export default function MenuCostPage() {
   const [month, setMonth] = useState(prevMonth);
-  const [biz, setBiz] = useState<'컨벤션' | '카페' | 'ALL'>('컨벤션');
   const [menus, setMenus] = useState<StorageMenu[]>([]);
   const [cost, setCost] = useState<MenuCostMonth | null>(null);
   const [state, setState] = useState<'loading' | 'ok' | 'not_closed' | 'error'>('loading');
@@ -93,10 +92,11 @@ export default function MenuCostPage() {
   const menuByCode = useMemo(() => new Map(menus.map((m) => [m.code, m])), [menus]);
   const rows = useMemo(() => {
     const list = (cost?.menus || []).map((c) => ({ c, m: menuByCode.get(c.code) }));
+    // management 는 컨벤션만 본다 — 구매 시스템도 컨벤션 메뉴만 내준다(2026-11-12). 사업부 고르기는 없앴다.
     return list
-      .filter(({ c, m }) => biz === 'ALL' || (m?.사업부 || (c.code.startsWith('CV-') ? '컨벤션' : '카페')) === biz)
+      .filter(({ c, m }) => (m?.사업부 || (c.code.startsWith('CV-') ? '컨벤션' : '카페')) === '컨벤션')
       .sort((a, b) => a.c.code.localeCompare(b.c.code));
-  }, [cost, menuByCode, biz]);
+  }, [cost, menuByCode]);
   const incomplete = rows.filter((r) => !r.c.완전).length;
 
   return (
@@ -109,11 +109,6 @@ export default function MenuCostPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
-          <select className="input !py-1 !text-sm !w-auto" value={biz} onChange={(e) => setBiz(e.target.value as typeof biz)}>
-            <option value="컨벤션">컨벤션</option>
-            <option value="카페">카페</option>
-            <option value="ALL">전체</option>
-          </select>
           <button onClick={() => setMonth((m) => shift(m, -1))} className="px-2 py-1 rounded hover:bg-gray-100" aria-label="이전 달">‹</button>
           <span className="font-medium w-20 text-center">{month}</span>
           <button onClick={() => setMonth((m) => shift(m, 1))} className="px-2 py-1 rounded hover:bg-gray-100" aria-label="다음 달">›</button>
@@ -169,7 +164,7 @@ export default function MenuCostPage() {
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-3 py-8 text-center text-gray-400 text-sm">해당 사업부 메뉴가 없습니다.</td>
+                  <td colSpan={10} className="px-3 py-8 text-center text-gray-400 text-sm">컨벤션 메뉴가 없습니다.</td>
                 </tr>
               )}
               {rows.map(({ c, m }) => (
