@@ -98,6 +98,10 @@ function canWriteType(role: string, _type: CustomerType): boolean {
 // 한 행사에 연결된 식음 메뉴 항목들을 통째로 교체.
 function replaceFoodItems(eventId: string, items: Partial<FoodItem>[] | undefined) {
   if (!items) return;
+  // 메뉴별 실제 인원은 행사리뷰에서만 입력한다 — 기본정보 저장(열어 둔 화면의 옛 값)이 덮지 않도록 기존 줄 값을 잇는다
+  const prevActual = new Map(
+    store.event_food_items.filter((f) => f.event_id === eventId && f.actual_count != null).map((f) => [f.id, f.actual_count])
+  );
   const newItems: FoodItem[] = items.map((it) => ({
     id: it.id || nanoid(10),
     event_id: eventId,
@@ -112,7 +116,7 @@ function replaceFoodItems(eventId: string, items: Partial<FoodItem>[] | undefine
     memo: it.memo || '',
     // S1 — 넘어온 값만 저장(없으면 필드 자체를 안 만든다)
     ...(it.menu_code ? { menu_code: it.menu_code } : {}),
-    ...(it.actual_count != null ? { actual_count: it.actual_count } : {}),
+    ...(it.id && prevActual.has(it.id) ? { actual_count: prevActual.get(it.id) } : {}),
   }));
   replaceMatching('event_food_items', (f) => f.event_id === eventId, newItems);
 }

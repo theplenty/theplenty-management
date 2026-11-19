@@ -22,6 +22,3 @@ export function revenueDeptDefaultLabel(code: string): string {
       return '비식음';
   }
 }
-
-/** 실제 식사 인원(행사리뷰)으로 원가를 곱하는 메뉴 — 한 행사에 둘 이상이면 메뉴별 인원을 받는다 */
-export const MEAL_BASIS_MENUS = new Set(['A set', 'B set', 'C set', 'D set', 'Korean Lunch Box', 'Chinese Lunch Box']);

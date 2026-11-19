@@ -187,7 +187,7 @@ export default function PnlPage() {
             <div className="bg-white border rounded-lg p-4 text-sm space-y-2">
               <h2 className="font-semibold text-gray-900">계산에서 빠진 것 — 채우면 숫자가 정확해집니다</h2>
               <Issue label="실제 식사 인원 미입력 (이론원가 빠짐)" items={i.missing_meal_count} link="/reviews" linkLabel="행사리뷰에서 입력" />
-              <Issue label="세트가 2개 이상인데 메뉴별 실제 인원 없음" items={i.multi_meal_needs_split} hint="행사 → 기본정보 → 식음 메뉴에서 '실제 인원'" />
+              <Issue label="세트가 2개 이상인데 메뉴별 실제 인원 없음" items={i.multi_meal_needs_split} hint="행사 → 행사리뷰 → 메뉴별 실제 식사 인원" />
               <Issue label="수량 없음 (떡·디저트 접시 수 / 커피브레이크 인원)" items={i.missing_quantity} />
               <Issue label="매출 라인 없음 (식음 매출 빠짐)" items={i.no_revenue_lines} link="/revenue" linkLabel="매출·정산에서 입력" />
               {i.no_code_lines > 0 && (

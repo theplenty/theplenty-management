@@ -34,6 +34,15 @@ interface Props {
 
 type Draft = Omit<Review, 'id' | 'event_id' | 'created_by' | 'created_at' | 'updated_at'>;
 
+/** 기본정보 식음 메뉴 중 코스·도시락 — 리뷰에 그대로 끌고 와 메뉴별 실제 식사 인원을 받는다 */
+interface MealLine {
+  id: string;
+  menu_name: string;
+  gtd_contract: number | null;
+  gtd_final: number | null;
+  actual_count: number | null;
+}
+
 function emptyDraft(): Draft {
   return {
     banquet_manager: '',
@@ -62,6 +71,9 @@ export default function ReviewTab({ eventId, canWrite, eventStartDatetime, event
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [mealLines, setMealLines] = useState<MealLine[]>([]);
+  // 메뉴가 2개 이상일 때 메뉴별 실제 인원 (식사 메뉴 id → 인원). 1개면 리뷰의 실제 식사 인원 칸 하나를 쓴다.
+  const [mealActuals, setMealActuals] = useState<Record<string, number | null>>({});
 
   // 행사담당자 드롭다운 — 연회팀(banquet) 권한 사용자만 노출.
   // 관리자도 함께 노출(연회팀 겸직 가능). 기존 값이 목록에 없으면 fallback 옵션으로 표시.
@@ -95,9 +107,12 @@ export default function ReviewTab({ eventId, canWrite, eventStartDatetime, event
     }
     setLoading(true);
     api
-      .get<{ review: Review | null }>(`/api/event-reviews/${eventId}`)
+      .get<{ review: Review | null; meal_lines?: MealLine[] }>(`/api/event-reviews/${eventId}`)
       .then((res) => {
         setReview(res.review);
+        const lines = res.meal_lines || [];
+        setMealLines(lines);
+        setMealActuals(Object.fromEntries(lines.map((l) => [l.id, l.actual_count])));
         if (res.review) {
           const { id: _i, event_id: _e, created_by: _c, created_at: _ca, updated_at: _u, ...rest } =
             res.review;
@@ -144,8 +159,14 @@ export default function ReviewTab({ eventId, canWrite, eventStartDatetime, event
     if (!eventId) return;
     setSaving(true);
     try {
-      const res = await api.put<{ review: Review }>(`/api/event-reviews/${eventId}`, draft);
+      const multi = mealLines.length >= 2;
+      const res = await api.put<{ review: Review }>(`/api/event-reviews/${eventId}`, {
+        ...draft,
+        // 메뉴 2개 이상: 메뉴별 인원을 보내면 서버가 합계를 실제 식사 인원으로 맞춘다
+        ...(multi ? { meal_actuals: mealActuals, actual_meal_count: undefined } : {}),
+      });
       setReview(res.review);
+      if (multi) setMealLines((ls) => ls.map((l) => ({ ...l, actual_count: mealActuals[l.id] ?? null })));
       setEditing(false);
       alert('저장되었습니다.');
     } catch (e) {
@@ -238,7 +259,7 @@ export default function ReviewTab({ eventId, canWrite, eventStartDatetime, event
             </button>
           )}
         </div>
-        <ReadOnlyView review={review} />
+        <ReadOnlyView review={review} mealLines={mealLines} />
         <FinalInvoiceSection
           files={finalInvoices}
           canWrite={canWrite}
@@ -295,16 +316,29 @@ export default function ReviewTab({ eventId, canWrite, eventStartDatetime, event
           </select>
         </Field>
         <div />
-        <Field label="실제 식사 인원">
-          <input
-            type="number"
-            className="input text-right tabular-nums"
-            value={draft.actual_meal_count ?? ''}
-            onChange={(e) =>
-              set('actual_meal_count', e.target.value === '' ? null : Number(e.target.value))
-            }
-          />
-        </Field>
+        {mealLines.length > 0 ? (
+          <div className="md:col-span-2">
+            <MealLinesTable
+              lines={mealLines}
+              editable
+              single={mealLines.length === 1 ? draft.actual_meal_count : undefined}
+              onSingle={(v) => set('actual_meal_count', v)}
+              actuals={mealActuals}
+              onActual={(id, v) => setMealActuals((m) => ({ ...m, [id]: v }))}
+            />
+          </div>
+        ) : (
+          <Field label="실제 식사 인원">
+            <input
+              type="number"
+              className="input text-right tabular-nums"
+              value={draft.actual_meal_count ?? ''}
+              onChange={(e) =>
+                set('actual_meal_count', e.target.value === '' ? null : Number(e.target.value))
+              }
+            />
+          </Field>
+        )}
         <Field label="결제 식사 인원">
           <input
             type="number"
@@ -501,7 +535,89 @@ function FinalInvoiceSection({
   );
 }
 
-function ReadOnlyView({ review }: { review: Review }) {
+// 식음 메뉴(코스·도시락) 표 — 기본정보의 확정 GTD 옆에 실제 식사 인원을 적는다
+function MealLinesTable({
+  lines,
+  editable,
+  single,
+  onSingle,
+  actuals,
+  onActual,
+}: {
+  lines: MealLine[];
+  editable: boolean;
+  /** 메뉴가 1개일 때 그 메뉴의 실제 인원 = 리뷰의 실제 식사 인원 */
+  single?: number | null;
+  onSingle?: (v: number | null) => void;
+  actuals: Record<string, number | null>;
+  onActual?: (id: string, v: number | null) => void;
+}) {
+  const isSingle = lines.length === 1;
+  const valueOf = (l: MealLine) => (isSingle ? single ?? null : actuals[l.id] ?? null);
+  const total = isSingle ? single ?? null : lines.some((l) => actuals[l.id] != null)
+    ? lines.reduce((a, l) => a + (actuals[l.id] ?? 0), 0)
+    : null;
+  const gtdTotal = lines.reduce((a, l) => a + (l.gtd_final ?? l.gtd_contract ?? 0), 0);
+  const toNum = (s: string) => (s === '' ? null : Number(s));
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
+        식사 인원 — 기본정보 식음 메뉴(코스·도시락) 기준
+      </div>
+      <table className="w-full text-sm border rounded">
+        <thead className="bg-gray-50 text-xs text-gray-600">
+          <tr>
+            <th className="text-left px-3 py-1.5">메뉴</th>
+            <th className="text-right px-3 py-1.5 w-32">확정 GTD</th>
+            <th className="text-right px-3 py-1.5 w-40">실제 식사 인원</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l) => {
+            const gtd = l.gtd_final ?? l.gtd_contract;
+            return (
+              <tr key={l.id} className="border-t">
+                <td className="px-3 py-1.5 font-medium text-gray-800">{l.menu_name}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
+                  {gtd ?? '-'}
+                  {l.gtd_final == null && l.gtd_contract != null && (
+                    <span className="ml-1 text-[10px] text-gray-400" title="확정 GTD 가 없어 계약 GTD 를 표시">(계약)</span>
+                  )}
+                </td>
+                <td className="px-3 py-1 text-right">
+                  {editable ? (
+                    <input
+                      type="number"
+                      min={0}
+                      className="input !py-1 text-right tabular-nums !w-28 ml-auto"
+                      placeholder="0 = 식사 안 함"
+                      value={valueOf(l) ?? ''}
+                      onChange={(e) => (isSingle ? onSingle?.(toNum(e.target.value)) : onActual?.(l.id, toNum(e.target.value)))}
+                    />
+                  ) : (
+                    <span className="tabular-nums">{valueOf(l)?.toLocaleString('ko-KR') ?? '-'}</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+          {!isSingle && (
+            <tr className="border-t bg-gray-50 font-semibold">
+              <td className="px-3 py-1.5">합계</td>
+              <td className="px-3 py-1.5 text-right tabular-nums">{gtdTotal || '-'}</td>
+              <td className="px-3 py-1.5 text-right tabular-nums">{total?.toLocaleString('ko-KR') ?? '-'}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {editable && !isSingle && (
+        <div className="text-[11px] text-gray-400 mt-1">합계가 이 행사의 실제 식사 인원으로 저장됩니다. 메뉴는 기본정보에서 바꿉니다.</div>
+      )}
+    </div>
+  );
+}
+
+function ReadOnlyView({ review, mealLines }: { review: Review; mealLines: MealLine[] }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
       <Block label="행사담당자" value={review.banquet_manager} />
@@ -513,7 +629,18 @@ function ReadOnlyView({ review }: { review: Review }) {
             : '-'
         }
       />
-      <Block label="실제 식사 인원" value={review.actual_meal_count?.toLocaleString('ko-KR') ?? '-'} />
+      {mealLines.length > 0 ? (
+        <div className="md:col-span-2">
+          <MealLinesTable
+            lines={mealLines}
+            editable={false}
+            single={mealLines.length === 1 ? review.actual_meal_count : undefined}
+            actuals={Object.fromEntries(mealLines.map((l) => [l.id, l.actual_count]))}
+          />
+        </div>
+      ) : (
+        <Block label="실제 식사 인원" value={review.actual_meal_count?.toLocaleString('ko-KR') ?? '-'} />
+      )}
       <Block label="결제 식사 인원" value={review.paid_meal_count?.toLocaleString('ko-KR') ?? '-'} />
       <Block label="추가 판매 항목 / 매출" value={review.additional_sales} className="md:col-span-2" multiline />
       <Block label="시스템 이슈" value={review.system_issues} className="md:col-span-2" multiline />

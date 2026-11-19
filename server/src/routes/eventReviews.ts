@@ -2,7 +2,16 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { store, persistDoc, persistDelete } from '../store/mockStore.js';
 import { requireActiveRole } from '../middleware/auth.js';
-import type { EventReview } from '../types.js';
+import type { EventReview, FoodItem } from '../types.js';
+import { resolveMenu } from '../lib/s1Pnl.js';
+
+// 행사리뷰에 끌고 오는 식음 메뉴 — 코스(세트)·도시락만. 커피브레이크·떡/디저트 플레이트·국수는 제외 (2026-11-19 대표님)
+function mealLinesOf(eventId: string) {
+  const ev = store.events.find((e) => e.id === eventId);
+  if (!ev) return [];
+  return (store.event_food_items as Array<FoodItem & { actual_count?: number | null }>)
+    .filter((f) => f.event_id === eventId && resolveMenu(f, ev.event_type).basis === 'meal');
+}
 
 const router = Router();
 router.use(requireActiveRole);
@@ -116,7 +125,14 @@ router.post('/_bulk-upsert', (req, res) => {
 // 단건 조회
 router.get('/:eventId', (req, res) => {
   const review = store.event_reviews.find((r) => r.event_id === req.params.eventId);
-  res.json({ review: review || null });
+  const meal_lines = mealLinesOf(req.params.eventId).map((f) => ({
+    id: f.id,
+    menu_name: f.menu_name,
+    gtd_contract: f.gtd_contract,
+    gtd_final: f.gtd_final,
+    actual_count: f.actual_count ?? null,
+  }));
+  res.json({ review: review || null, meal_lines });
 });
 
 // 작성 또는 수정 (upsert)
@@ -158,6 +174,25 @@ router.put('/:eventId', (req, res) => {
   if (body.next_event_feedback !== undefined) review.next_event_feedback = body.next_event_feedback;
   if (body.general_comment !== undefined) review.general_comment = body.general_comment;
   if (body.final_revenue !== undefined) review.final_revenue = body.final_revenue;
+  // 메뉴별 실제 식사 인원 — 식사 메뉴가 2개 이상일 때만 메뉴 줄에 저장하고, 리뷰 합계는 그 합으로 맞춘다.
+  // 1개면 리뷰의 실제 식사 인원 하나가 곧 그 메뉴의 인원이다(메뉴 줄엔 따로 두지 않는다 — 두 곳에 두면 어긋난다).
+  const mealActuals = (req.body as { meal_actuals?: Record<string, number | null> }).meal_actuals;
+  if (mealActuals && typeof mealActuals === 'object') {
+    const lines = mealLinesOf(ev.id);
+    if (lines.length >= 2) {
+      let sum = 0;
+      let any = false;
+      for (const f of lines) {
+        if (!(f.id in mealActuals)) continue;
+        const v = mealActuals[f.id];
+        const n = v == null || (v as unknown) === '' ? null : Number(v);
+        f.actual_count = n != null && Number.isFinite(n) && n >= 0 ? n : null;
+        persistDoc('event_food_items', f.id);
+      }
+      for (const f of lines) if (f.actual_count != null) { sum += f.actual_count; any = true; }
+      review.actual_meal_count = any ? sum : null;
+    }
+  }
   review.updated_at = now;
   persistDoc('event_reviews', review.id);
   res.json({ review });
